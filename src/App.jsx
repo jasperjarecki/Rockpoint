@@ -117,9 +117,10 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
   };
 
   const handleCoachLogin = () => {
-    // If no coach password set yet, allow entry so coach can set one
-    if (!coachPassword) { onLoginCoach(); return; }
-    if (password !== coachPassword) { setError("Incorrect password."); return; }
+    const stored = localStorage.getItem("rp:coachpw");
+    const actual = stored ? JSON.parse(stored) : "";
+    if (!actual) { onLoginCoach(); return; }
+    if (password !== actual) { setError("Incorrect password."); return; }
     onLoginCoach();
   };
 
@@ -156,7 +157,7 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
           ) : (
             <>
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Coach Password</div>
-              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleCoachLogin()} placeholder={coachPassword ? "Enter coach password" : "No password set — click to enter"} style={inputStyle} />
+              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleCoachLogin()} placeholder="Enter coach password" style={inputStyle} />
             </>
           )}
 
