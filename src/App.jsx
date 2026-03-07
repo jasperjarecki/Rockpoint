@@ -241,6 +241,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
 function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout }) {
   const OVF = "overflow";
   const [activeDay, setActiveDay] = useState(0);
+  const [showOverview, setShowOverview] = useState(false);
 
   if (!plan || !plan.days?.length) {
     return (
@@ -288,9 +289,32 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ ...bebas, fontSize: 30, letterSpacing: 1, marginBottom: 4 }}>{athlete.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
+            <div style={{ ...bebas, fontSize: 30, letterSpacing: 1 }}>{athlete.name}</div>
+            {plan.blockNotes && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer", letterSpacing: 0.5 }}>Overview ↗</button>}
+          </div>
           <Badge type={athlete.type} />
         </div>
+
+        {showOverview && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+                <div>
+                  <div style={{ ...bebas, fontSize: 22, letterSpacing: 1 }}>Training Block Overview</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{athlete.name}</div>
+                </div>
+                <button onClick={() => setShowOverview(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+                <div style={{ ...mono, fontSize: 13, color: C.white, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{plan.blockNotes}</div>
+              </div>
+              <div style={{ padding: "14px 24px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+                <button onClick={() => setShowOverview(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Day tabs — scroll on mobile */}
         <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4 }}>
@@ -457,6 +481,17 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
       <div style={{ marginBottom: 20 }}>
         <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 4 }}>{athlete.name}</div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}><Badge type={athlete.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{athlete.level}</span></div>
+      </div>
+
+      <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
+        <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Block Overview / Read Me</div>
+        <textarea
+          value={plan?.blockNotes || ""}
+          onChange={e => onPlanChange({ ...plan, blockNotes: e.target.value })}
+          placeholder="Write notes about the goals, purpose, and context of this training block. Athletes will see this when they tap 'Overview'."
+          rows={4}
+          style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.white, fontSize: 13, lineHeight: 1.6, resize: "none", outline: "none", padding: "4px 0", ...mono }}
+        />
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4, flexWrap: "wrap" }}>
