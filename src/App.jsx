@@ -102,6 +102,7 @@ function Badge({ type }) {
   return <span style={{ ...mono, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", padding: "2px 7px", borderRadius: 3, background: s.bg, color: s.color }}>{type}</span>;
 }
 
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
 function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onLoginCoach }) {
   const [tab, setTab] = useState("athlete");
   const [selectedAthlete, setSelectedAthlete] = useState("");
@@ -116,6 +117,7 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
   };
 
   const handleCoachLogin = () => {
+    // If no coach password set yet, allow entry so coach can set one
     if (!coachPassword) { onLoginCoach(); return; }
     if (password !== coachPassword) { setError("Incorrect password."); return; }
     onLoginCoach();
@@ -130,6 +132,7 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
           <div style={{ ...bebas, fontSize: 38, letterSpacing: 3 }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
           <div style={{ ...mono, fontSize: 11, color: C.muted, marginTop: 4, letterSpacing: 1 }}>TRAINING PORTAL</div>
         </div>
+
         <div style={{ display: "flex", background: C.gray2, borderRadius: 10, padding: 4, marginBottom: 24 }}>
           {[["athlete", "Athlete"], ["coach", "Coach"]].map(([key, label]) => (
             <button key={key} onClick={() => { setTab(key); setPassword(""); setError(""); setSelectedAthlete(""); }}
@@ -138,6 +141,7 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
             </button>
           ))}
         </div>
+
         <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24 }}>
           {tab === "athlete" ? (
             <>
@@ -155,18 +159,22 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
               <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleCoachLogin()} placeholder={coachPassword ? "Enter coach password" : "No password set — click to enter"} style={inputStyle} />
             </>
           )}
+
           {error && <div style={{ ...mono, fontSize: 11, color: "#a05555", marginBottom: 14, padding: "8px 12px", background: "rgba(160,85,85,0.08)", borderRadius: 6 }}>{error}</div>}
+
           <button onClick={tab === "athlete" ? handleAthleteLogin : handleCoachLogin}
             style={{ width: "100%", padding: "15px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 22, letterSpacing: 2 }}>
             {tab === "athlete" ? "VIEW MY PLAN" : "ENTER COACH VIEW"}
           </button>
         </div>
+
         <div style={{ textAlign: "center", marginTop: 20, ...mono, fontSize: 10, color: C.muted }}>rockpointcoaching.com</div>
       </div>
     </div>
   );
 }
 
+// ── EXERCISE CARD ─────────────────────────────────────────────────────────────
 function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
@@ -180,6 +188,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
         <button onClick={onToggle} style={{ width: 26, height: 26, minWidth: 26, borderRadius: 6, border: `2px solid ${checked ? "#2aaa5e" : C.gray3}`, background: checked ? "#2aaa5e" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2, transition: "all 0.15s", flexShrink: 0 }}>
           {checked && <span style={{ color: "#fff", fontSize: 14, fontWeight: 700, lineHeight: 1 }}>✓</span>}
         </button>
+
         <div style={{ flex: 1, minWidth: 0 }}>
           {editing ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -196,13 +205,14 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.white, textDecoration: checked ? "line-through" : "none", marginBottom: 4, lineHeight: 1.4 }}>{ex.text}</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
                 {ex.sets && <span style={{ ...mono, fontSize: 11, color: C.orange }}><span style={{ color: C.muted }}>Sets: </span>{ex.sets}</span>}
-                <span style={{ ...monoug, fontSize: 10, color: C.muted }}>{ex.category}</span>
+                <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from Day {ex.fromDay + 1}</span>}
               </div>
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
             </>
           )}
         </div>
+
         {!editing && (
           <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 5 }}>
             <button onClick={() => setEditing(true)} style={{ ...mono, fontSize: 10, padding: "5px 8px", borderRadius: 5, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, cursor: "pointer" }}>✎</button>
@@ -213,6 +223,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
           </div>
         )}
       </div>
+
       {!editing && (
         <div style={{ marginTop: 10, marginLeft: 40 }}>
           <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Add a note..." rows={1}
@@ -225,6 +236,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   );
 }
 
+// ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
 function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout }) {
   const OVF = "overflow";
   const [activeDay, setActiveDay] = useState(0);
@@ -272,11 +284,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
+
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
         <div style={{ marginBottom: 20 }}>
           <div style={{ ...bebas, fontSize: 30, letterSpacing: 1, marginBottom: 4 }}>{athlete.name}</div>
           <Badge type={athlete.type} />
         </div>
+
+        {/* Day tabs — scroll on mobile */}
         <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4 }}>
           {plan.days.map((d, i) => {
             const dp = progress[i] || {};
@@ -297,17 +312,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <div style={{ ...mono, fontSize: 9, color: "inherit", marginTop: 2 }}>{overflow.length > 0 ? overflow.length : "empty"}</div>
           </button>
         </div>
+
         {totalCount > 0 && (
           <div style={{ background: C.gray3, borderRadius: 4, height: 4, marginBottom: 20, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${(doneCount / totalCount) * 100}%`, background: doneCount === totalCount ? "#2aaa5e" : isOvf ? C.purple : C.orange, borderRadius: 4, transition: "width 0.3s" }} />
           </div>
         )}
+
         {isOvf && overflow.length === 0 && (
           <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
             <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.3 }}>📭</div>
             <p style={{ ...mono, fontSize: 12 }}>Nothing skipped yet.</p>
           </div>
         )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visibleExs.map(ex => (
             <ExerciseCard key={ex.id} ex={ex} ep={dayProg[ex.id] || {}} isOverflow={isOvf}
@@ -319,6 +337,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             />
           ))}
         </div>
+
         {!isOvf && doneCount === totalCount && totalCount > 0 && (
           <div style={{ textAlign: "center", marginTop: 28, padding: "20px", background: "rgba(61,158,122,0.07)", border: "1px solid rgba(61,158,122,0.25)", borderRadius: 10 }}>
             <div style={{ ...bebas, fontSize: 26, color: "#2aaa5e", letterSpacing: 1 }}>Day Complete 🎉</div>
@@ -335,6 +354,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   );
 }
 
+// ── EXERCISE PICKER ───────────────────────────────────────────────────────────
 function ExercisePicker({ onAdd, onClose }) {
   const [tab, setTab] = useState("library");
   const [search, setSearch] = useState("");
@@ -359,6 +379,7 @@ function ExercisePicker({ onAdd, onClose }) {
             ))}
           </div>
         </div>
+
         {tab === "library" ? (
           <>
             <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -411,6 +432,7 @@ function ExercisePicker({ onAdd, onClose }) {
   );
 }
 
+// ── COACH PLAN EDITOR ─────────────────────────────────────────────────────────
 function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayClipboard, onCopyDay }) {
   const [activeDay, setActiveDay] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
@@ -435,6 +457,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
         <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 4 }}>{athlete.name}</div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}><Badge type={athlete.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{athlete.level}</span></div>
       </div>
+
       <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4, flexWrap: "wrap" }}>
         {days.map((d, i) => (
           <div key={i} style={{ display: "flex", flexDirection: "column", minWidth: 80 }}>
@@ -464,6 +487,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
         </div>
       </div>
       <div style={{ marginBottom: 16 }} />
+
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
         {day.exercises.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, ...mono, fontSize: 12 }}>No exercises yet.</div>}
         {day.exercises.map((ex, idx) => (
@@ -487,16 +511,19 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
           </div>
         ))}
       </div>
+
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => setShowPicker(true)} style={{ flex: 1, padding: "12px", borderRadius: 8, border: `1px dashed ${C.orange}`, background: "rgba(61,158,122,0.06)", color: C.orange, cursor: "pointer", ...mono, fontSize: 12 }}>+ Add Exercise</button>
         {clipboard && <button onClick={() => addExercise({...clipboard,id:uid()})} style={{ padding: "12px 14px", borderRadius: 8, border: `1px dashed ${C.purple}`, background: "rgba(91,127,166,0.06)", color: C.purple, cursor: "pointer", ...mono, fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⎘ {clipboard.text.length>18?clipboard.text.slice(0,18)+"…":clipboard.text}</button>}
       </div>
+
       {showPicker && <ExercisePicker onAdd={addExercise} onClose={() => setShowPicker(false)} />}
     </div>
   );
 }
 
-function CoachDashboard({ athletes, plans, progress, credentials, coachPassword, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onSave, onLogout, onImport, saved }) {
+// ── COACH DASHBOARD ───────────────────────────────────────────────────────────
+function CoachDashboard({ athletes, plans, progress, credentials, coachPassword, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onSave, onSavePasswords, onLogout, onImport, saved }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [clipboard, setClipboard] = useState(null);
@@ -533,12 +560,13 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
   const savePasswords = () => {
     onUpdateCoachPassword(draftCoachPw);
     onUpdateCredentials(draftCreds);
-    onSave();
+    onSavePasswords(draftCoachPw, draftCreds);
     setShowPasswords(false);
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.black }}>
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
         <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0 }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
@@ -554,7 +582,9 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
+
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {/* Sidebar */}
         <div style={{ width: 200, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
           <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: C.muted }}>Athletes</span>
@@ -574,6 +604,8 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
             ))}
           </div>
         </div>
+
+        {/* Main */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {!selected ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: C.muted }}>
@@ -588,6 +620,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       </div>
 
+      {/* ADD ATHLETE */}
       {showAdd && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 380, maxWidth: "100%", padding: 28 }}>
@@ -612,6 +645,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       )}
 
+      {/* CONFIRM DELETE */}
       {confirmDelete && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 340, maxWidth: "100%", padding: 28 }}>
@@ -625,6 +659,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       )}
 
+      {/* PASSWORDS */}
       {showPasswords && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 440, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
@@ -649,6 +684,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       )}
 
+      {/* EXPORT */}
       {showExport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", padding: 28 }}>
@@ -663,6 +699,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       )}
 
+      {/* IMPORT */}
       {showImportModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", padding: 28 }}>
@@ -682,6 +719,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
   );
 }
 
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState(SEED_ATHLETES);
@@ -743,5 +781,6 @@ export default function App() {
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId]||{}} onProgressChange={(d,e,ep)=>updateProgress(session.athleteId,d,e,ep)} onOverflowChange={(ov)=>updateOverflow(session.athleteId,ov)} onEditExercise={(d,ex)=>editExercise(session.athleteId,d,ex)} onLogout={()=>setSession(null)} />;
   }
 
-  return <CoachDashboard athletes={athletes} plans={plans} progress={progress} credentials={credentials} coachPassword={coachPassword} onUpdateCredentials={(c)=>{setCredentials(c);}} onUpdateCoachPassword={(p)=>{setCoachPassword(p);}} onPlanChange={updatePlan} onProgressChange={updateProgress} onOverflowChange={updateOverflow} onEditExercise={editExercise} onAddAthlete={addAthlete} onDeleteAthlete={deleteAthlete} onSave={()=>saveAll(null,null,null,null,null)} onLogout={()=>setSession(null)} onImport={handleImport} saved={saved} />;
+  const savePasswords = async (cp, c) => { setCoachPassword(cp); setCredentials(c); await storageSet("rp:credentials", c); await storageSet("rp:coachpw", cp); flash(); };
+  return <CoachDashboard athletes={athletes} plans={plans} progress={progress} credentials={credentials} coachPassword={coachPassword} onUpdateCredentials={(c)=>{setCredentials(c);}} onUpdateCoachPassword={(p)=>{setCoachPassword(p);}} onPlanChange={updatePlan} onProgressChange={updateProgress} onOverflowChange={updateOverflow} onEditExercise={editExercise} onAddAthlete={addAthlete} onDeleteAthlete={deleteAthlete} onSave={()=>saveAll(null,null,null,null,null)} onSavePasswords={savePasswords} onLogout={()=>setSession(null)} onImport={handleImport} saved={saved} />;
 }
