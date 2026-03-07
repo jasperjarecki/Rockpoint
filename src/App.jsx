@@ -294,12 +294,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             {plan.blockNotes && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer", letterSpacing: 0.5 }}>Overview ↗</button>}
             {(() => {
               if (!plan.blockStart || !plan.blockEnd) return null;
-              const start = new Date(plan.blockStart);
-              const end = new Date(plan.blockEnd);
-              const now = new Date();
-              if (now < start || now > end) return null;
+              const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
+              const [ey, em, ed] = plan.blockEnd.split("-").map(Number);
+              const start = new Date(sy, sm - 1, sd);
+              const end = new Date(ey, em - 1, ed);
+              const now = new Date(); now.setHours(0, 0, 0, 0);
+              if (now > end) return null;
+              if (now < start) {
+                const daysUntil = Math.round((start - now) / (24 * 60 * 60 * 1000));
+                const dayName = start.toLocaleDateString("en-US", { weekday: "long" });
+                const label = daysUntil === 1 ? "tomorrow" : daysUntil <= 6 ? dayName : daysUntil === 7 ? "in one week" : `in ${daysUntil} days`;
+                return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>Block starts {label}</span>;
+              }
               const totalWeeks = Math.ceil((end - start) / (7 * 24 * 60 * 60 * 1000));
-              const currentWeek = Math.ceil((now - start) / (7 * 24 * 60 * 60 * 1000));
+              const currentWeek = Math.min(Math.ceil((now - start + 1) / (7 * 24 * 60 * 60 * 1000)), totalWeeks);
               return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>Week {currentWeek} of {totalWeeks}</span>;
             })()}
           </div>
