@@ -1,7 +1,11 @@
 import React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-// ── LIBRARY ───────────────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://mhpjmofctkxxjbjjcvwt.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ocGptb2ZjdGt4eGpiampjdnd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MDgyNTAsImV4cCI6MjA4ODQ4NDI1MH0.p4eZQcd0lUlE2D0J8-arRDJqOSEV4TNMmg6vTlSwLvU";
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 const LIBRARY = {
   "Fingerboard / Hangboard": ["Max Hangs (7s on / 3min off)","Repeaters (7s on / 3s off × 6)","One-Arm Deadhangs","Open-Hand Hangs","Half-Crimp Hangs","Recruitment Pulls","Density Hangs"],
   "Limit Bouldering": ["Limit Boulder Problems (4×20min)","Project Attempts (3–5 moves)","Flash Attempts","Crux Isolation Reps"],
@@ -20,13 +24,6 @@ const C = {
   black: "#f5f5f3", white: "#111111", orange: "#3d9e7a", purple: "#5b7fa6",
   gray: "#ffffff", gray2: "#f0efed", gray3: "#d8d8d6", muted: "#888884", border: "#e0e0de",
 };
-
-async function storageGet(key) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
-}
-async function storageSet(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
-}
 
 const SEED_ATHLETES = [
   { id: "a1", name: "Maya Torres", type: "Youth Comp", level: "V9" },
@@ -96,14 +93,63 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const mono = { fontFamily: "'DM Mono', monospace" };
 const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
 
+// ── SUPABASE HELPERS ──────────────────────────────────────────────────────────
+async function dbGetAthletes() {
+  const { data } = await sb.from("athletes").select("*");
+  return data || [];
+}
+async function dbUpsertAthlete(a) {
+  await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level });
+}
+async function dbDeleteAthlete(id) {
+  await sb.from("athletes").delete().eq("id", id);
+}
+async function dbGetPlans() {
+  const { data } = await sb.from("plans").select("*");
+  const result = {};
+  (data || []).forEach(row => { result[row.athlete_id] = row.data; });
+  return result;
+}
+async function dbUpsertPlan(athleteId, planData) {
+  await sb.from("plans").upsert({ athlete_id: athleteId, data: planData });
+}
+async function dbGetProgress() {
+  const { data } = await sb.from("progress").select("*");
+  const result = {};
+  (data || []).forEach(row => { result[row.athlete_id] = row.data; });
+  return result;
+}
+async function dbUpsertProgress(athleteId, progressData) {
+  await sb.from("progress").upsert({ athlete_id: athleteId, data: progressData });
+}
+async function dbGetCredentials() {
+  const { data } = await sb.from("credentials").select("*");
+  const result = {};
+  (data || []).forEach(row => { result[row.athlete_id] = row.password; });
+  return result;
+}
+async function dbUpsertCredential(athleteId, password) {
+  if (password) {
+    await sb.from("credentials").upsert({ athlete_id: athleteId, password });
+  } else {
+    await sb.from("credentials").delete().eq("athlete_id", athleteId);
+  }
+}
+async function dbGetCoachPassword() {
+  const { data } = await sb.from("coach_settings").select("password").eq("id", 1).single();
+  return data?.password || "";
+}
+async function dbSetCoachPassword(password) {
+  await sb.from("coach_settings").upsert({ id: 1, password });
+}
+
 function Badge({ type }) {
   const map = { "Youth Comp": { bg: "rgba(91,127,166,0.1)", color: "#4a7aab" }, "Adult Performance": { bg: "rgba(61,158,122,0.15)", color: C.orange }, "Adult Recreational": { bg: "rgba(194,130,50,0.12)", color: "#a06818" } };
   const s = map[type] || map["Adult Recreational"];
   return <span style={{ ...mono, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", padding: "2px 7px", borderRadius: 3, background: s.bg, color: s.color }}>{type}</span>;
 }
 
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
-function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onLoginCoach }) {
+function LoginScreen({ athletes, credentials, onLoginAthlete, onLoginCoach }) {
   const [tab, setTab] = useState("athlete");
   const [selectedAthlete, setSelectedAthlete] = useState("");
   const [password, setPassword] = useState("");
@@ -116,9 +162,8 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
     onLoginAthlete(selectedAthlete);
   };
 
-  const handleCoachLogin = () => {
-    const stored = localStorage.getItem("rp:coachpw");
-    const actual = stored ? JSON.parse(stored) : "";
+  const handleCoachLogin = async () => {
+    const actual = await dbGetCoachPassword();
     if (!actual) { onLoginCoach(); return; }
     if (password !== actual) { setError("Incorrect password."); return; }
     onLoginCoach();
@@ -133,7 +178,6 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
           <div style={{ ...bebas, fontSize: 38, letterSpacing: 3 }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
           <div style={{ ...mono, fontSize: 11, color: C.muted, marginTop: 4, letterSpacing: 1 }}>TRAINING PORTAL</div>
         </div>
-
         <div style={{ display: "flex", background: C.gray2, borderRadius: 10, padding: 4, marginBottom: 24 }}>
           {[["athlete", "Athlete"], ["coach", "Coach"]].map(([key, label]) => (
             <button key={key} onClick={() => { setTab(key); setPassword(""); setError(""); setSelectedAthlete(""); }}
@@ -142,7 +186,6 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
             </button>
           ))}
         </div>
-
         <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24 }}>
           {tab === "athlete" ? (
             <>
@@ -160,22 +203,18 @@ function LoginScreen({ athletes, credentials, coachPassword, onLoginAthlete, onL
               <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleCoachLogin()} placeholder="Enter coach password" style={inputStyle} />
             </>
           )}
-
           {error && <div style={{ ...mono, fontSize: 11, color: "#a05555", marginBottom: 14, padding: "8px 12px", background: "rgba(160,85,85,0.08)", borderRadius: 6 }}>{error}</div>}
-
           <button onClick={tab === "athlete" ? handleAthleteLogin : handleCoachLogin}
             style={{ width: "100%", padding: "15px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 22, letterSpacing: 2 }}>
             {tab === "athlete" ? "VIEW MY PLAN" : "ENTER COACH VIEW"}
           </button>
         </div>
-
         <div style={{ textAlign: "center", marginTop: 20, ...mono, fontSize: 10, color: C.muted }}>rockpointcoaching.com</div>
       </div>
     </div>
   );
 }
 
-// ── EXERCISE CARD ─────────────────────────────────────────────────────────────
 function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
@@ -189,7 +228,6 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
         <button onClick={onToggle} style={{ width: 26, height: 26, minWidth: 26, borderRadius: 6, border: `2px solid ${checked ? "#2aaa5e" : C.gray3}`, background: checked ? "#2aaa5e" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2, transition: "all 0.15s", flexShrink: 0 }}>
           {checked && <span style={{ color: "#fff", fontSize: 14, fontWeight: 700, lineHeight: 1 }}>✓</span>}
         </button>
-
         <div style={{ flex: 1, minWidth: 0 }}>
           {editing ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -213,7 +251,6 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
             </>
           )}
         </div>
-
         {!editing && (
           <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 5 }}>
             <button onClick={() => setEditing(true)} style={{ ...mono, fontSize: 10, padding: "5px 8px", borderRadius: 5, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, cursor: "pointer" }}>✎</button>
@@ -224,7 +261,6 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
           </div>
         )}
       </div>
-
       {!editing && (
         <div style={{ marginTop: 10, marginLeft: 40 }}>
           <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Add a note..." rows={1}
@@ -237,7 +273,27 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   );
 }
 
-// ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
+function WeekBadge({ plan }) {
+  if (!plan?.blockStart || !plan?.blockEnd) return null;
+  const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
+  const [ey, em, ed] = plan.blockEnd.split("-").map(Number);
+  const start = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  if (now > end) return null;
+  let label;
+  if (now < start) {
+    const daysUntil = Math.round((start - now) / (24 * 60 * 60 * 1000));
+    const dayName = start.toLocaleDateString("en-US", { weekday: "long" });
+    label = daysUntil === 1 ? "Block starts tomorrow" : daysUntil <= 6 ? `Block starts ${dayName}` : daysUntil === 7 ? "Block starts in one week" : `Block starts in ${daysUntil} days`;
+  } else {
+    const totalWeeks = Math.ceil((end - start) / (7 * 24 * 60 * 60 * 1000));
+    const currentWeek = Math.min(Math.ceil((now - start + 1) / (7 * 24 * 60 * 60 * 1000)), totalWeeks);
+    label = `Week ${currentWeek} of ${totalWeeks}`;
+  }
+  return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>{label}</span>;
+}
+
 function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout }) {
   const OVF = "overflow";
   const [activeDay, setActiveDay] = useState(0);
@@ -292,24 +348,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
             <div style={{ ...bebas, fontSize: 30, letterSpacing: 1 }}>{athlete.name}</div>
             {plan.blockNotes && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer", letterSpacing: 0.5 }}>Overview ↗</button>}
-            {(() => {
-              if (!plan.blockStart || !plan.blockEnd) return null;
-              const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
-              const [ey, em, ed] = plan.blockEnd.split("-").map(Number);
-              const start = new Date(sy, sm - 1, sd);
-              const end = new Date(ey, em - 1, ed);
-              const now = new Date(); now.setHours(0, 0, 0, 0);
-              if (now > end) return null;
-              if (now < start) {
-                const daysUntil = Math.round((start - now) / (24 * 60 * 60 * 1000));
-                const dayName = start.toLocaleDateString("en-US", { weekday: "long" });
-                const label = daysUntil === 1 ? "tomorrow" : daysUntil <= 6 ? dayName : daysUntil === 7 ? "in one week" : `in ${daysUntil} days`;
-                return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>Block starts {label}</span>;
-              }
-              const totalWeeks = Math.ceil((end - start) / (7 * 24 * 60 * 60 * 1000));
-              const currentWeek = Math.min(Math.ceil((now - start + 1) / (7 * 24 * 60 * 60 * 1000)), totalWeeks);
-              return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>Week {currentWeek} of {totalWeeks}</span>;
-            })()}
+            <WeekBadge plan={plan} />
           </div>
           <Badge type={athlete.type} />
         </div>
@@ -334,7 +373,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>
         )}
 
-        {/* Day tabs — scroll on mobile */}
         <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4 }}>
           {plan.days.map((d, i) => {
             const dp = progress[i] || {};
@@ -397,7 +435,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   );
 }
 
-// ── EXERCISE PICKER ───────────────────────────────────────────────────────────
 function ExercisePicker({ onAdd, onClose }) {
   const [tab, setTab] = useState("library");
   const [search, setSearch] = useState("");
@@ -422,7 +459,6 @@ function ExercisePicker({ onAdd, onClose }) {
             ))}
           </div>
         </div>
-
         {tab === "library" ? (
           <>
             <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -475,7 +511,6 @@ function ExercisePicker({ onAdd, onClose }) {
   );
 }
 
-// ── COACH PLAN EDITOR ─────────────────────────────────────────────────────────
 function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayClipboard, onCopyDay }) {
   const [activeDay, setActiveDay] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
@@ -515,13 +550,9 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
               style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
           </div>
         </div>
-        <textarea
-          value={plan?.blockNotes || ""}
-          onChange={e => onPlanChange({ ...plan, blockNotes: e.target.value })}
+        <textarea value={plan?.blockNotes || ""} onChange={e => onPlanChange({ ...plan, blockNotes: e.target.value })}
           placeholder="Write notes about the goals, purpose, and context of this training block. Athletes will see this when they tap 'Overview'."
-          rows={4}
-          style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.white, fontSize: 13, lineHeight: 1.6, resize: "none", outline: "none", padding: "4px 0", ...mono }}
-        />
+          rows={4} style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.white, fontSize: 13, lineHeight: 1.6, resize: "none", outline: "none", padding: "4px 0", ...mono }} />
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4, flexWrap: "wrap" }}>
@@ -588,8 +619,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
   );
 }
 
-// ── COACH DASHBOARD ───────────────────────────────────────────────────────────
-function CoachDashboard({ athletes, plans, progress, credentials, coachPassword, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onSave, onSavePasswords, onLogout, onImport, saved }) {
+function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onLogout, saved }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [clipboard, setClipboard] = useState(null);
@@ -598,48 +628,39 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
   const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "" });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showPasswords, setShowPasswords] = useState(false);
-  const [showExport, setShowExport] = useState(false);
-  const [exportJson, setExportJson] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [importError, setImportError] = useState(false);
-  const [draftCoachPw, setDraftCoachPw] = useState(coachPassword || "");
-  const [draftCreds, setDraftCreds] = useState({ ...credentials });
+  const [draftCoachPw, setDraftCoachPw] = useState("");
+  const [draftCreds, setDraftCreds] = useState({});
+  const [savingPw, setSavingPw] = useState(false);
 
   const selected = athletes.find(a => a.id === selectedId);
   const btnS = (active) => ({ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, padding: "6px 10px", borderRadius: 4, border: `1px solid ${active?C.orange:C.border}`, background: active?"rgba(61,158,122,0.1)":"none", color: active?C.orange:C.muted, cursor: "pointer" });
 
-  const doExport = () => {
-    setExportJson(JSON.stringify({ athletes, plans, progress, credentials, coachPassword, exportedAt: new Date().toISOString() }));
-    setShowExport(true);
+  const openPasswords = async () => {
+    const cp = await dbGetCoachPassword();
+    setDraftCoachPw(cp);
+    setDraftCreds({ ...credentials });
+    setShowPasswords(true);
   };
-  const copyExport = () => {
-    const ta = document.querySelector("#exp-ta");
-    if (ta) { ta.select(); document.execCommand("copy"); }
-    setCopied(true); setTimeout(() => setCopied(false), 2000);
-  };
-  const applyImport = async (text) => {
-    try { await onImport(JSON.parse(text)); setShowImportModal(false); setImportText(""); }
-    catch { setImportError(true); setTimeout(() => setImportError(false), 3000); }
-  };
-  const savePasswords = () => {
-    onUpdateCoachPassword(draftCoachPw);
+
+  const savePasswords = async () => {
+    setSavingPw(true);
+    await dbSetCoachPassword(draftCoachPw);
+    for (const [athleteId, pw] of Object.entries(draftCreds)) {
+      await dbUpsertCredential(athleteId, pw);
+    }
     onUpdateCredentials(draftCreds);
-    onSavePasswords(draftCoachPw, draftCreds);
+    onUpdateCoachPassword(draftCoachPw);
+    setSavingPw(false);
     setShowPasswords(false);
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.black }}>
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
         <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0 }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
           {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
-          <button onClick={doExport} style={btnS(false)}>↓ Export</button>
-          <button onClick={() => { setImportText(""); setShowImportModal(true); }} style={btnS(false)}>↑ Import</button>
-          <button onClick={() => { setDraftCoachPw(coachPassword||""); setDraftCreds({...credentials}); setShowPasswords(true); }} style={btnS(false)}>🔑</button>
+          <button onClick={openPasswords} style={btnS(false)}>🔑</button>
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
           <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
@@ -650,7 +671,6 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Sidebar */}
         <div style={{ width: 200, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
           <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: C.muted }}>Athletes</span>
@@ -671,7 +691,6 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
           </div>
         </div>
 
-        {/* Main */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {!selected ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: C.muted }}>
@@ -686,7 +705,6 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       </div>
 
-      {/* ADD ATHLETE */}
       {showAdd && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 380, maxWidth: "100%", padding: 28 }}>
@@ -711,7 +729,6 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       )}
 
-      {/* CONFIRM DELETE */}
       {confirmDelete && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 340, maxWidth: "100%", padding: 28 }}>
@@ -725,12 +742,11 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
         </div>
       )}
 
-      {/* PASSWORDS */}
       {showPasswords && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 440, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
             <div style={{ ...bebas, fontSize: 22, marginBottom: 6 }}>Passwords</div>
-            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>Set passwords for athletes and coach access. Share each password directly with the athlete.</p>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>Set passwords for athletes and coach access.</p>
             <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Coach Password</div>
               <input type="text" value={draftCoachPw} onChange={e => setDraftCoachPw(e.target.value)} placeholder="Set a coach password..." style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
@@ -744,51 +760,18 @@ function CoachDashboard({ athletes, plans, progress, credentials, coachPassword,
             ))}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
               <button onClick={() => setShowPasswords(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={savePasswords} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
+              <button onClick={savePasswords} disabled={savingPw} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>{savingPw ? "Saving..." : "Save"}</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* EXPORT */}
-      {showExport && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", padding: 28 }}>
-            <div style={{ ...bebas, fontSize: 22, marginBottom: 8 }}>Export Backup</div>
-            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 14 }}>Copy and save somewhere safe. Includes all data and passwords.</p>
-            <textarea id="exp-ta" readOnly value={exportJson} rows={6} style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "10px 12px", color: C.white, fontSize: 11, ...mono, outline: "none", resize: "none", marginBottom: 14 }} />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setShowExport(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Close</button>
-              <button onClick={copyExport} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>{copied?"✓ Copied!":"Copy to Clipboard"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* IMPORT */}
-      {showImportModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", padding: 28 }}>
-            <div style={{ ...bebas, fontSize: 22, marginBottom: 8 }}>Import Backup</div>
-            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 14 }}>Paste your backup JSON and hit Restore.</p>
-            <textarea value={importText} onChange={e => setImportText(e.target.value)} placeholder="Paste backup JSON here..." rows={6} style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "10px 12px", color: C.white, fontSize: 11, ...mono, outline: "none", resize: "none", marginBottom: 14 }} />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setShowImportModal(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => applyImport(importText)} disabled={!importText.trim()} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: importText.trim()?C.orange:C.gray3, border: "none", borderRadius: 5, color: importText.trim()?"#fff":C.muted, cursor: importText.trim()?"pointer":"default" }}>Restore</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {importError && <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#a05555", color: "#fff", padding: "10px 18px", borderRadius: 6, ...mono, fontSize: 11, zIndex: 500 }}>Could not read backup.</div>}
     </div>
   );
 }
 
-// ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [athletes, setAthletes] = useState(SEED_ATHLETES);
+  const [athletes, setAthletes] = useState([]);
   const [plans, setPlans] = useState({});
   const [progress, setProgress] = useState({});
   const [credentials, setCredentials] = useState({});
@@ -798,55 +781,116 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const sa = await storageGet("rp:athletes");
-      const sp = await storageGet("rp:plans");
-      const spr = await storageGet("rp:progress");
-      const sc = await storageGet("rp:credentials");
-      const scp = await storageGet("rp:coachpw");
-      const ra = sa || SEED_ATHLETES;
-      const rp = sp || SEED_PLANS;
-      setAthletes(ra); setPlans(rp); setProgress(spr||{}); setCredentials(sc||{}); setCoachPassword(scp||"");
-      if (!sa) await storageSet("rp:athletes", ra);
-      if (!sp) await storageSet("rp:plans", rp);
+      let [ath, pln, prg, creds] = await Promise.all([
+        dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials()
+      ]);
+      if (ath.length === 0) {
+        for (const a of SEED_ATHLETES) await dbUpsertAthlete(a);
+        for (const [id, plan] of Object.entries(SEED_PLANS)) await dbUpsertPlan(id, plan);
+        ath = SEED_ATHLETES;
+        pln = SEED_PLANS;
+      }
+      setAthletes(ath);
+      setPlans(pln);
+      setProgress(prg);
+      setCredentials(creds);
       setLoading(false);
     })();
   }, []);
 
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1800); };
 
-  const saveAll = async (a, p, pr, c, cp) => {
-    const ra = a??athletes, rp = p??plans, rpr = pr??progress, rc = c??credentials, rcp = cp??coachPassword;
-    await storageSet("rp:athletes",ra); await storageSet("rp:plans",rp); await storageSet("rp:progress",rpr);
-    await storageSet("rp:credentials",rc); await storageSet("rp:coachpw",rcp);
+  const updatePlan = useCallback(async (id, plan) => {
+    setPlans(p => ({ ...p, [id]: plan }));
+    await dbUpsertPlan(id, plan);
     flash();
-  };
+  }, []);
 
-  const updatePlan = (id, plan) => { const np={...plans,[id]:plan}; setPlans(np); saveAll(null,np,null,null,null); };
-  const updateProgress = (id, dayIdx, exId, ep) => { const ap=progress[id]||{}; const dp=ap[dayIdx]||{}; const np={...progress,[id]:{...ap,[dayIdx]:{...dp,[exId]:ep}}}; setProgress(np); saveAll(null,null,np,null,null); };
-  const updateOverflow = (id, ov) => { const ap=progress[id]||{}; const np={...progress,[id]:{...ap,overflow:ov}}; setProgress(np); saveAll(null,null,np,null,null); };
-  const editExercise = (id, dayIdx, updatedEx) => {
-    const p=plans[id]; if(!p) return;
-    if (dayIdx==="overflow") { const ap=progress[id]||{}; const ov=(ap.overflow||[]).map(e=>e.id===updatedEx.id?{...e,...updatedEx}:e); const np={...progress,[id]:{...ap,overflow:ov}}; setProgress(np); saveAll(null,null,np,null,null); }
-    else { const nd=p.days.map((d,i)=>i===dayIdx?{...d,exercises:d.exercises.map(e=>e.id===updatedEx.id?updatedEx:e)}:d); const np={...plans,[id]:{...p,days:nd}}; setPlans(np); saveAll(null,np,null,null,null); }
-  };
-  const addAthlete = (a) => { const na=[...athletes,a]; setAthletes(na); saveAll(na,null,null,null,null); };
-  const deleteAthlete = (id) => { const na=athletes.filter(a=>a.id!==id); setAthletes(na); saveAll(na,null,null,null,null); };
-  const handleImport = async (data) => {
-    if(data.athletes){setAthletes(data.athletes);} if(data.plans){setPlans(data.plans);}
-    if(data.progress){setProgress(data.progress);} if(data.credentials){setCredentials(data.credentials);}
-    if(data.coachPassword!==undefined){setCoachPassword(data.coachPassword);}
-    await saveAll(data.athletes,data.plans,data.progress,data.credentials,data.coachPassword);
-  };
+  const updateProgress = useCallback(async (id, dayIdx, exId, ep) => {
+    setProgress(prev => {
+      const ap = prev[id] || {};
+      const dp = ap[dayIdx] || {};
+      const np = { ...prev, [id]: { ...ap, [dayIdx]: { ...dp, [exId]: ep } } };
+      dbUpsertProgress(id, np[id]);
+      return np;
+    });
+  }, []);
 
-  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",...mono,fontSize:12,color:C.muted,background:C.black }}>Loading...</div>;
+  const updateOverflow = useCallback(async (id, ov) => {
+    setProgress(prev => {
+      const ap = prev[id] || {};
+      const np = { ...prev, [id]: { ...ap, overflow: ov } };
+      dbUpsertProgress(id, np[id]);
+      return np;
+    });
+  }, []);
 
-  if (!session) return <LoginScreen athletes={athletes} credentials={credentials} coachPassword={coachPassword} onLoginAthlete={(id)=>setSession({role:"athlete",athleteId:id})} onLoginCoach={()=>setSession({role:"coach"})} />;
+  const editExercise = useCallback(async (id, dayIdx, updatedEx) => {
+    if (dayIdx === "overflow") {
+      setProgress(prev => {
+        const ap = prev[id] || {};
+        const ov = (ap.overflow || []).map(e => e.id === updatedEx.id ? { ...e, ...updatedEx } : e);
+        const np = { ...prev, [id]: { ...ap, overflow: ov } };
+        dbUpsertProgress(id, np[id]);
+        return np;
+      });
+    } else {
+      setPlans(prev => {
+        const p = prev[id]; if (!p) return prev;
+        const nd = p.days.map((d, i) => i === dayIdx ? { ...d, exercises: d.exercises.map(e => e.id === updatedEx.id ? updatedEx : e) } : d);
+        const np = { ...prev, [id]: { ...p, days: nd } };
+        dbUpsertPlan(id, np[id]);
+        return np;
+      });
+    }
+    flash();
+  }, []);
+
+  const addAthlete = useCallback(async (a) => {
+    await dbUpsertAthlete(a);
+    await dbUpsertPlan(a.id, { days: [{ label: "Day 1", exercises: [] }] });
+    setAthletes(prev => [...prev, a]);
+    setPlans(prev => ({ ...prev, [a.id]: { days: [{ label: "Day 1", exercises: [] }] } }));
+  }, []);
+
+  const deleteAthlete = useCallback(async (id) => {
+    await dbDeleteAthlete(id);
+    setAthletes(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", ...mono, fontSize: 12, color: C.muted, background: C.black, flexDirection: "column", gap: 12 }}>
+      <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
+      <div style={{ color: C.muted }}>Loading...</div>
+    </div>
+  );
+
+  if (!session) return (
+    <LoginScreen athletes={athletes} credentials={credentials}
+      onLoginAthlete={(id) => setSession({ role: "athlete", athleteId: id })}
+      onLoginCoach={() => setSession({ role: "coach" })} />
+  );
 
   if (session.role === "athlete") {
-    const athlete = athletes.find(a=>a.id===session.athleteId);
-    return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId]||{}} onProgressChange={(d,e,ep)=>updateProgress(session.athleteId,d,e,ep)} onOverflowChange={(ov)=>updateOverflow(session.athleteId,ov)} onEditExercise={(d,ex)=>editExercise(session.athleteId,d,ex)} onLogout={()=>setSession(null)} />;
+    const athlete = athletes.find(a => a.id === session.athleteId);
+    return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
+      onProgressChange={(d, e, ep) => updateProgress(session.athleteId, d, e, ep)}
+      onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
+      onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
+      onLogout={() => setSession(null)} />;
   }
 
-  const savePasswords = async (cp, c) => { setCoachPassword(cp); setCredentials(c); await storageSet("rp:credentials", c); await storageSet("rp:coachpw", cp); flash(); };
-  return <CoachDashboard athletes={athletes} plans={plans} progress={progress} credentials={credentials} coachPassword={coachPassword} onUpdateCredentials={(c)=>{setCredentials(c);}} onUpdateCoachPassword={(p)=>{setCoachPassword(p);}} onPlanChange={updatePlan} onProgressChange={updateProgress} onOverflowChange={updateOverflow} onEditExercise={editExercise} onAddAthlete={addAthlete} onDeleteAthlete={deleteAthlete} onSave={()=>saveAll(null,null,null,null,null)} onSavePasswords={savePasswords} onLogout={()=>setSession(null)} onImport={handleImport} saved={saved} />;
+  return <CoachDashboard
+    athletes={athletes} plans={plans} progress={progress} credentials={credentials}
+    onUpdateCredentials={setCredentials}
+    onUpdateCoachPassword={setCoachPassword}
+    onPlanChange={updatePlan}
+    onProgressChange={updateProgress}
+    onOverflowChange={updateOverflow}
+    onEditExercise={editExercise}
+    onAddAthlete={addAthlete}
+    onDeleteAthlete={deleteAthlete}
+    onLogout={() => setSession(null)}
+    saved={saved}
+  />;
 }
