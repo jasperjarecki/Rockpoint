@@ -292,6 +292,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
             <div style={{ ...bebas, fontSize: 30, letterSpacing: 1 }}>{athlete.name}</div>
             {plan.blockNotes && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer", letterSpacing: 0.5 }}>Overview ↗</button>}
+            {(() => {
+              if (!plan.blockStart || !plan.blockEnd) return null;
+              const start = new Date(plan.blockStart);
+              const end = new Date(plan.blockEnd);
+              const now = new Date();
+              if (now < start || now > end) return null;
+              const totalWeeks = Math.ceil((end - start) / (7 * 24 * 60 * 60 * 1000));
+              const currentWeek = Math.ceil((now - start) / (7 * 24 * 60 * 60 * 1000));
+              return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>Week {currentWeek} of {totalWeeks}</span>;
+            })()}
           </div>
           <Badge type={athlete.type} />
         </div>
@@ -485,6 +495,18 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, clipboard, onCopy, dayCl
 
       <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
         <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Block Overview / Read Me</div>
+        <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 120 }}>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>START DATE</div>
+            <input type="date" value={plan?.blockStart || ""} onChange={e => onPlanChange({ ...plan, blockStart: e.target.value })}
+              style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 120 }}>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>END DATE</div>
+            <input type="date" value={plan?.blockEnd || ""} onChange={e => onPlanChange({ ...plan, blockEnd: e.target.value })}
+              style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
+          </div>
+        </div>
         <textarea
           value={plan?.blockNotes || ""}
           onChange={e => onPlanChange({ ...plan, blockNotes: e.target.value })}
