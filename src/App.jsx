@@ -244,7 +244,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
       {!editing && (
         <div style={{ marginTop: 10, marginLeft: 40 }}>
           <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Add a note..." rows={1}
-            style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${note ? C.gray3 : "transparent"}`, color: "#666", fontSize: 13, resize: "none", outline: "none", padding: "2px 0", ...mono }}
+            style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${note ? C.gray3 : "transparent"}`, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "2px 0", ...mono }}
             onFocus={e => e.target.style.borderBottomColor = C.muted}
             onBlur={e => e.target.style.borderBottomColor = note ? C.gray3 : "transparent"} />
         </div>
@@ -519,10 +519,19 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
         <div style={{ marginTop: 14 }}>
           <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Block Image</div>
           {plan?.blockImageUrl ? (
-            <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", marginBottom: 6 }}>
-              <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 180, objectFit: "cover", display: "block", borderRadius: 8 }} />
-              <button onClick={async () => { await dbDeleteBlockImage(plan.blockImageUrl); onPlanChange({ ...plan, blockImageUrl: null }); }}
-                style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", borderRadius: 4, cursor: "pointer", padding: "4px 8px", ...mono, fontSize: 10 }}>✕ Remove</button>
+            <div>
+              <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
+                <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 180, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block", borderRadius: 8 }} />
+                <button onClick={async () => { await dbDeleteBlockImage(plan.blockImageUrl); onPlanChange({ ...plan, blockImageUrl: null, blockImageFocus: null }); }}
+                  style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", borderRadius: 4, cursor: "pointer", padding: "4px 8px", ...mono, fontSize: 10 }}>✕ Remove</button>
+              </div>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <span style={{ ...mono, fontSize: 9, color: C.muted, marginRight: 4 }}>FOCUS</span>
+                {["top", "center", "bottom"].map(pos => (
+                  <button key={pos} onClick={() => onPlanChange({ ...plan, blockImageFocus: pos })}
+                    style={{ ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 4, border: `1px solid ${(plan.blockImageFocus || "center") === pos ? C.orange : C.border}`, background: (plan.blockImageFocus || "center") === pos ? "rgba(61,158,122,0.1)" : "none", color: (plan.blockImageFocus || "center") === pos ? C.orange : C.muted, cursor: "pointer" }}>{pos}</button>
+                ))}
+              </div>
             </div>
           ) : (
             <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px dashed ${C.border}`, borderRadius: 8, cursor: "pointer", color: C.muted, ...mono, fontSize: 11 }}>
@@ -530,7 +539,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
               <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
                 const file = e.target.files[0]; if (!file) return;
                 setUploadingImage(true);
-                try { const url = await dbUploadBlockImage(athlete.id, file); onPlanChange({ ...plan, blockImageUrl: url }); }
+                try { const url = await dbUploadBlockImage(athlete.id, file); onPlanChange({ ...plan, blockImageUrl: url, blockImageFocus: "center" }); }
                 catch(err) { alert("Upload failed: " + err.message); }
                 setUploadingImage(false);
               }} />
@@ -733,7 +742,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               <div style={{ flex: 1, overflowY: "auto" }}>
                 {plan.blockImageUrl && (
                   <div style={{ cursor: "pointer" }} onClick={() => window.open(plan.blockImageUrl, "_blank")}>
-                    <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", display: "block" }} />
+                    <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block" }} />
                   </div>
                 )}
                 <div style={{ padding: "20px 24px" }}>
