@@ -97,7 +97,7 @@ _fl.rel = "stylesheet";
 _fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap";
 document.head.appendChild(_fl);
 const _gs = document.createElement("style");
-_gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'DM Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'DM Sans',sans-serif} textarea.athlete-note::placeholder{color:#aaa;font-style:italic}`;
+_gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'DM Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'DM Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
 document.head.appendChild(_gs);
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -244,9 +244,8 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
       {!editing && (
         <div style={{ marginTop: 10, marginLeft: 40 }}>
           <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Add a note..." rows={1} className="athlete-note"
-            style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${note ? C.gray3 : "transparent"}`, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "2px 0", ...mono }}
-            onFocus={e => e.target.style.borderBottomColor = C.muted}
-            onBlur={e => e.target.style.borderBottomColor = note ? C.gray3 : "transparent"} />
+            style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
+            onFocus={e => e.target.style.borderColor = C.orange} onBlur={e => e.target.style.borderColor = C.border} />
         </div>
       )}
     </div>
