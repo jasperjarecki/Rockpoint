@@ -160,8 +160,10 @@ async function dbUploadBlockImage(athleteId, file) {
 }
 async function dbDeleteBlockImage(url) {
   if (!url) return;
-  const match = url.match(/athlete-images/(.+?)(?|$)/);
-  if (match) await sb.storage.from("athlete-images").remove([decodeURIComponent(match[1])]);
+  const idx = url.indexOf('athlete-images/');
+  if (idx === -1) return;
+  const path = url.slice(idx + 'athlete-images/'.length).split('?')[0];
+  await sb.storage.from('athlete-images').remove([decodeURIComponent(path)]);
 }
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
