@@ -149,6 +149,20 @@ async function dbUpsertCredential(athleteId, password) {
 }
 async function dbGetCoachPassword() { const { data } = await sb.from("coach_settings").select("password").eq("id", 1).single(); return data?.password || ""; }
 async function dbSetCoachPassword(password) { await sb.from("coach_settings").upsert({ id: 1, password }); }
+async function dbUploadBlockImage(athleteId, file) {
+  const ext = file.name.split(".").pop();
+  const path = `${athleteId}/block-image.${ext}`;
+  await sb.storage.from("athlete-images").remove([path]);
+  const { error } = await sb.storage.from("athlete-images").upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data } = sb.storage.from("athlete-images").getPublicUrl(path);
+  return data.publicUrl + "?t=" + Date.now();
+}
+async function dbDeleteBlockImage(url) {
+  if (!url) return;
+  const match = url.match(/athlete-images/(.+?)(?|$)/);
+  if (match) await sb.storage.from("athlete-images").remove([decodeURIComponent(match[1])]);
+}
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
 function Badge({ type }) {
@@ -407,6 +421,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
   const [draftWeekLabel, setDraftWeekLabel] = useState("");
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishDraft, setPublishDraft] = useState([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const weeks = plan?.weeks || [];
   const published = plan?.published || [];
@@ -498,6 +513,28 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
         <textarea value={plan?.blockNotes || ""} onChange={e => onPlanChange({ ...plan, blockNotes: e.target.value })}
           placeholder="Write notes about the goals, purpose, and context of this training block. Athletes will see this when they tap 'Overview'."
           rows={3} style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.white, fontSize: 13, lineHeight: 1.6, resize: "none", outline: "none", padding: "4px 0", ...mono }} />
+        {/* Block image */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Block Image</div>
+          {plan?.blockImageUrl ? (
+            <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", marginBottom: 6 }}>
+              <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 180, objectFit: "cover", display: "block", borderRadius: 8 }} />
+              <button onClick={async () => { await dbDeleteBlockImage(plan.blockImageUrl); onPlanChange({ ...plan, blockImageUrl: null }); }}
+                style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", borderRadius: 4, cursor: "pointer", padding: "4px 8px", ...mono, fontSize: 10 }}>✕ Remove</button>
+            </div>
+          ) : (
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px dashed ${C.border}`, borderRadius: 8, cursor: "pointer", color: C.muted, ...mono, fontSize: 11 }}>
+              {uploadingImage ? "Uploading..." : "↑ Upload image"}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                setUploadingImage(true);
+                try { const url = await dbUploadBlockImage(athlete.id, file); onPlanChange({ ...plan, blockImageUrl: url }); }
+                catch(err) { alert("Upload failed: " + err.message); }
+                setUploadingImage(false);
+              }} />
+            </label>
+          )}
+        </div>
       </div>
 
       {/* Week tabs */}
@@ -658,7 +695,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
             <div style={{ ...bebas, fontSize: 30, letterSpacing: 1 }}>{athlete.name}</div>
-            {plan.blockNotes && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer" }}>Overview ↗</button>}
+            {(plan.blockNotes || plan.blockImageUrl) && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer" }}>Overview ↗</button>}
             <WeekBadge plan={plan} />
           </div>
           <Badge type={athlete.type} />
@@ -691,8 +728,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 </div>
                 <button onClick={() => setShowOverview(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 20 }}>✕</button>
               </div>
-              <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-                <div style={{ ...mono, fontSize: 13, color: C.white, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{plan.blockNotes}</div>
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                {plan.blockImageUrl && (
+                  <div style={{ cursor: "pointer" }} onClick={() => window.open(plan.blockImageUrl, "_blank")}>
+                    <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", display: "block" }} />
+                  </div>
+                )}
+                <div style={{ padding: "20px 24px" }}>
+                  <div style={{ ...mono, fontSize: 13, color: C.white, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{plan.blockNotes}</div>
+                </div>
               </div>
               <div style={{ padding: "14px 24px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
                 <button onClick={() => setShowOverview(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
