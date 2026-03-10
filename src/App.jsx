@@ -340,6 +340,14 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
   const renameDay = (i, l) => onDaysChange(days.map((d, j) => j===i ? {...d, label: l} : d));
   const addDay = () => { const nd = [...days, {label:`Day ${days.length+1}`, exercises:[]}]; onDaysChange(nd); setActiveDay(nd.length-1); };
   const removeDay = (i) => { if(days.length<=1) return; const nd=days.filter((_,j)=>j!==i); onDaysChange(nd); setActiveDay(Math.min(activeDay, nd.length-1)); };
+  const moveDay = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= days.length) return;
+    const nd = [...days];
+    [nd[i], nd[j]] = [nd[j], nd[i]];
+    onDaysChange(nd);
+    setActiveDay(j);
+  };
   const pasteDay = () => { if(!dayClipboard) return; const nd=[...days,{label:dayClipboard.label+" (copy)",exercises:dayClipboard.exercises.map(e=>({...e,id:uid()}))}]; onDaysChange(nd); setActiveDay(nd.length-1); };
   const addExercise = (ex) => updateDay(activeDay, [...(days[activeDay]?.exercises||[]), ex]);
   const removeExercise = (id) => updateDay(activeDay, days[activeDay].exercises.filter(e=>e.id!==id));
@@ -366,6 +374,8 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
             )}
             {i===activeDay && editingLabel!==i && (
               <div style={{ display: "flex", justifyContent: "center", gap: 3, marginTop: 3 }}>
+                <button onClick={() => moveDay(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
+                <button onClick={() => moveDay(i, 1)} disabled={i===days.length-1} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===days.length-1?"#ccc":C.muted, cursor: i===days.length-1?"default":"pointer" }}>→</button>
                 <button onClick={() => { setDraftLabel(d.label); setEditingLabel(i); }} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
                 <button onClick={() => onCopyDay(d)} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>⎘</button>
                 {days.length > 1 && <button onClick={() => removeDay(i)} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer" }}>✕</button>}
@@ -467,6 +477,13 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
   const renameWeek = (i, l) => {
     const w = weeks.map((wk, j) => j===i ? {...wk, label: l} : wk);
     onPlanChange({...plan, weeks: w});
+  };
+  const setWeekVolume = (i, v) => {
+    const w = weeks.map((wk, j) => j===i ? {...wk, volume: v} : wk);
+    onPlanChange({...plan, weeks: w});
+  };
+  const toggleVolumePublished = () => {
+    onPlanChange({...plan, volumePublished: !plan.volumePublished});
   };
 
   const openPublish = () => {
@@ -582,6 +599,28 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
         </div>
       </div>
 
+      {/* Volume input for active week */}
+      {week && (
+        <div style={{ marginBottom: 16, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Volume — {week.label}</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[1,2,3,4,5].map(v => (
+                  <button key={v} onClick={() => setWeekVolume(activeWeek, week.volume === v ? null : v)}
+                    style={{ width: 32, height: 32, borderRadius: 6, border: `1px solid ${week.volume >= v ? C.orange : C.border}`, background: week.volume >= v ? C.orange : "transparent", color: week.volume >= v ? "#fff" : C.muted, cursor: "pointer", ...mono, fontSize: 12, fontWeight: 600, transition: "all 0.1s" }}>{v}</button>
+                ))}
+              </div>
+              {week.volume && <span style={{ ...mono, fontSize: 10, color: C.muted }}>{["","Easy","Moderate","Hard","Very Hard","Peak"][week.volume]}</span>}
+            </div>
+            <button onClick={toggleVolumePublished}
+              style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${plan.volumePublished ? C.orange : C.border}`, background: plan.volumePublished ? "rgba(61,158,122,0.08)" : "none", color: plan.volumePublished ? C.orange : C.muted, cursor: "pointer" }}>
+              {plan.volumePublished ? "● Shared with athlete" : "○ Share graph with athlete"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Day editor for active week */}
       {week && (
         <DayEditor
@@ -652,6 +691,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [activeWeekIdx, setActiveWeekIdx] = useState(currentWeekIdx ?? publishedIndices[0] ?? 0);
   const [activeDay, setActiveDay] = useState(0);
   const [showOverview, setShowOverview] = useState(false);
+  const [volumeExpanded, setVolumeExpanded] = useState(true);
 
   const week = plan?.weeks?.[activeWeekIdx];
   const days = week?.days || [];
@@ -727,6 +767,55 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             })}
           </div>
         )}
+
+        {/* Volume graph */}
+        {plan.volumePublished && plan.weeks && plan.weeks.some(wk => wk.volume) && (() => {
+          const MAX_VOL = 5;
+          const graphHeight = 72;
+          const allWeeks = plan.weeks;
+          const currentWi = currentWeekIdx;
+          return (
+            <div style={{ marginBottom: 16, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+              <button onClick={() => setVolumeExpanded(v => !v)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Training Load</span>
+                <span style={{ ...mono, fontSize: 11, color: C.muted }}>{volumeExpanded ? "▲" : "▼"}</span>
+              </button>
+              {volumeExpanded && (
+                <div style={{ padding: "0 16px 14px" }}>
+                  <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.6, marginBottom: 12, fontStyle: "italic" }}>
+                    Here is the volume map for your training block. Use it to better understand your training arc, and to plan plenty of rest.
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: graphHeight + 20 }}>
+                    {allWeeks.map((wk, i) => {
+                      const vol = wk.volume || 0;
+                      const barH = vol ? (vol / MAX_VOL) * graphHeight : 0;
+                      const isActive = activeWeekIdx === i && publishedIndices.includes(i);
+                      const isCurrent = currentWi === i;
+                      const isPublished = publishedIndices.includes(i);
+                      const barColor = vol <= 2 ? "rgba(91,127,166,0.7)" : vol === 5 ? "#e07a3a" : C.orange;
+                      return (
+                        <div key={i} onClick={() => { if(isPublished){ setActiveWeekIdx(i); setActiveDay(0); } }}
+                          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end", cursor: isPublished ? "pointer" : "default", opacity: isPublished ? 1 : 0.35 }}>
+                          {vol > 0 && <div style={{ ...mono, fontSize: 9, color: isActive ? C.orange : C.muted }}>{vol}</div>}
+                          <div style={{ width: "100%", height: barH, background: isActive ? C.orange : barColor, borderRadius: "3px 3px 0 0", transition: "all 0.2s", outline: isCurrent ? `2px solid ${C.purple}` : "none", outlineOffset: 2 }} />
+                          <div style={{ ...mono, fontSize: 8, color: isActive ? C.orange : isCurrent ? C.purple : C.muted, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{wk.label.replace("Week ","W")}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                    {[[C.orange,"Selected"],[C.purple,"This week"],["rgba(91,127,166,0.7)","Low"],["#e07a3a","Peak"]].map(([color, label]) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 4, ...mono, fontSize: 9, color: C.muted }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: color }} />{label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {showOverview && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
