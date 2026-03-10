@@ -680,6 +680,110 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
   );
 }
 
+// ── TIMER MODAL ───────────────────────────────────────────────────────────────
+function TimerModal({ onClose }) {
+  const [workSecs, setWorkSecs] = useState(30);
+  const [restSecs, setRestSecs] = useState(180);
+  const [phase, setPhase] = useState("idle"); // idle | work | rest
+  const [remaining, setRemaining] = useState(0);
+  const [round, setRound] = useState(0);
+  const intervalRef = React.useRef(null);
+
+  const clear = () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+
+  const start = (ph, secs, rd) => {
+    clear();
+    setPhase(ph);
+    setRemaining(secs);
+    setRound(rd);
+    intervalRef.current = setInterval(() => {
+      setRemaining(r => {
+        if (r <= 1) {
+          clearInterval(intervalRef.current);
+          // beep
+          try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.value = ph === "work" ? 440 : 880;
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+            osc.start(); osc.stop(ctx.currentTime + 0.4);
+          } catch(e) {}
+          // auto-transition
+          if (ph === "work") {
+            setTimeout(() => start("rest", restSecs, rd), 300);
+          } else {
+            setTimeout(() => start("work", workSecs, rd + 1), 300);
+          }
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+  };
+
+  const stop = () => { clear(); setPhase("idle"); setRemaining(0); setRound(0); };
+
+  React.useEffect(() => () => clear(), []);
+
+  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const isRunning = phase !== "idle";
+  const phaseBg = phase === "work" ? C.orange : phase === "rest" ? C.purple : C.gray2;
+  const phaseColor = phase !== "idle" ? "#fff" : C.white;
+  const total = phase === "work" ? workSecs : phase === "rest" ? restSecs : 1;
+  const progress = phase !== "idle" ? ((total - remaining) / total) * 100 : 0;
+
+  const adjBtn = (style) => ({ ...mono, fontSize: 13, width: 28, height: 28, borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style });
+  const timeDisplay = (label, val, setVal, active) => (
+    <div style={{ flex: 1, textAlign: "center" }}>
+      <div style={{ ...mono, fontSize: 9, color: active ? "#fff" : C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, opacity: active ? 0.8 : 1 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        {!isRunning && <button style={adjBtn({})} onClick={() => setVal(v => Math.max(5, v - (v > 60 ? 30 : 5)))}>−</button>}
+        <div style={{ ...bebas, fontSize: isRunning && active ? 52 : 28, color: isRunning && active ? "#fff" : isRunning ? "rgba(255,255,255,0.4)" : C.white, minWidth: 80, textAlign: "center", lineHeight: 1 }}>
+          {isRunning && active ? fmt(remaining) : fmt(val)}
+        </div>
+        {!isRunning && <button style={adjBtn({})} onClick={() => setVal(v => v + (v >= 60 ? 30 : 5))}>+</button>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 600, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 480, borderRadius: "16px 16px 0 0", overflow: "hidden", boxShadow: "0 -4px 40px rgba(0,0,0,0.2)" }}>
+        {/* Progress bar */}
+        <div style={{ height: 4, background: C.gray3 }}>
+          <div style={{ height: "100%", width: progress + "%", background: phase === "work" ? C.orange : C.purple, transition: "width 1s linear" }} />
+        </div>
+        <div style={{ background: isRunning ? phaseBg : C.gray, padding: "20px 24px 28px", transition: "background 0.4s" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, color: phaseColor }}>
+              {phase === "idle" ? "INTERVAL TIMER" : phase === "work" ? "WORK" : "REST"}
+              {round > 0 && <span style={{ ...mono, fontSize: 10, marginLeft: 10, opacity: 0.6 }}>round {round}</span>}
+            </div>
+            <button onClick={() => { stop(); onClose(); }} style={{ background: "none", border: "none", color: isRunning ? "rgba(255,255,255,0.6)" : C.muted, cursor: "pointer", fontSize: 20 }}>✕</button>
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 24 }}>
+            {timeDisplay("Work", workSecs, setWorkSecs, phase === "work")}
+            <div style={{ color: isRunning ? "rgba(255,255,255,0.3)" : C.gray3, fontSize: 20 }}>|</div>
+            {timeDisplay("Rest", restSecs, setRestSecs, phase === "rest")}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            {!isRunning
+              ? <button onClick={() => start("work", workSecs, 1)} style={{ flex: 1, padding: "14px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 20, letterSpacing: 1 }}>START</button>
+              : <>
+                  <button onClick={stop} style={{ flex: 1, padding: "14px", borderRadius: 10, border: `1px solid rgba(255,255,255,0.3)`, background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", ...mono, fontSize: 12 }}>Stop</button>
+                  <button onClick={() => { clear(); const ph = phase; const secs = ph === "work" ? workSecs : restSecs; start(ph, secs, round); }} style={{ flex: 1, padding: "14px", borderRadius: 10, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 12 }}>Reset</button>
+                </>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
 function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout }) {
   const OVF = "overflow";
@@ -704,10 +808,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [activeDay, setActiveDay] = useState(0);
   const [showOverview, setShowOverview] = useState(false);
   const [volumeExpanded, setVolumeExpanded] = useState(true);
+  const [showTimer, setShowTimer] = useState(false);
 
   const week = plan?.weeks?.[activeWeekIdx];
   const days = week?.days || [];
 
+
+      {/* Timer modal */}
+      {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
   if (!plan || publishedIndices.length === 0) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
