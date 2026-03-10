@@ -478,6 +478,16 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
     const w = weeks.map((wk, j) => j===i ? {...wk, label: l} : wk);
     onPlanChange({...plan, weeks: w});
   };
+  const moveWeek = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= weeks.length) return;
+    const w = [...weeks];
+    [w[i], w[j]] = [w[j], w[i]];
+    // fix published indices
+    const newPublished = published.map(p => p === i ? j : p === j ? i : p);
+    onPlanChange({...plan, weeks: w, published: newPublished});
+    setActiveWeek(j);
+  };
   const setWeekVolume = (i, v) => {
     const w = weeks.map((wk, j) => j===i ? {...wk, volume: v} : wk);
     onPlanChange({...plan, weeks: w});
@@ -586,6 +596,8 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
               )}
               {isActive && editingWeekLabel !== i && (
                 <div style={{ display: "flex", gap: 3 }}>
+                  <button onClick={() => moveWeek(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
+                  <button onClick={() => moveWeek(i, 1)} disabled={i===weeks.length-1} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===weeks.length-1?"#ccc":C.muted, cursor: i===weeks.length-1?"default":"pointer" }}>→</button>
                   <button onClick={() => { setDraftWeekLabel(wk.label); setEditingWeekLabel(i); }} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
                   {weeks.length > 1 && <button onClick={() => removeWeek(i)} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer" }}>✕</button>}
                 </div>
