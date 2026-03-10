@@ -7,15 +7,15 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const LIBRARY = {
-  "Fingerboard / Hangboard": ["Max Hangs (7s on / 3min off)","Repeaters (7s on / 3s off × 6)","One-Arm Deadhangs","Open-Hand Hangs","Half-Crimp Hangs","Recruitment Pulls","Density Hangs"],
-  "Limit Bouldering": ["Limit Boulder Problems (4×20min)","Project Attempts (3–5 moves)","Flash Attempts","Crux Isolation Reps"],
-  "Board Climbing (Kilter/Tension)": ["Kilter Board — Power Sets","Tension Board — Limit Problems","Board Warm-Up Laps","Steep Board Endurance","Footwork Focus Sets"],
-  "ARC / Endurance": ["ARC Laps (20min continuous)","4×4s","Linked Boulder Circuits","Traverse Laps","Capacity Intervals"],
-  "System Board": ["System Board — Shoulder Press","System Board — Lock-Off Holds","Foot-Hand Matching Drills","Hip Positioning Drills"],
+  "Fingerboard / Hangboard": ["Fingerboard Warmup and Rehab","Fingerboard Warmup","Max Hangs (7s on / 3min off)","Max Hangs (7s on/2min off)","Max Hangs (10 reps/2min off)","3 finger drag max hangs (7s on:2min off)","Repeaters (7s on / 3s off × 6)","One-Arm Deadhangs","Open-Hand Hangs","Half-Crimp Hangs","Recruitment Pulls","Density Hangs","Commercial Bouldering","Tension Board Boulders","Explosive Bodyweight Pull-ups"],
+  "Limit Bouldering": ["Limit Boulder Problems (4×20min)","Limit Commercial Boulder Problems -- 1.5 hrs","Project Attempts (3–5 moves)","Flash Attempts","Flash Attempts -- Strength/Power","Bouldering Mileage","Crux Isolation Reps"],
+  "Board Climbing (Kilter/Tension)": ["Kilter Board — Power Sets","Tension Board — Project","Tension Board — Limit Problems","Board Warm-Up Laps","Steep Board Endurance","Footwork Focus Sets"],
+  "ARC / Endurance": ["ARC Laps (20min continuous)","4×4s","4x4","Endurance Laps","Enduro Triples OR Circuits","4×4s (BACKUP FOR CIRCUITS)","Linked Boulder Circuits","Traverse Laps","Capacity Intervals"],
+  "System Board": ["Campus Makeups","System Board — Shoulder Press","System Board — Lock-Off Holds","Foot-Hand Matching Drills","Hip Positioning Drills"],
   "Campus Board": ["Campus Ladders (1-3-5)","Campus Ladders (1-2-3-4-5)","Double Dynos","Campus Touches","Offset Ladders"],
-  "Strength (pull-ups, rows, etc.)": ["Weighted Pull-Ups","One-Arm Pull-Up Progressions","Inverted Rows","Barbell Rows","Dumbbell Rows","Rear Delt Flies","Ring Push-Ups","Shoulder Press"],
+  "Strength (pull-ups, rows, etc.)": ["Weighted Pull-Ups","Weighted Pull-Up Negatives","Weighted Negatives + Explosive Pulls","Weighted Scap Pulls","One-Arm Pull-Up Progressions","Archer Pullups","Half Levers","Hanging Lat Pulls","Seated External Rotation","Incline Bench Press","Bench Press","Dips","Face Pulls","Hammer Curls","Reverse Curls","Cable Lat Pullover","Heavy Wrist Curls","Inverted Rows","Barbell Rows","Dumbbell Rows","Rear Delt Flies","Ring Push-Ups","Shoulder Press"],
   "Core / Antagonist": ["Front Lever Progressions","Dead Bug (3×10)","Hollow Body Holds","Copenhagen Planks","Wrist Curls / Extensions","Reverse Wrist Curls","Rotator Cuff Band Work","Plank Variations"],
-  "Movement / Drills": ["Silent Feet Drills","Hip Drop Exercises","Flagging Practice","Balance Slab","Drop Knee Sequences","Breath & Tension Control"],
+  "Movement / Drills": ["Slab Practice","Slabapalooza","Comp Boulders","Campus Makeups","Route Climbing","Silent Feet Drills","Hip Drop Exercises","Flagging Practice","Balance Slab","Drop Knee Sequences","Breath & Tension Control"],
   "Recovery / Mobility": ["Forearm Stretching Routine","Thoracic Mobility","Hip Flexor Stretch","Shoulder Circles","Easy Traversing (flush out)","Foam Roll","Ice / Contrast Bath"],
 };
 const ALL_CATEGORIES = Object.keys(LIBRARY);
