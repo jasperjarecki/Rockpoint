@@ -756,7 +756,7 @@ function TimerModal({ onClose }) {
         <div style={{ height: 4, background: C.gray3 }}>
           <div style={{ height: "100%", width: progress + "%", background: phase === "work" ? C.orange : C.purple, transition: "width 1s linear" }} />
         </div>
-        <div style={{ background: isRunning ? phaseBg : C.gray, padding: "20px 24px 28px", transition: "background 0.4s" }}>
+        <div style={{ background: isRunning ? phaseBg : C.gray, padding: "20px 24px calc(28px + env(safe-area-inset-bottom, 16px))", transition: "background 0.4s" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, color: phaseColor }}>
               {phase === "idle" ? "INTERVAL TIMER" : phase === "work" ? "WORK" : "REST"}
@@ -1004,8 +1004,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </button>
         </div>
 
-        {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
-
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visibleExs.map(ex => (
             <ExerciseCard key={ex.id} ex={ex} ep={dayProg[ex.id] || {}} isOverflow={isOvf}
@@ -1025,6 +1023,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>
         )}
       </div>
+      {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
     </div>
   );
 }
@@ -1098,6 +1097,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [showAdd, setShowAdd] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "" });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showPasswords, setShowPasswords] = useState(false);
@@ -1141,26 +1141,41 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <div style={{ width: 200, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-          <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: C.muted }}>Athletes</span>
-            <button onClick={() => setShowAdd(true)} style={{ background: C.orange, border: "none", color: "#fff", width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+        <div style={{ width: sidebarOpen ? 200 : 36, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, transition: "width 0.2s ease", overflow: "hidden" }}>
+          <div style={{ padding: "12px 8px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: sidebarOpen ? 200 : 36 }}>
+            {sidebarOpen && <span style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: C.muted, whiteSpace: "nowrap" }}>Athletes</span>}
+            <div style={{ display: "flex", gap: 4, marginLeft: sidebarOpen ? 0 : "auto", marginRight: sidebarOpen ? 0 : "auto" }}>
+              {sidebarOpen && <button onClick={() => setShowAdd(true)} style={{ background: C.orange, border: "none", color: "#fff", width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>}
+              <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{sidebarOpen ? "«" : "»"}</button>
+            </div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-            {athletes.map(a => (
-              <div key={a.id} style={{ position: "relative", marginBottom: 2 }}
-                onMouseEnter={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="1"; }}
-                onMouseLeave={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="0"; }}>
-                <button onClick={() => setSelectedId(a.id)} style={{ width: "100%", textAlign: "left", background: selectedId===a.id?C.gray2:"none", border: `1px solid ${selectedId===a.id?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 32px 10px 12px", cursor: "pointer" }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 4 }}>{a.name}</div>
-                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 9, color: C.muted }}>{a.level}</span></div>
-                  {/* show published week count */}
-                  {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
+          {sidebarOpen && (
+            <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+              {athletes.map(a => (
+                <div key={a.id} style={{ position: "relative", marginBottom: 2 }}
+                  onMouseEnter={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="1"; }}
+                  onMouseLeave={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="0"; }}>
+                  <button onClick={() => setSelectedId(a.id)} style={{ width: "100%", textAlign: "left", background: selectedId===a.id?C.gray2:"none", border: `1px solid ${selectedId===a.id?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 32px 10px 12px", cursor: "pointer" }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 4 }}>{a.name}</div>
+                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 9, color: C.muted }}>{a.level}</span></div>
+                    {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
+                  </button>
+                  <button className="del" onClick={() => setConfirmDelete(a.id)} style={{ position: "absolute", top: 8, right: 4, opacity: 0, background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 5px", transition: "opacity 0.15s" }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {!sidebarOpen && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+              {athletes.map(a => (
+                <button key={a.id} onClick={() => { setSelectedId(a.id); setSidebarOpen(true); }}
+                  title={a.name}
+                  style={{ width: "100%", height: 32, background: selectedId===a.id?"rgba(61,158,122,0.15)":"none", border: "none", borderLeft: `2px solid ${selectedId===a.id?C.orange:"transparent"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: selectedId===a.id?C.orange:C.muted, fontSize: 10 }}>
+                  {a.name.charAt(0)}
                 </button>
-                <button className="del" onClick={() => setConfirmDelete(a.id)} style={{ position: "absolute", top: 8, right: 4, opacity: 0, background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 5px", transition: "opacity 0.15s" }}>✕</button>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ flex: 1, overflowY: "auto" }}>
