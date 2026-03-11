@@ -813,9 +813,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const week = plan?.weeks?.[activeWeekIdx];
   const days = week?.days || [];
 
-
-      {/* Timer modal */}
-      {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
   if (!plan || publishedIndices.length === 0) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
@@ -856,10 +853,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     <div style={{ minHeight: "100vh", background: C.black, display: "flex", flexDirection: "column" }}>
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 2 }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setShowTimer(true)} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>⏱ Timer</button>
-          <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
-        </div>
+        <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
 
@@ -1002,6 +996,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <p style={{ ...mono, fontSize: 12 }}>Nothing skipped yet.</p>
           </div>
         )}
+
+        {/* Timer button above exercises */}
+        <div style={{ marginBottom: 10 }}>
+          <button onClick={() => setShowTimer(true)} style={{ ...mono, fontSize: 11, padding: "8px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.gray, color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 14 }}>⏱</span> Timer
+          </button>
+        </div>
+
+        {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visibleExs.map(ex => (
