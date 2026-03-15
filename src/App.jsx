@@ -130,6 +130,17 @@ async function dbGetPlans() {
   return result;
 }
 async function dbUpsertPlan(athleteId, planData) { await sb.from("plans").upsert({ athlete_id: athleteId, data: planData }); }
+async function dbBackupPlan(athleteId, planData) {
+  try {
+    // keep only last 10 backups per athlete
+    const { data: existing } = await sb.from("plan_backups").select("id").eq("athlete_id", athleteId).order("saved_at", { ascending: true });
+    if (existing && existing.length >= 10) {
+      const toDelete = existing.slice(0, existing.length - 9).map(r => r.id);
+      await sb.from("plan_backups").delete().in("id", toDelete);
+    }
+    await sb.from("plan_backups").insert({ athlete_id: athleteId, data: planData });
+  } catch(e) { console.warn("Backup failed:", e); }
+}
 async function dbGetProgress() {
   const { data } = await sb.from("progress").select("*");
   const result = {};
@@ -1101,6 +1112,9 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
   const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "" });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showPasswords, setShowPasswords] = useState(false);
+  const [showBackups, setShowBackups] = useState(false);
+  const [backups, setBackups] = useState([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
   const [draftCoachPw, setDraftCoachPw] = useState("");
   const [draftCreds, setDraftCreds] = useState({});
   const [savingPw, setSavingPw] = useState(false);
@@ -1108,6 +1122,20 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
   const selected = athletes.find(a => a.id === selectedId);
   const btnS = (active) => ({ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, padding: "6px 10px", borderRadius: 4, border: `1px solid ${active?C.orange:C.border}`, background: active?"rgba(61,158,122,0.1)":"none", color: active?C.orange:C.muted, cursor: "pointer" });
 
+  const openBackups = async () => {
+    if (!selectedId) return;
+    setLoadingBackups(true);
+    setShowBackups(true);
+    const { data } = await sb.from("plan_backups").select("*").eq("athlete_id", selectedId).order("saved_at", { ascending: false }).limit(10);
+    setBackups(data || []);
+    setLoadingBackups(false);
+  };
+  const restoreBackup = async (backup) => {
+    if (!window.confirm("Restore this backup? Current plan will be overwritten.")) return;
+    await dbUpsertPlan(selectedId, backup.data);
+    onPlanChange(selectedId, backup.data);
+    setShowBackups(false);
+  };
   const openPasswords = async () => {
     const cp = await dbGetCoachPassword();
     setDraftCoachPw(cp);
@@ -1131,6 +1159,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
           {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
           <button onClick={openPasswords} style={btnS(false)}>🔑</button>
+          {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
           <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
@@ -1238,6 +1267,45 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
         </div>
       )}
 
+      {showBackups && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 480, maxWidth: "100%", maxHeight: "80vh", overflow: "auto", padding: 28 }}>
+            <div style={{ ...bebas, fontSize: 22, marginBottom: 4 }}>Restore Backup</div>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>
+              {athletes.find(a=>a.id===selectedId)?.name} — last 10 saves. Restoring will overwrite the current plan.
+            </p>
+            {loadingBackups && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>}
+            {!loadingBackups && backups.length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>No backups yet. They appear after the first save.</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {backups.map(b => {
+                const d = new Date(b.saved_at);
+                const weekCount = b.data?.weeks?.length || 0;
+                const hasNotes = !!b.data?.blockNotes;
+                const hasImage = !!b.data?.blockImageUrl;
+                return (
+                  <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>
+                        {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      </div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, display: "flex", gap: 10 }}>
+                        <span>{weekCount} week{weekCount!==1?"s":""}</span>
+                        {hasNotes && <span style={{ color: C.orange }}>● notes</span>}
+                        {hasImage && <span style={{ color: C.purple }}>● image</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => restoreBackup(b)} style={{ ...mono, fontSize: 11, padding: "7px 14px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Restore</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setShowBackups(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPasswords && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 440, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
@@ -1290,9 +1358,19 @@ export default function App() {
 
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1800); };
 
+  const lastBackup = React.useRef({});
   const updatePlan = useCallback(async (id, plan) => {
-    setPlans(p => ({ ...p, [id]: plan }));
-    await dbUpsertPlan(id, plan);
+    setPlans(prev => {
+      const merged = { ...prev[id], ...plan };
+      dbUpsertPlan(id, merged);
+      // backup at most once per 60s per athlete
+      const now = Date.now();
+      if (!lastBackup.current[id] || now - lastBackup.current[id] > 60000) {
+        lastBackup.current[id] = now;
+        dbBackupPlan(id, merged);
+      }
+      return { ...prev, [id]: merged };
+    });
     flash();
   }, []);
 
