@@ -289,8 +289,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
     const el = ref.current;
     if (!el) return;
     const start = el.selectionStart;
-    const lineStart = value.lastIndexOf('
-', start - 1) + 1;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
     const newVal = value.slice(0, lineStart) + '- ' + value.slice(lineStart);
     onChange(newVal);
     setTimeout(() => { el.focus(); el.selectionStart = el.selectionEnd = start + 2; }, 0);
