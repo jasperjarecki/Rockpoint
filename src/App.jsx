@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://mhpjmofctkxxjbjjcvwt.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ocGptb2ZjdGt4eGpiampjdnd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MDgyNTAsImV4cCI6MjA4ODQ4NDI1MH0.p4eZQcd0lUlE2D0J8-arRDJqOSEV4TNMmg6vTlSwLvU";
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { realtime: { enabled: false }, global: { fetch: fetch.bind(globalThis) } });
 
 const LIBRARY = {
   "Fingerboard / Hangboard": ["Fingerboard Warmup and Rehab","Fingerboard Warmup","Max Hangs (7s on / 3min off)","Max Hangs (7s on/2min off)","Max Hangs (10 reps/2min off)","3 finger drag max hangs (7s on:2min off)","Repeaters (7s on / 3s off × 6)","One-Arm Deadhangs","Open-Hand Hangs","Half-Crimp Hangs","Recruitment Pulls","Density Hangs","Commercial Bouldering","Tension Board Boulders","Explosive Bodyweight Pull-ups"],
@@ -121,7 +121,7 @@ function migratePlan(plan) {
 
 // ── SUPABASE HELPERS ──────────────────────────────────────────────────────────
 async function dbGetAthletes() { const { data } = await sb.from("athletes").select("*"); return data || []; }
-async function dbUpsertAthlete(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level }); }
+async function dbUpsertAthlete(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id || null }); }
 async function dbDeleteAthlete(id) { await sb.from("athletes").delete().eq("id", id); }
 async function dbGetPlans() {
   const { data } = await sb.from("plans").select("*");
@@ -160,6 +160,11 @@ async function dbUpsertCredential(athleteId, password) {
 }
 async function dbGetCoachPassword() { const { data } = await sb.from("coach_settings").select("password").eq("id", 1).single(); return data?.password || ""; }
 async function dbSetCoachPassword(password) { await sb.from("coach_settings").upsert({ id: 1, password }); }
+async function dbGetCoaches() { const { data } = await sb.from("coaches").select("*"); return data || []; }
+async function dbUpsertCoach(c) { await sb.from("coaches").upsert({ id: c.id, name: c.name, password: c.password }); }
+async function dbDeleteCoach(id) { await sb.from("coaches").delete().eq("id", id); }
+async function dbGetAthletesByCoach(coachId) { const { data } = await sb.from("athletes").select("*").eq("coach_id", coachId); return data || []; }
+async function dbUpsertAthleteWithCoach(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id }); }
 async function dbUploadBlockImage(athleteId, file) {
   const ext = file.name.split(".").pop();
   const path = `${athleteId}/block-image.${ext}`;
@@ -203,6 +208,115 @@ function WeekBadge({ plan }) {
     label = `Week ${currentWeek} of ${totalWeeks}`;
   }
   return <span style={{ ...mono, fontSize: 10, color: C.muted, background: C.gray2, border: `1px solid ${C.border}`, padding: "4px 10px", borderRadius: 5 }}>{label}</span>;
+}
+
+// ── RICH TEXT EDITOR ──────────────────────────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return null;
+  const lines = text.split('
+');
+  const els = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('# ')) {
+      els.push(<div key={i} style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color:"#111", marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
+    } else if (line.startsWith('## ')) {
+      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:"#111", marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
+    } else if (line.startsWith('- ') || line.startsWith('• ')) {
+      const items = [];
+      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• '))) {
+        items.push(<li key={i} style={{ marginBottom: 3 }}>{inlineFormat(lines[i].slice(2))}</li>);
+        i++;
+      }
+      els.push(<ul key={'ul'+i} style={{ paddingLeft: 18, marginBottom: 8, marginTop: 2 }}>{items}</ul>);
+      continue;
+    } else if (line.trim() === '') {
+      els.push(<div key={i} style={{ height: 6 }} />);
+    } else {
+      els.push(<div key={i} style={{ marginBottom: 4, lineHeight: 1.65 }}>{inlineFormat(line)}</div>);
+    }
+    i++;
+  }
+  return els;
+}
+
+function inlineFormat(text) {
+  const parts = [];
+  let rest = text;
+  let key = 0;
+  while (rest.length > 0) {
+    const boldMatch = rest.match(/^\*\*(.+?)\*\*/);
+    const italicMatch = rest.match(/^\*(.+?)\*/);
+    const boldItalicMatch = rest.match(/^\*\*\*(.+?)\*\*\*/);
+    if (boldItalicMatch && rest.startsWith('***')) {
+      parts.push(<strong key={key++}><em>{boldItalicMatch[1]}</em></strong>);
+      rest = rest.slice(boldItalicMatch[0].length);
+    } else if (boldMatch && rest.startsWith('**')) {
+      parts.push(<strong key={key++}>{boldMatch[1]}</strong>);
+      rest = rest.slice(boldMatch[0].length);
+    } else if (italicMatch && rest.startsWith('*')) {
+      parts.push(<em key={key++}>{italicMatch[1]}</em>);
+      rest = rest.slice(italicMatch[0].length);
+    } else {
+      const next = rest.search(/\*\*\*|\*\*|\*/);
+      if (next === -1) { parts.push(rest); rest = ''; }
+      else { parts.push(rest.slice(0, next)); rest = rest.slice(next); }
+    }
+  }
+  return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : <span>{parts}</span>;
+}
+
+function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
+  const [focused, setFocused] = useState(false);
+  const ref = React.useRef(null);
+
+  const wrap = (before, after) => {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const sel = value.slice(start, end);
+    const newVal = value.slice(0, start) + before + sel + after + value.slice(end);
+    onChange(newVal);
+    setTimeout(() => {
+      el.focus();
+      el.selectionStart = start + before.length;
+      el.selectionEnd = end + before.length;
+    }, 0);
+  };
+
+  const insertBullet = () => {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const lineStart = value.lastIndexOf('
+', start - 1) + 1;
+    const newVal = value.slice(0, lineStart) + '- ' + value.slice(lineStart);
+    onChange(newVal);
+    setTimeout(() => { el.focus(); el.selectionStart = el.selectionEnd = start + 2; }, 0);
+  };
+
+  const toolBtn = (label, action) => (
+    <button key={label} onMouseDown={e => { e.preventDefault(); action(); }}
+      style={{ ...mono, fontSize: 11, padding: "4px 9px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.gray, color: C.white, cursor: "pointer", fontWeight: label==="B"?700:"normal", fontStyle: label==="I"?"italic":"normal" }}>{label}</button>
+  );
+
+  return (
+    <div style={{ border: `1px solid ${focused ? C.orange : C.border}`, borderRadius: 8, overflow: "hidden", background: "#eceae7" }}>
+      <div style={{ display: "flex", gap: 4, padding: "6px 8px", borderBottom: `1px solid ${C.border}`, background: C.gray2, flexWrap: "wrap" }}>
+        {toolBtn("B", () => wrap("**", "**"))}
+        {toolBtn("I", () => wrap("*", "*"))}
+        {toolBtn("H1", () => wrap("# ", ""))}
+        {toolBtn("H2", () => wrap("## ", ""))}
+        {toolBtn("•", insertBullet)}
+      </div>
+      <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder} rows={rows}
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        style={{ width: "100%", background: "transparent", border: "none", color: "#111", fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Mono', monospace" }} />
+    </div>
+  );
 }
 
 // ── EXERCISE CARD ─────────────────────────────────────────────────────────────
@@ -549,9 +663,9 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
               style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
           </div>
         </div>
-        <textarea value={plan?.blockNotes || ""} onChange={e => onPlanChange({ ...plan, blockNotes: e.target.value })}
-          placeholder="Write notes about the goals, purpose, and context of this training block. Athletes will see this when they tap 'Overview'."
-          rows={3} style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.white, fontSize: 13, lineHeight: 1.6, resize: "none", outline: "none", padding: "4px 0", ...mono }} />
+        <RichTextEditor value={plan?.blockNotes || ""} onChange={v => onPlanChange({ ...plan, blockNotes: v })}
+          placeholder="Write notes about the goals, purpose, and context of this training block. Use **bold**, *italic*, - bullets. Athletes will see this when they tap 'Overview'."
+          rows={4} />
         {/* Block image */}
         <div style={{ marginTop: 14 }}>
           <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Block Image</div>
@@ -961,8 +1075,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                     <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block" }} />
                   </div>
                 )}
-                <div style={{ padding: "20px 24px" }}>
-                  <div style={{ ...mono, fontSize: 13, color: C.white, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{plan.blockNotes}</div>
+                <div style={{ padding: "20px 24px", fontSize: 13, color: C.white }}>
+                  {renderMarkdown(plan.blockNotes)}
                 </div>
               </div>
               <div style={{ padding: "14px 24px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -1040,9 +1154,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
-function LoginScreen({ athletes, credentials, onLoginAthlete, onLoginCoach }) {
+function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCoach, onLoginSubCoach }) {
   const [tab, setTab] = useState("athlete");
   const [selectedAthlete, setSelectedAthlete] = useState("");
+  const [coachName, setCoachName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -1053,10 +1168,13 @@ function LoginScreen({ athletes, credentials, onLoginAthlete, onLoginCoach }) {
     onLoginAthlete(selectedAthlete);
   };
   const handleCoachLogin = async () => {
+    // check admin password first
     const actual = await dbGetCoachPassword();
-    if (!actual) { onLoginCoach(); return; }
-    if (password !== actual) { setError("Incorrect password."); return; }
-    onLoginCoach();
+    if (!actual || password === actual) { onLoginCoach(); return; }
+    // check sub-coaches
+    const match = coaches.find(c => c.name.toLowerCase() === coachName.toLowerCase() && c.password === password);
+    if (match) { onLoginSubCoach(match.id); return; }
+    setError("Incorrect name or password.");
   };
 
   const inputStyle = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px", color: C.white, fontSize: 15, outline: "none", marginBottom: 14 };
@@ -1070,7 +1188,7 @@ function LoginScreen({ athletes, credentials, onLoginAthlete, onLoginCoach }) {
         </div>
         <div style={{ display: "flex", background: C.gray2, borderRadius: 10, padding: 4, marginBottom: 24 }}>
           {[["athlete","Athlete"],["coach","Coach"]].map(([key,label]) => (
-            <button key={key} onClick={() => { setTab(key); setPassword(""); setError(""); setSelectedAthlete(""); }}
+            <button key={key} onClick={() => { setTab(key); setPassword(""); setError(""); setSelectedAthlete(""); setCoachName(""); }}
               style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", cursor: "pointer", background: tab===key?C.gray:"transparent", color: tab===key?C.white:C.muted, ...mono, fontSize: 12 }}>{label}</button>
           ))}
         </div>
@@ -1087,8 +1205,10 @@ function LoginScreen({ athletes, credentials, onLoginAthlete, onLoginCoach }) {
             </>
           ) : (
             <>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Coach Password</div>
-              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleCoachLogin()} placeholder="Enter coach password" style={inputStyle} />
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Name (leave blank for admin)</div>
+              <input value={coachName} onChange={e => { setCoachName(e.target.value); setError(""); }} placeholder="Coach name (optional)" style={inputStyle} />
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Password</div>
+              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleCoachLogin()} placeholder="Enter password" style={inputStyle} />
             </>
           )}
           {error && <div style={{ ...mono, fontSize: 11, color: "#a05555", marginBottom: 14, padding: "8px 12px", background: "rgba(160,85,85,0.08)", borderRadius: 6 }}>{error}</div>}
@@ -1104,7 +1224,7 @@ function LoginScreen({ athletes, credentials, onLoginAthlete, onLoginCoach }) {
 }
 
 // ── COACH DASHBOARD ───────────────────────────────────────────────────────────
-function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onLogout, saved }) {
+function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [showAdd, setShowAdd] = useState(false);
@@ -1115,6 +1235,9 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  const [showCoaches, setShowCoaches] = useState(false);
+  const [newCoach, setNewCoach] = useState({ name: "", password: "" });
+  const [editingCoach, setEditingCoach] = useState(null);
   const [draftCoachPw, setDraftCoachPw] = useState("");
   const [draftCreds, setDraftCreds] = useState({});
   const [savingPw, setSavingPw] = useState(false);
@@ -1160,6 +1283,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
           {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
           <button onClick={openPasswords} style={btnS(false)}>🔑</button>
           {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
+          {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
           <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
@@ -1248,7 +1372,7 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowAdd(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:""}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
+              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete, coach_id: coachId || null}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:""}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
             </div>
           </div>
         </div>
@@ -1306,6 +1430,67 @@ function CoachDashboard({ athletes, plans, progress, credentials, onUpdateCreden
         </div>
       )}
 
+      {showCoaches && isAdmin && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 480, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
+            <div style={{ ...bebas, fontSize: 22, marginBottom: 4 }}>Coaches</div>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>Each coach can only see and manage their own athletes.</p>
+
+            {/* Existing coaches */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+              {coaches.map(c => (
+                <div key={c.id} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                  {editingCoach?.id === c.id ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <input value={editingCoach.name} onChange={e => setEditingCoach(ec => ({...ec, name: e.target.value}))}
+                        style={{ background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                      <input value={editingCoach.password} onChange={e => setEditingCoach(ec => ({...ec, password: e.target.value}))}
+                        placeholder="Password" style={{ background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <button onClick={() => setEditingCoach(null)} style={{ ...mono, fontSize: 11, padding: "6px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
+                        <button onClick={() => { onUpdateCoach(editingCoach); setEditingCoach(null); }} style={{ ...mono, fontSize: 11, padding: "6px 14px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{c.name}</div>
+                        <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 2 }}>
+                          {(allAthletes || athletes).filter(a => a.coach_id === c.id).length} athlete{(allAthletes || athletes).filter(a => a.coach_id === c.id).length !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingCoach({...c})} style={{ ...mono, fontSize: 10, padding: "5px 10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>✎ Edit</button>
+                      <button onClick={() => { if(window.confirm(`Remove ${c.name}?`)) onDeleteCoach(c.id); }} style={{ ...mono, fontSize: 10, padding: "5px 10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: "#a05555", cursor: "pointer" }}>✕</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {coaches.length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 16 }}>No coaches yet.</div>}
+            </div>
+
+            {/* Add new coach */}
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, marginBottom: 16 }}>
+              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Add Coach</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input value={newCoach.name} onChange={e => setNewCoach(c => ({...c, name: e.target.value}))}
+                  placeholder="Name" style={{ flex: 1, minWidth: 120, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                <input value={newCoach.password} onChange={e => setNewCoach(c => ({...c, password: e.target.value}))}
+                  placeholder="Password" style={{ flex: 1, minWidth: 120, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                <button onClick={() => {
+                  if (!newCoach.name.trim() || !newCoach.password.trim()) return;
+                  onAddCoach({ id: uid(), name: newCoach.name.trim(), password: newCoach.password.trim() });
+                  setNewCoach({ name: "", password: "" });
+                }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={() => setShowCoaches(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPasswords && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 440, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
@@ -1340,18 +1525,19 @@ export default function App() {
   const [plans, setPlans] = useState({});
   const [progress, setProgress] = useState({});
   const [credentials, setCredentials] = useState({});
+  const [coaches, setCoaches] = useState([]);
   const [session, setSession] = useState(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     (async () => {
-      let [ath, pln, prg, creds] = await Promise.all([dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials()]);
+      let [ath, pln, prg, creds, coachs] = await Promise.all([dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials(), dbGetCoaches()]);
       if (ath.length === 0) {
         for (const a of SEED_ATHLETES) await dbUpsertAthlete(a);
         for (const [id, plan] of Object.entries(SEED_PLANS)) await dbUpsertPlan(id, plan);
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
-      setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds);
+      setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
       setLoading(false);
     })();
   }, []);
@@ -1437,6 +1623,21 @@ export default function App() {
     setPlans(prev => ({ ...prev, [a.id]: newPlan }));
   }, []);
 
+  const addCoach = useCallback(async (c) => {
+    await dbUpsertCoach(c);
+    setCoaches(prev => [...prev, c]);
+  }, []);
+
+  const deleteCoach = useCallback(async (id) => {
+    await dbDeleteCoach(id);
+    setCoaches(prev => prev.filter(c => c.id !== id));
+  }, []);
+
+  const updateCoach = useCallback(async (c) => {
+    await dbUpsertCoach(c);
+    setCoaches(prev => prev.map(x => x.id === c.id ? c : x));
+  }, []);
+
   const deleteAthlete = useCallback(async (id) => {
     await dbDeleteAthlete(id);
     setAthletes(prev => prev.filter(a => a.id !== id));
@@ -1450,9 +1651,10 @@ export default function App() {
   );
 
   if (!session) return (
-    <LoginScreen athletes={athletes} credentials={credentials}
+    <LoginScreen athletes={athletes} credentials={credentials} coaches={coaches}
       onLoginAthlete={(id) => setSession({ role: "athlete", athleteId: id })}
-      onLoginCoach={() => setSession({ role: "coach" })} />
+      onLoginCoach={() => setSession({ role: "coach", isAdmin: true })}
+      onLoginSubCoach={(coachId) => setSession({ role: "coach", isAdmin: false, coachId })} />
   );
 
   if (session.role === "athlete") {
@@ -1464,8 +1666,12 @@ export default function App() {
       onLogout={() => setSession(null)} />;
   }
 
+  // filter athletes by coach if sub-coach
+  const visibleAthletes = session.isAdmin ? athletes : athletes.filter(a => a.coach_id === session.coachId);
+
   return <CoachDashboard
-    athletes={athletes} plans={plans} progress={progress} credentials={credentials}
+    athletes={visibleAthletes} allAthletes={athletes} plans={plans} progress={progress} credentials={credentials}
+    coaches={coaches} isAdmin={session.isAdmin} coachId={session.coachId || null}
     onUpdateCredentials={setCredentials}
     onUpdateCoachPassword={() => {}}
     onPlanChange={updatePlan}
@@ -1475,6 +1681,9 @@ export default function App() {
     onEditExercise={editExercise}
     onAddAthlete={addAthlete}
     onDeleteAthlete={deleteAthlete}
+    onAddCoach={addCoach}
+    onDeleteCoach={deleteCoach}
+    onUpdateCoach={updateCoach}
     onLogout={() => setSession(null)}
     saved={saved}
   />;
