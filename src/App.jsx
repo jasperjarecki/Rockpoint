@@ -213,8 +213,7 @@ function WeekBadge({ plan }) {
 // ── RICH TEXT EDITOR ──────────────────────────────────────────────────────────
 function renderMarkdown(text) {
   if (!text) return null;
-  const lines = text.split('
-');
+  const lines = text.split('\n');
   const els = [];
   let i = 0;
   while (i < lines.length) {
