@@ -885,33 +885,49 @@ function TimerModal({ onClose }) {
 
   const clear = () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
 
-  // ── sound ──
+  // ── sound — single shared AudioContext, resumed before each use ──
+  const audioCtxRef = React.useRef(null);
+  const getAudioCtx = () => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioCtxRef.current;
+  };
+
   const beep = (freq, dur = 0.3, vol = 0.4) => {
     if (!S.current.soundOn) return;
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(vol, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-      osc.start(); osc.stop(ctx.currentTime + dur);
-    } catch(e) {}
-  };
-  const beepWorkEnd = () => {
-    if (!S.current.soundOn) return;
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [880, 660, 440].forEach((freq, i) => {
+      const ctx = getAudioCtx();
+      const play = () => {
         const osc = ctx.createOscillator(); const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
         osc.frequency.value = freq;
-        const t = ctx.currentTime + i * 0.18;
-        gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-        osc.start(t); osc.stop(t + 0.25);
-      });
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+        osc.start(); osc.stop(ctx.currentTime + dur);
+      };
+      if (ctx.state === 'suspended') { ctx.resume().then(play); } else { play(); }
     } catch(e) {}
   };
+
+  const beepWorkEnd = () => {
+    if (!S.current.soundOn) return;
+    try {
+      const ctx = getAudioCtx();
+      const play = () => {
+        [880, 660, 440].forEach((freq, i) => {
+          const osc = ctx.createOscillator(); const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = freq;
+          const t = ctx.currentTime + i * 0.18;
+          gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          osc.start(t); osc.stop(t + 0.25);
+        });
+      };
+      if (ctx.state === 'suspended') { ctx.resume().then(play); } else { play(); }
+    } catch(e) {}
+  };
+
   const pip = () => beep(660, 0.12, 0.3);
   const go  = () => beep(1047, 0.5, 0.5);
 
