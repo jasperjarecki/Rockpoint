@@ -934,12 +934,14 @@ function TimerModal({ onClose }) {
   // ── single tick function — reads/writes S.current only ──
   const tick = () => {
     const s = S.current;
+
     if (s.phase === "countdown") {
       s.countdown--;
-      if (s.countdown > 0) { pip(); }
-      else if (s.countdown === 0) { go(); }
-      else {
-        // countdown done — start work
+      if (s.countdown > 0) {
+        pip();
+      } else {
+        // countdown hit 0 — GO sound fires AND work starts simultaneously
+        go();
         clear();
         s.phase = "work";
         s.round = 1;
@@ -952,29 +954,31 @@ function TimerModal({ onClose }) {
       sync();
       return;
     }
+
     s.remaining--;
-    // 3-2-1 at end of rest
-    if (s.phase === "rest" && s.remaining <= 3 && s.remaining > 0) {
+
+    // 3-2-1 pips at end of BOTH work and rest
+    if (s.remaining <= 3 && s.remaining > 0) {
       pip();
       s.countdown = s.remaining;
-    } else if (s.phase === "rest" && s.remaining === 0) {
-      s.countdown = null;
     } else {
       s.countdown = null;
     }
+
     if (s.remaining <= 0) {
       clear();
+      s.countdown = null;
       if (s.phase === "work") {
+        // work done — rest begins
         beepWorkEnd();
         s.phase = "rest";
         s.remaining = s.restSecs;
-        s.countdown = null;
       } else {
+        // rest done — GO fires AND work starts simultaneously
         go();
         s.phase = "work";
         s.round++;
         s.remaining = s.workSecs;
-        s.countdown = null;
       }
       intervalRef.current = setInterval(tick, 1000);
     }
