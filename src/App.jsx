@@ -861,28 +861,36 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
 function TimerModal({ onClose }) {
   const [workSecs, setWorkSecs] = useState(30);
   const [restSecs, setRestSecs] = useState(180);
-  const [phase, setPhase] = useState("idle"); // idle | countdown | work | rest
-  const [remaining, setRemaining] = useState(0);
-  const [round, setRound] = useState(0);
   const [soundOn, setSoundOn] = useState(true);
-  const [countdown, setCountdown] = useState(null); // null | 5 | 4 | 3 | 2 | 1
+
+  // All mutable timer state lives in a single ref — no stale closure issues
+  const S = React.useRef({
+    phase: "idle", // idle | countdown | work | rest
+    remaining: 0,
+    round: 0,
+    countdown: null,
+    workSecs: 30,
+    restSecs: 180,
+    soundOn: true,
+  });
   const intervalRef = React.useRef(null);
-  const soundOnRef = React.useRef(true);
-  const workSecsRef = React.useRef(30);
-  const restSecsRef = React.useRef(180);
-  React.useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
-  React.useEffect(() => { workSecsRef.current = workSecs; }, [workSecs]);
-  React.useEffect(() => { restSecsRef.current = restSecs; }, [restSecs]);
 
-  const clear = () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  // Keep ref in sync with React state for display values
+  const [display, setDisplay] = React.useState({ phase: "idle", remaining: 0, round: 0, countdown: null });
+  const sync = () => setDisplay({ phase: S.current.phase, remaining: S.current.remaining, round: S.current.round, countdown: S.current.countdown });
 
-  // ── sound helpers ──
+  React.useEffect(() => { S.current.workSecs = workSecs; }, [workSecs]);
+  React.useEffect(() => { S.current.restSecs = restSecs; }, [restSecs]);
+  React.useEffect(() => { S.current.soundOn = soundOn; }, [soundOn]);
+
+  const clear = () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
+
+  // ── sound ──
   const beep = (freq, dur = 0.3, vol = 0.4) => {
-    if (!soundOnRef.current) return;
+    if (!S.current.soundOn) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(vol, ctx.currentTime);
@@ -890,95 +898,100 @@ function TimerModal({ onClose }) {
       osc.start(); osc.stop(ctx.currentTime + dur);
     } catch(e) {}
   };
-
   const beepWorkEnd = () => {
-    // three descending tones — work is over
-    if (!soundOnRef.current) return;
+    if (!S.current.soundOn) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       [880, 660, 440].forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
         osc.frequency.value = freq;
         const t = ctx.currentTime + i * 0.18;
-        gain.gain.setValueAtTime(0.4, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
         osc.start(t); osc.stop(t + 0.25);
       });
     } catch(e) {}
   };
+  const pip = () => beep(660, 0.12, 0.3);
+  const go  = () => beep(1047, 0.5, 0.5);
 
-  const beepCountdown = (n) => {
-    // 3,2,1 = short pip; GO = long high tone
-    if (!soundOnRef.current) return;
-    if (n === 0) { beep(1047, 0.5, 0.5); } // GO — high C
-    else { beep(660, 0.12, 0.3); }          // pip
+  // ── single tick function — reads/writes S.current only ──
+  const tick = () => {
+    const s = S.current;
+    if (s.phase === "countdown") {
+      s.countdown--;
+      if (s.countdown > 0) { pip(); }
+      else if (s.countdown === 0) { go(); }
+      else {
+        // countdown done — start work
+        clear();
+        s.phase = "work";
+        s.round = 1;
+        s.remaining = s.workSecs;
+        s.countdown = null;
+        sync();
+        intervalRef.current = setInterval(tick, 1000);
+        return;
+      }
+      sync();
+      return;
+    }
+    s.remaining--;
+    // 3-2-1 at end of rest
+    if (s.phase === "rest" && s.remaining <= 3 && s.remaining > 0) {
+      pip();
+      s.countdown = s.remaining;
+    } else if (s.phase === "rest" && s.remaining === 0) {
+      s.countdown = null;
+    } else {
+      s.countdown = null;
+    }
+    if (s.remaining <= 0) {
+      clear();
+      if (s.phase === "work") {
+        beepWorkEnd();
+        s.phase = "rest";
+        s.remaining = s.restSecs;
+        s.countdown = null;
+      } else {
+        go();
+        s.phase = "work";
+        s.round++;
+        s.remaining = s.workSecs;
+        s.countdown = null;
+      }
+      intervalRef.current = setInterval(tick, 1000);
+    }
+    sync();
   };
 
-  // ── countdown then start work ──
   const startCountdown = () => {
     clear();
-    setPhase("countdown");
-    setCountdown(5);
-    setRound(0);
-    beep(660, 0.12, 0.3);
-    let n = 4;
-    intervalRef.current = setInterval(() => {
-      if (n >= 0) {
-        setCountdown(n);
-        if (n > 0) beepCountdown(n);
-        n--;
-      } else {
-        clearInterval(intervalRef.current);
-        setCountdown(null);
-        startPhase("work", 1);
-      }
-    }, 1000);
+    S.current.phase = "countdown";
+    S.current.countdown = 5;
+    S.current.round = 0;
+    S.current.remaining = 0;
+    pip();
+    sync();
+    intervalRef.current = setInterval(tick, 1000);
   };
 
-  // ── run a phase ──
-  const startPhase = (ph, rd) => {
+  const stop = () => {
     clear();
-    const secs = ph === "work" ? workSecsRef.current : restSecsRef.current;
-    setPhase(ph);
-    setRemaining(secs);
-    setRound(rd);
-    let r = secs;
-    intervalRef.current = setInterval(() => {
-      r--;
-      setRemaining(r);
-      // 3-2-1 countdown at end of REST before next work
-      if (ph === "rest" && r <= 3 && r > 0) {
-        beepCountdown(r);
-        setCountdown(r);
-      } else {
-        setCountdown(null);
-      }
-      if (r <= 0) {
-        clearInterval(intervalRef.current);
-        setCountdown(null);
-        if (ph === "work") {
-          beepWorkEnd();
-          setTimeout(() => startPhase("rest", rd), 400);
-        } else {
-          beepCountdown(0); // GO
-          setTimeout(() => startPhase("work", rd + 1), 400);
-        }
-      }
-    }, 1000);
+    S.current = { ...S.current, phase: "idle", remaining: 0, round: 0, countdown: null };
+    sync();
   };
-
-  const stop = () => { clear(); setPhase("idle"); setRemaining(0); setRound(0); setCountdown(null); };
 
   React.useEffect(() => () => clear(), []);
+
+  const { phase, remaining, round, countdown } = display;
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
   const isRunning = phase !== "idle";
   const isCountdown = phase === "countdown";
   const phaseBg = phase === "work" ? C.orange : phase === "rest" ? C.purple : isCountdown ? "#333" : C.gray2;
   const phaseColor = (isRunning || isCountdown) ? "#fff" : C.white;
-  const total = phase === "work" ? workSecs : phase === "rest" ? restSecs : 1;
+  const total = phase === "work" ? S.current.workSecs : phase === "rest" ? S.current.restSecs : 1;
   const progress = phase === "work" || phase === "rest" ? ((total - remaining) / total) * 100 : 0;
 
   const adjBtn = (style) => ({ ...mono, fontSize: 12, width: 26, height: 26, borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style });
@@ -1046,7 +1059,7 @@ function TimerModal({ onClose }) {
               ? <button onClick={startCountdown} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 17, letterSpacing: 1 }}>START</button>
               : <>
                   <button onClick={stop} style={{ flex: 1, padding: "11px", borderRadius: 8, border: `1px solid rgba(255,255,255,0.3)`, background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Stop</button>
-                  {!isCountdown && <button onClick={() => { clear(); startPhase(phase, round); }} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Reset</button>}
+                  {!isCountdown && <button onClick={() => { clear(); S.current.remaining = phase === "work" ? S.current.workSecs : S.current.restSecs; S.current.countdown = null; intervalRef.current = setInterval(tick, 1000); sync(); }} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Reset</button>}
                 </>
             }
           </div>
