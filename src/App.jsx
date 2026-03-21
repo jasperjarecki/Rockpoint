@@ -861,67 +861,132 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
 function TimerModal({ onClose }) {
   const [workSecs, setWorkSecs] = useState(30);
   const [restSecs, setRestSecs] = useState(180);
-  const [phase, setPhase] = useState("idle"); // idle | work | rest
+  const [phase, setPhase] = useState("idle"); // idle | countdown | work | rest
   const [remaining, setRemaining] = useState(0);
   const [round, setRound] = useState(0);
+  const [soundOn, setSoundOn] = useState(true);
+  const [countdown, setCountdown] = useState(null); // null | 5 | 4 | 3 | 2 | 1
   const intervalRef = React.useRef(null);
+  const soundOnRef = React.useRef(true);
+  React.useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
 
   const clear = () => { if (intervalRef.current) clearInterval(intervalRef.current); };
 
-  const start = (ph, secs, rd) => {
-    clear();
-    setPhase(ph);
-    setRemaining(secs);
-    setRound(rd);
-    intervalRef.current = setInterval(() => {
-      setRemaining(r => {
-        if (r <= 1) {
-          clearInterval(intervalRef.current);
-          // beep
-          try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.frequency.value = ph === "work" ? 440 : 880;
-            gain.gain.setValueAtTime(0.3, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-            osc.start(); osc.stop(ctx.currentTime + 0.4);
-          } catch(e) {}
-          // auto-transition
-          if (ph === "work") {
-            setTimeout(() => start("rest", restSecs, rd), 300);
-          } else {
-            setTimeout(() => start("work", workSecs, rd + 1), 300);
-          }
-          return 0;
-        }
-        return r - 1;
+  // ── sound helpers ──
+  const beep = (freq, dur = 0.3, vol = 0.4) => {
+    if (!soundOnRef.current) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      osc.start(); osc.stop(ctx.currentTime + dur);
+    } catch(e) {}
+  };
+
+  const beepWorkEnd = () => {
+    // three descending tones — work is over
+    if (!soundOnRef.current) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [880, 660, 440].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.18;
+        gain.gain.setValueAtTime(0.4, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        osc.start(t); osc.stop(t + 0.25);
       });
+    } catch(e) {}
+  };
+
+  const beepCountdown = (n) => {
+    // 3,2,1 = short pip; GO = long high tone
+    if (!soundOnRef.current) return;
+    if (n === 0) { beep(1047, 0.5, 0.5); } // GO — high C
+    else { beep(660, 0.12, 0.3); }          // pip
+  };
+
+  // ── countdown then start work ──
+  const startCountdown = () => {
+    clear();
+    setPhase("countdown");
+    setCountdown(5);
+    setRound(0);
+    beep(660, 0.12, 0.3);
+    let n = 4;
+    intervalRef.current = setInterval(() => {
+      if (n >= 0) {
+        setCountdown(n);
+        beepCountdown(n);
+        n--;
+      } else {
+        clearInterval(intervalRef.current);
+        setCountdown(null);
+        startPhase("work", 1);
+      }
     }, 1000);
   };
 
-  const stop = () => { clear(); setPhase("idle"); setRemaining(0); setRound(0); };
+  // ── run a phase ──
+  const startPhase = (ph, rd) => {
+    clear();
+    const secs = ph === "work" ? workSecs : restSecs;
+    setPhase(ph);
+    setRemaining(secs);
+    setRound(rd);
+    let r = secs;
+    intervalRef.current = setInterval(() => {
+      r--;
+      setRemaining(r);
+      // 3-2-1 countdown at end of REST before next work
+      if (ph === "rest" && r <= 3 && r > 0) {
+        beepCountdown(r);
+        setCountdown(r);
+      } else {
+        setCountdown(null);
+      }
+      if (r <= 0) {
+        clearInterval(intervalRef.current);
+        setCountdown(null);
+        if (ph === "work") {
+          beepWorkEnd();
+          setTimeout(() => startPhase("rest", rd), 400);
+        } else {
+          beepCountdown(0); // GO
+          setTimeout(() => startPhase("work", rd + 1), 400);
+        }
+      }
+    }, 1000);
+  };
+
+  const stop = () => { clear(); setPhase("idle"); setRemaining(0); setRound(0); setCountdown(null); };
 
   React.useEffect(() => () => clear(), []);
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
   const isRunning = phase !== "idle";
-  const phaseBg = phase === "work" ? C.orange : phase === "rest" ? C.purple : C.gray2;
-  const phaseColor = phase !== "idle" ? "#fff" : C.white;
+  const isCountdown = phase === "countdown";
+  const phaseBg = phase === "work" ? C.orange : phase === "rest" ? C.purple : isCountdown ? "#333" : C.gray2;
+  const phaseColor = (isRunning || isCountdown) ? "#fff" : C.white;
   const total = phase === "work" ? workSecs : phase === "rest" ? restSecs : 1;
-  const progress = phase !== "idle" ? ((total - remaining) / total) * 100 : 0;
+  const progress = phase === "work" || phase === "rest" ? ((total - remaining) / total) * 100 : 0;
 
   const adjBtn = (style) => ({ ...mono, fontSize: 12, width: 26, height: 26, borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style });
   const timeDisplay = (label, val, setVal, active) => (
     <div style={{ flex: 1, textAlign: "center" }}>
       <div style={{ ...mono, fontSize: 9, color: active ? "#fff" : C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, opacity: active ? 0.8 : 1 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-        {!isRunning && <button style={adjBtn({})} onClick={() => setVal(v => Math.max(5, v - (v > 60 ? 30 : 5)))}>−</button>}
-        <div style={{ ...bebas, fontSize: isRunning && active ? 40 : 22, color: isRunning && active ? "#fff" : isRunning ? "rgba(255,255,255,0.4)" : C.white, minWidth: 80, textAlign: "center", lineHeight: 1 }}>
-          {isRunning && active ? fmt(remaining) : fmt(val)}
+        {!isRunning && !isCountdown && <button style={adjBtn({})} onClick={() => setVal(v => Math.max(5, v - (v > 60 ? 30 : 5)))}>−</button>}
+        <div style={{ ...bebas, fontSize: (isRunning || isCountdown) && active ? 40 : 22, color: (isRunning || isCountdown) && active ? "#fff" : (isRunning || isCountdown) ? "rgba(255,255,255,0.4)" : C.white, minWidth: 80, textAlign: "center", lineHeight: 1 }}>
+          {(isRunning || isCountdown) && active ? fmt(remaining) : fmt(val)}
         </div>
-        {!isRunning && <button style={adjBtn({})} onClick={() => setVal(v => v + (v >= 60 ? 30 : 5))}>+</button>}
+        {!isRunning && !isCountdown && <button style={adjBtn({})} onClick={() => setVal(v => v + (v >= 60 ? 30 : 5))}>+</button>}
       </div>
     </div>
   );
@@ -933,13 +998,39 @@ function TimerModal({ onClose }) {
         <div style={{ height: 4, background: C.gray3 }}>
           <div style={{ height: "100%", width: progress + "%", background: phase === "work" ? C.orange : C.purple, transition: "width 1s linear" }} />
         </div>
-        <div style={{ background: isRunning ? phaseBg : C.gray, padding: "14px 18px calc(20px + env(safe-area-inset-bottom, 12px))", transition: "background 0.4s" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <div style={{ ...bebas, fontSize: 15, letterSpacing: 1, color: phaseColor }}>
-              {phase === "idle" ? "INTERVAL TIMER" : phase === "work" ? "WORK" : "REST"}
-              {round > 0 && <span style={{ ...mono, fontSize: 10, marginLeft: 10, opacity: 0.6 }}>round {round}</span>}
+        <div style={{ background: phaseBg, padding: "14px 18px calc(20px + env(safe-area-inset-bottom, 12px))", transition: "background 0.4s" }}>
+          {/* Header row */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...bebas, fontSize: 15, letterSpacing: 1, color: phaseColor, opacity: 0.8 }}>
+                {isCountdown ? "GET READY" : phase === "idle" ? "INTERVAL TIMER" : phase === "work" ? "WORK" : "REST"}
+              </div>
+              {/* Big countdown overlay: 5-4-3-2-1 / Round N */}
+              {isCountdown && countdown !== null && (
+                <div style={{ ...bebas, fontSize: 80, lineHeight: 1, color: "#fff", letterSpacing: 2 }}>
+                  {countdown === 0 ? "GO!" : countdown}
+                </div>
+              )}
+              {!isCountdown && round > 0 && countdown !== null && (
+                <div style={{ ...bebas, fontSize: 80, lineHeight: 1, color: "#fff", letterSpacing: 2 }}>
+                  {countdown === 0 ? "GO!" : countdown}
+                </div>
+              )}
+              {!isCountdown && round > 0 && countdown === null && (
+                <div style={{ ...bebas, fontSize: 52, lineHeight: 1, color: phaseColor, letterSpacing: 1 }}>
+                  Round {round}
+                </div>
+              )}
             </div>
-            <button onClick={() => { stop(); onClose(); }} style={{ background: "none", border: "none", color: isRunning ? "rgba(255,255,255,0.6)" : C.muted, cursor: "pointer", fontSize: 20 }}>✕</button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {/* Sound toggle */}
+              <button onClick={() => setSoundOn(s => !s)}
+                style={{ background: "none", border: "none", color: soundOn ? phaseColor : "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 18, padding: "2px 4px" }}
+                title={soundOn ? "Mute" : "Unmute"}>
+                {soundOn ? "🔊" : "🔇"}
+              </button>
+              <button onClick={() => { stop(); onClose(); }} style={{ background: "none", border: "none", color: isRunning ? "rgba(255,255,255,0.6)" : C.muted, cursor: "pointer", fontSize: 20, paddingTop: 2 }}>✕</button>
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
             {timeDisplay("Work", workSecs, setWorkSecs, phase === "work")}
@@ -947,11 +1038,11 @@ function TimerModal({ onClose }) {
             {timeDisplay("Rest", restSecs, setRestSecs, phase === "rest")}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            {!isRunning
-              ? <button onClick={() => start("work", workSecs, 1)} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 17, letterSpacing: 1 }}>START</button>
+            {!isRunning && !isCountdown
+              ? <button onClick={startCountdown} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 17, letterSpacing: 1 }}>START</button>
               : <>
                   <button onClick={stop} style={{ flex: 1, padding: "11px", borderRadius: 8, border: `1px solid rgba(255,255,255,0.3)`, background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Stop</button>
-                  <button onClick={() => { clear(); const ph = phase; const secs = ph === "work" ? workSecs : restSecs; start(ph, secs, round); }} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Reset</button>
+                  {!isCountdown && <button onClick={() => { clear(); startPhase(phase, round); }} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Reset</button>}
                 </>
             }
           </div>
