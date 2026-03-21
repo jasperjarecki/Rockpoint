@@ -348,7 +348,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
                 {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
-                {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from Day {ex.fromDay + 1}</span>}
+                {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
               </div>
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
             </>
@@ -868,7 +868,11 @@ function TimerModal({ onClose }) {
   const [countdown, setCountdown] = useState(null); // null | 5 | 4 | 3 | 2 | 1
   const intervalRef = React.useRef(null);
   const soundOnRef = React.useRef(true);
+  const workSecsRef = React.useRef(30);
+  const restSecsRef = React.useRef(180);
   React.useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
+  React.useEffect(() => { workSecsRef.current = workSecs; }, [workSecs]);
+  React.useEffect(() => { restSecsRef.current = restSecs; }, [restSecs]);
 
   const clear = () => { if (intervalRef.current) clearInterval(intervalRef.current); };
 
@@ -923,7 +927,7 @@ function TimerModal({ onClose }) {
     intervalRef.current = setInterval(() => {
       if (n >= 0) {
         setCountdown(n);
-        beepCountdown(n);
+        if (n > 0) beepCountdown(n);
         n--;
       } else {
         clearInterval(intervalRef.current);
@@ -936,7 +940,7 @@ function TimerModal({ onClose }) {
   // ── run a phase ──
   const startPhase = (ph, rd) => {
     clear();
-    const secs = ph === "work" ? workSecs : restSecs;
+    const secs = ph === "work" ? workSecsRef.current : restSecsRef.current;
     setPhase(ph);
     setRemaining(secs);
     setRound(rd);
@@ -1277,7 +1281,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <ExerciseCard key={ex.id} ex={ex} ep={dayProg[ex.id] || {}} isOverflow={isOvf}
               onToggle={() => handleToggle(ex.id)}
               onNote={(v) => handleNote(ex.id, v)}
-              onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay }])}
+              onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay, fromWeek: activeWeekIdx }])}
               onRestoreDay={() => onOverflowChange(overflow.filter(e => e.id !== ex.id))}
               onEdit={(updated) => onEditExercise(isOvf ? "overflow" : `w${activeWeekIdx}_d${activeDay}`, updated)}
             />
