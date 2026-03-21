@@ -346,7 +346,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
             <>
               <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.white, textDecoration: checked ? "line-through" : "none", marginBottom: 4, lineHeight: 1.4 }}>{ex.text}</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
-                {ex.sets && <span style={{ ...mono, fontSize: 11, color: C.orange }}><span style={{ color: C.muted }}>Sets: </span>{ex.sets}</span>}
+                {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from Day {ex.fromDay + 1}</span>}
               </div>
@@ -556,6 +556,8 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishDraft, setPublishDraft] = useState([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showBlockOverview, setShowBlockOverview] = useState(false);
+  const [overviewExpanded, setOverviewExpanded] = useState({});
 
   const weeks = plan?.weeks || [];
   const published = plan?.published || [];
@@ -641,10 +643,62 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish }) {
           <div style={{ ...bebas, fontSize: 26, letterSpacing: 1 }}>{athlete.name}</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 2 }}><Badge type={athlete.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{athlete.level}</span></div>
         </div>
-        <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer", letterSpacing: 0.5, fontWeight: 500 }}>
-          Publish to Athlete ↗
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setShowBlockOverview(v => !v)} style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${showBlockOverview ? C.orange : C.border}`, background: showBlockOverview ? "rgba(61,158,122,0.08)" : "none", color: showBlockOverview ? C.orange : C.muted, cursor: "pointer" }}>
+            {showBlockOverview ? "▲ Collapse" : "▼ View All"}
+          </button>
+          <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer", letterSpacing: 0.5, fontWeight: 500 }}>
+            Publish to Athlete ↗
+          </button>
+        </div>
       </div>
+
+      {/* Full block view */}
+      {showBlockOverview && (
+        <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: C.gray }}>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Full Block — {weeks.length} Week{weeks.length !== 1 ? "s" : ""}</div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ display: "flex", gap: 0, minWidth: weeks.length * 160 }}>
+              {weeks.map((wk, wi) => (
+                <div key={wi} style={{ flex: 1, minWidth: 160, borderRight: wi < weeks.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                  <div style={{ padding: "8px 12px", background: activeWeek === wi ? "rgba(61,158,122,0.08)" : C.gray, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+                    onClick={() => { setActiveWeek(wi); setShowBlockOverview(false); }}>
+                    <div style={{ ...bebas, fontSize: 13, color: activeWeek === wi ? C.orange : C.white }}>{wk.label}</div>
+                    {published.includes(wi) && <span style={{ ...mono, fontSize: 8, color: "#2aaa5e" }}>● live</span>}
+                  </div>
+                  {wk.days.map((day, di) => {
+                    const key = `${wi}-${di}`;
+                    const expanded = overviewExpanded[key];
+                    return (
+                      <div key={di} style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", background: C.gray }}
+                          onClick={() => setOverviewExpanded(prev => ({ ...prev, [key]: !prev[key] }))}>
+                          <div style={{ ...mono, fontSize: 10, color: C.muted, fontWeight: 500 }}>{day.label}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ ...mono, fontSize: 9, color: C.muted }}>{day.exercises.length} ex</span>
+                            <span style={{ ...mono, fontSize: 9, color: C.muted }}>{expanded ? "▲" : "▼"}</span>
+                          </div>
+                        </div>
+                        <div style={{ padding: expanded ? "4px 0 6px" : 0, overflow: "hidden", maxHeight: expanded ? 999 : 0, transition: "max-height 0.2s" }}>
+                          {day.exercises.map((ex, ei) => (
+                            <div key={ei} style={{ padding: "4px 12px", borderTop: ei > 0 ? `1px solid ${C.border}` : "none" }}>
+                              <div style={{ fontSize: 12, color: C.white, lineHeight: 1.3, marginBottom: 1 }}>{ex.text}</div>
+                              {ex.sets && <div style={{ ...mono, fontSize: 10, color: C.orange }}>{ex.sets}</div>}
+                              {ex.notes && expanded && <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 2, lineHeight: 1.4, fontStyle: "italic" }}>{ex.notes}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Block overview */}
       <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
@@ -858,13 +912,13 @@ function TimerModal({ onClose }) {
   const total = phase === "work" ? workSecs : phase === "rest" ? restSecs : 1;
   const progress = phase !== "idle" ? ((total - remaining) / total) * 100 : 0;
 
-  const adjBtn = (style) => ({ ...mono, fontSize: 13, width: 28, height: 28, borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style });
+  const adjBtn = (style) => ({ ...mono, fontSize: 12, width: 26, height: 26, borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style });
   const timeDisplay = (label, val, setVal, active) => (
     <div style={{ flex: 1, textAlign: "center" }}>
       <div style={{ ...mono, fontSize: 9, color: active ? "#fff" : C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, opacity: active ? 0.8 : 1 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
         {!isRunning && <button style={adjBtn({})} onClick={() => setVal(v => Math.max(5, v - (v > 60 ? 30 : 5)))}>−</button>}
-        <div style={{ ...bebas, fontSize: isRunning && active ? 52 : 28, color: isRunning && active ? "#fff" : isRunning ? "rgba(255,255,255,0.4)" : C.white, minWidth: 80, textAlign: "center", lineHeight: 1 }}>
+        <div style={{ ...bebas, fontSize: isRunning && active ? 40 : 22, color: isRunning && active ? "#fff" : isRunning ? "rgba(255,255,255,0.4)" : C.white, minWidth: 80, textAlign: "center", lineHeight: 1 }}>
           {isRunning && active ? fmt(remaining) : fmt(val)}
         </div>
         {!isRunning && <button style={adjBtn({})} onClick={() => setVal(v => v + (v >= 60 ? 30 : 5))}>+</button>}
@@ -879,25 +933,25 @@ function TimerModal({ onClose }) {
         <div style={{ height: 4, background: C.gray3 }}>
           <div style={{ height: "100%", width: progress + "%", background: phase === "work" ? C.orange : C.purple, transition: "width 1s linear" }} />
         </div>
-        <div style={{ background: isRunning ? phaseBg : C.gray, padding: "20px 24px calc(28px + env(safe-area-inset-bottom, 16px))", transition: "background 0.4s" }}>
+        <div style={{ background: isRunning ? phaseBg : C.gray, padding: "14px 18px calc(20px + env(safe-area-inset-bottom, 12px))", transition: "background 0.4s" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, color: phaseColor }}>
+            <div style={{ ...bebas, fontSize: 15, letterSpacing: 1, color: phaseColor }}>
               {phase === "idle" ? "INTERVAL TIMER" : phase === "work" ? "WORK" : "REST"}
               {round > 0 && <span style={{ ...mono, fontSize: 10, marginLeft: 10, opacity: 0.6 }}>round {round}</span>}
             </div>
             <button onClick={() => { stop(); onClose(); }} style={{ background: "none", border: "none", color: isRunning ? "rgba(255,255,255,0.6)" : C.muted, cursor: "pointer", fontSize: 20 }}>✕</button>
           </div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 24 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
             {timeDisplay("Work", workSecs, setWorkSecs, phase === "work")}
             <div style={{ color: isRunning ? "rgba(255,255,255,0.3)" : C.gray3, fontSize: 20 }}>|</div>
             {timeDisplay("Rest", restSecs, setRestSecs, phase === "rest")}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             {!isRunning
-              ? <button onClick={() => start("work", workSecs, 1)} style={{ flex: 1, padding: "14px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 20, letterSpacing: 1 }}>START</button>
+              ? <button onClick={() => start("work", workSecs, 1)} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 17, letterSpacing: 1 }}>START</button>
               : <>
-                  <button onClick={stop} style={{ flex: 1, padding: "14px", borderRadius: 10, border: `1px solid rgba(255,255,255,0.3)`, background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", ...mono, fontSize: 12 }}>Stop</button>
-                  <button onClick={() => { clear(); const ph = phase; const secs = ph === "work" ? workSecs : restSecs; start(ph, secs, round); }} style={{ flex: 1, padding: "14px", borderRadius: 10, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 12 }}>Reset</button>
+                  <button onClick={stop} style={{ flex: 1, padding: "11px", borderRadius: 8, border: `1px solid rgba(255,255,255,0.3)`, background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Stop</button>
+                  <button onClick={() => { clear(); const ph = phase; const secs = ph === "work" ? workSecs : restSecs; start(ph, secs, round); }} style={{ flex: 1, padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", ...mono, fontSize: 11 }}>Reset</button>
                 </>
             }
           </div>
