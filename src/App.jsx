@@ -1549,7 +1549,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   };
   const savePasswords = async () => {
     setSavingPw(true);
-    await dbSetCoachPassword(draftCoachPw);
+    if (isAdmin) await dbSetCoachPassword(draftCoachPw);
     for (const [aId, pw] of Object.entries(draftCreds)) await dbUpsertCredential(aId, pw);
     onUpdateCredentials(draftCreds);
     onUpdateCoachPassword(draftCoachPw);
@@ -1822,10 +1822,12 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 440, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
             <div style={{ ...bebas, fontSize: 22, marginBottom: 6 }}>Passwords</div>
             <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>Set passwords for athletes and coach access.</p>
-            <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Coach Password</div>
-              <input type="text" value={draftCoachPw} onChange={e => setDraftCoachPw(e.target.value)} placeholder="Set a coach password..." style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
-            </div>
+            {isAdmin && (
+              <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Admin Password</div>
+                <input type="text" value={draftCoachPw} onChange={e => setDraftCoachPw(e.target.value)} placeholder="Set admin password..." style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
+              </div>
+            )}
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Athlete Passwords</div>
             {athletes.map(a => (
               <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
