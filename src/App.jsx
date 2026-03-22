@@ -1518,25 +1518,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [newCoach, setNewCoach] = useState({ name: "", password: "" });
   const [editingCoach, setEditingCoach] = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [templates, setTemplates] = useState([]);
-  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
-  const openTemplates = async () => {
-    setLoadingTemplates(true);
-    setShowTemplates(true);
-    const t = await dbGetTemplates(coachId);
-    setTemplates(t);
-    setLoadingTemplates(false);
-  };
-  const saveTemplate = async (name, type, data) => {
-    const t = { id: uid(), coachId: coachId || null, name, type, data };
-    await dbSaveTemplate(t);
-    setTemplates(prev => [{ ...t, created_at: new Date().toISOString() }, ...prev]);
-  };
-  const deleteTemplate = async (id) => {
-    await dbDeleteTemplate(id);
-    setTemplates(prev => prev.filter(t => t.id !== id));
-  };
+  const openTemplates = () => { setShowTemplates(true); };
   const [draftCoachPw, setDraftCoachPw] = useState("");
   const [draftCreds, setDraftCreds] = useState({});
   const [savingPw, setSavingPw] = useState(false);
@@ -1737,8 +1720,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
             <div style={{ ...bebas, fontSize: 22, marginBottom: 4 }}>Templates</div>
             <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>Save days and weeks as reusable templates. Apply them to any athlete.</p>
-            {loadingTemplates && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>}
-            {!loadingTemplates && templates.length === 0 && (
+            {templates.length === 0 && (
               <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>
                 No templates yet. Save a day or week using the ★ button in the plan editor.
               </div>
