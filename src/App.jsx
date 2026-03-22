@@ -1657,7 +1657,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowAdd(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete, coach_id: coachId || null}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:""}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
+              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete, coach_id: coachId || 'admin'}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:""}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
             </div>
           </div>
         </div>
@@ -1946,6 +1946,7 @@ export default function App() {
 
   const addAthlete = useCallback(async (a) => {
     const newPlan = { weeks: [{ label: "Week 1", days: [{ label: "Day 1", exercises: [] }] }], published: [], blockStart: "", blockEnd: "", blockNotes: "" };
+    if (!a.coach_id) a = { ...a, coach_id: session?.isAdmin ? 'admin' : session?.coachId || null };
     await dbUpsertAthlete(a);
     await dbUpsertPlan(a.id, newPlan);
     setAthletes(prev => [...prev, a]);
