@@ -17,6 +17,8 @@ const LIBRARY = {
   "Core / Antagonist": ["Front Lever Progressions","Dead Bug (3×10)","Hollow Body Holds","Copenhagen Planks","Wrist Curls / Extensions","Reverse Wrist Curls","Rotator Cuff Band Work","Plank Variations"],
   "Movement / Drills": ["Slab Practice","Slabapalooza","Comp Boulders","Campus Makeups","Route Climbing","Silent Feet Drills","Hip Drop Exercises","Flagging Practice","Balance Slab","Drop Knee Sequences","Breath & Tension Control"],
   "Recovery / Mobility": ["Forearm Stretching Routine","Thoracic Mobility","Hip Flexor Stretch","Shoulder Circles","Easy Traversing (flush out)","Foam Roll","Ice / Contrast Bath"],
+  "Mental Training / Performance": ["Visualization Practice","Breathing / Relaxation Routine","Focus Cues","Pre-climb Ritual","Fear Ladder / Exposure Work","Journaling / Reflection","Video Review"],
+  "Other": [],
 };
 const ALL_CATEGORIES = Object.keys(LIBRARY);
 
@@ -444,7 +446,16 @@ function ExercisePicker({ onAdd, onClose }) {
           <>
             <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
               <div style={{ marginBottom: 14 }}><label style={lbl}>Exercise Name</label><input autoFocus value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Single-leg squat..." style={{ ...inp, fontSize: 14 }} /></div>
-              <div style={{ marginBottom: 14 }}><label style={lbl}>Category</label><select value={customCat} onChange={e => setCustomCat(e.target.value)} style={inp}>{ALL_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Category</label>
+                <select value={ALL_CATEGORIES.includes(customCat) ? customCat : "Other"} onChange={e => { if (e.target.value !== "__custom__") setCustomCat(e.target.value); else setCustomCat(""); }} style={{ ...inp, marginBottom: customCat === "" || !ALL_CATEGORIES.includes(customCat) ? 8 : 0 }}>
+                  {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="__custom__">+ Type custom category...</option>
+                </select>
+                {(customCat === "" || !ALL_CATEGORIES.includes(customCat)) && (
+                  <input value={customCat} onChange={e => setCustomCat(e.target.value)} placeholder="Type category name..." style={inp} />
+                )}
+              </div>
               <div style={{ marginBottom: 14 }}><label style={lbl}>Sets / Volume</label><input value={customSets} onChange={e => setCustomSets(e.target.value)} placeholder="e.g. 3×8, 20min" style={inp} /></div>
               <div style={{ marginBottom: 14 }}><label style={lbl}>Coach Notes (optional)</label><input value={customNotes} onChange={e => setCustomNotes(e.target.value)} placeholder="Cues, intensity..." style={inp} /></div>
             </div>
