@@ -330,8 +330,10 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
 function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
+  const selectedOption = ep.selectedOption ?? null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "" });
+  const hasOptions = ex.options && ex.options.length > 0;
   const inp = { width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
 
   return (
@@ -360,6 +362,21 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
               </div>
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
+              {/* Options */}
+              {hasOptions && (
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Choose one</div>
+                  {ex.options.map((opt, i) => {
+                    const isSelected = selectedOption === i;
+                    return (
+                      <button key={i} onClick={() => onNote(note, i)} style={{ textAlign: "left", padding: "9px 12px", borderRadius: 7, border: `1px solid ${isSelected ? C.orange : C.border}`, background: isSelected ? "rgba(61,158,122,0.1)" : C.gray2, cursor: "pointer", transition: "all 0.15s" }}>
+                        <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.orange : C.white }}>{opt.label}</div>
+                      </button>
+                    );
+                  })}
+                  {selectedOption !== null && <div style={{ ...mono, fontSize: 10, color: C.orange }}>✓ {ex.options[selectedOption]?.label}</div>}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -375,7 +392,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
       </div>
       {!editing && (
         <div style={{ marginTop: 10, marginLeft: 40 }}>
-          <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Add a note..." rows={1} className="athlete-note"
+          <textarea value={note} onChange={e => onNote(e.target.value, selectedOption)} placeholder="Add a note..." rows={1} className="athlete-note"
             style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
             onFocus={e => e.target.style.borderColor = C.orange} onBlur={e => e.target.style.borderColor = C.border} />
         </div>
@@ -535,26 +552,50 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
       {/* Exercises */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
         {day.exercises.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, ...mono, fontSize: 12 }}>No exercises yet.</div>}
-        {day.exercises.map((ex, idx) => (
-          <div key={ex.id} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <input value={ex.text} onChange={e => updateEx(ex.id,"text",e.target.value)} style={{ fontSize: 14, fontWeight: 500, marginBottom: 6, background: "transparent", border: "none", borderBottom: `1px solid transparent`, color: C.white, width: "100%", outline: "none", padding: "1px 0" }} onFocus={e => e.target.style.borderBottomColor=C.gray3} onBlur={e => e.target.style.borderBottomColor="transparent"} />
-                <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
-                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                  <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
-                  <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+        {day.exercises.map((ex, idx) => {
+          const options = ex.options || [];
+          const addOption = () => updateEx(ex.id, "options", [...options, { label: "" }]);
+          const updateOption = (oi, label) => updateEx(ex.id, "options", options.map((o, i) => i===oi ? { ...o, label } : o));
+          const removeOption = (oi) => updateEx(ex.id, "options", options.filter((_, i) => i !== oi));
+          return (
+            <div key={ex.id} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <input value={ex.text} onChange={e => updateEx(ex.id,"text",e.target.value)} style={{ fontSize: 14, fontWeight: 500, marginBottom: 6, background: "transparent", border: "none", borderBottom: `1px solid transparent`, color: C.white, width: "100%", outline: "none", padding: "1px 0" }} onFocus={e => e.target.style.borderBottomColor=C.gray3} onBlur={e => e.target.style.borderBottomColor="transparent"} />
+                  <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
+                    <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+                  </div>
+                  {/* Options editor */}
+                  {options.length > 0 && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+                      <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Options (athlete picks one)</div>
+                      {options.map((opt, oi) => (
+                        <div key={oi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <div style={{ ...mono, fontSize: 10, color: C.muted, minWidth: 16 }}>{oi + 1}.</div>
+                          <input value={opt.label} onChange={e => updateOption(oi, e.target.value)} placeholder={`Option ${oi + 1}...`}
+                            style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 12, outline: "none" }} />
+                          <button onClick={() => removeOption(oi)} style={{ background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 4px" }}>✕</button>
+                        </div>
+                      ))}
+                      <button onClick={addOption} style={{ alignSelf: "flex-start", ...mono, fontSize: 10, padding: "4px 10px", background: "none", border: `1px dashed ${C.border}`, borderRadius: 4, color: C.muted, cursor: "pointer" }}>+ Option</button>
+                    </div>
+                  )}
+                  {options.length === 0 && (
+                    <button onClick={addOption} style={{ marginTop: 8, ...mono, fontSize: 10, padding: "4px 10px", background: "none", border: `1px dashed ${C.border}`, borderRadius: 4, color: C.muted, cursor: "pointer" }}>+ Add options</button>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
+                  <button onClick={() => moveEx(ex.id,-1)} disabled={idx===0} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
+                  <button onClick={() => moveEx(ex.id,1)} disabled={idx===day.exercises.length-1} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
+                  <button onClick={() => onCopy(ex)} style={{ background: clipboard?.id===ex.id?"rgba(61,158,122,0.12)":"none", border: `1px solid ${clipboard?.id===ex.id?C.orange:C.border}`, borderRadius: 3, color: clipboard?.id===ex.id?C.orange:C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>⎘</button>
+                  <button onClick={() => removeExercise(ex.id)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>✕</button>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
-                <button onClick={() => moveEx(ex.id,-1)} disabled={idx===0} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
-                <button onClick={() => moveEx(ex.id,1)} disabled={idx===day.exercises.length-1} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
-                <button onClick={() => onCopy(ex)} style={{ background: clipboard?.id===ex.id?"rgba(61,158,122,0.12)":"none", border: `1px solid ${clipboard?.id===ex.id?C.orange:C.border}`, borderRadius: 3, color: clipboard?.id===ex.id?C.orange:C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>⎘</button>
-                <button onClick={() => removeExercise(ex.id)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>✕</button>
-              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
@@ -1259,9 +1300,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     const ep = dayProg[exId] || {};
     onProgressChange(pk, exId, { ...ep, checked: !ep.checked });
   };
-  const handleNote = (exId, val) => {
+  const handleNote = (exId, val, selectedOption) => {
     const ep = dayProg[exId] || {};
-    onProgressChange(pk, exId, { ...ep, note: val });
+    const update = { ...ep, note: val };
+    if (selectedOption !== undefined) update.selectedOption = selectedOption;
+    onProgressChange(pk, exId, update);
   };
 
   return (
@@ -1423,7 +1466,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           {visibleExs.map(ex => (
             <ExerciseCard key={ex.id} ex={ex} ep={dayProg[ex.id] || {}} isOverflow={isOvf}
               onToggle={() => handleToggle(ex.id)}
-              onNote={(v) => handleNote(ex.id, v)}
+              onNote={(v, sel) => handleNote(ex.id, v, sel)}
               onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay, fromWeek: activeWeekIdx }])}
               onRestoreDay={() => onOverflowChange(overflow.filter(e => e.id !== ex.id))}
               onEdit={(updated) => onEditExercise(isOvf ? "overflow" : `w${activeWeekIdx}_d${activeDay}`, updated)}
