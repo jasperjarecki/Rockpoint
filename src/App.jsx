@@ -369,8 +369,10 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                   {ex.options.map((opt, i) => {
                     const isSelected = selectedOption === i;
                     return (
-                      <button key={i} onClick={() => onNote(note, i)} style={{ textAlign: "left", padding: "9px 12px", borderRadius: 7, border: `1px solid ${isSelected ? C.orange : C.border}`, background: isSelected ? "rgba(61,158,122,0.1)" : C.gray2, cursor: "pointer", transition: "all 0.15s" }}>
-                        <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.orange : C.white }}>{opt.label}</div>
+                      <button key={i} onClick={() => onNote(note, i)} style={{ textAlign: "left", padding: "10px 12px", borderRadius: 7, border: `1px solid ${isSelected ? C.orange : C.border}`, background: isSelected ? "rgba(61,158,122,0.1)" : C.gray2, cursor: "pointer", transition: "all 0.15s", width: "100%" }}>
+                        <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.orange : C.white, marginBottom: (opt.sets || opt.notes) ? 4 : 0 }}>{opt.label}</div>
+                        {opt.sets && <div style={{ ...mono, fontSize: 12, color: isSelected ? C.orange : C.muted, opacity: 0.9 }}>{opt.sets}</div>}
+                        {opt.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 2, lineHeight: 1.4 }}>{opt.notes}</div>}
                       </button>
                     );
                   })}
@@ -554,8 +556,8 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
         {day.exercises.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, ...mono, fontSize: 12 }}>No exercises yet.</div>}
         {day.exercises.map((ex, idx) => {
           const options = ex.options || [];
-          const addOption = () => updateEx(ex.id, "options", [...options, { label: "" }]);
-          const updateOption = (oi, label) => updateEx(ex.id, "options", options.map((o, i) => i===oi ? { ...o, label } : o));
+          const addOption = () => updateEx(ex.id, "options", [...options, { label: "", sets: "", notes: "" }]);
+          const updateOption = (oi, updated) => updateEx(ex.id, "options", options.map((o, i) => i===oi ? { ...o, ...updated } : o));
           const removeOption = (oi) => updateEx(ex.id, "options", options.filter((_, i) => i !== oi));
           return (
             <div key={ex.id} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
@@ -569,14 +571,22 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   </div>
                   {/* Options editor */}
                   {options.length > 0 && (
-                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Options (athlete picks one)</div>
                       {options.map((opt, oi) => (
-                        <div key={oi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <div style={{ ...mono, fontSize: 10, color: C.muted, minWidth: 16 }}>{oi + 1}.</div>
-                          <input value={opt.label} onChange={e => updateOption(oi, e.target.value)} placeholder={`Option ${oi + 1}...`}
-                            style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 12, outline: "none" }} />
-                          <button onClick={() => removeOption(oi)} style={{ background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 4px" }}>✕</button>
+                        <div key={oi} style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px" }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                            <div style={{ ...mono, fontSize: 10, color: C.muted, minWidth: 16 }}>{oi + 1}.</div>
+                            <input value={opt.label} onChange={e => updateOption(oi, { ...opt, label: e.target.value })} placeholder={`Option ${oi + 1} name...`}
+                              style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 12, outline: "none", fontWeight: 500 }} />
+                            <button onClick={() => removeOption(oi)} style={{ background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 4px" }}>✕</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, marginLeft: 22 }}>
+                            <input value={opt.sets||""} onChange={e => updateOption(oi, { ...opt, sets: e.target.value })} placeholder="Sets / volume..."
+                              style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
+                            <input value={opt.notes||""} onChange={e => updateOption(oi, { ...opt, notes: e.target.value })} placeholder="Notes..."
+                              style={{ flex: 2, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+                          </div>
                         </div>
                       ))}
                       <button onClick={addOption} style={{ alignSelf: "flex-start", ...mono, fontSize: 10, padding: "4px 10px", background: "none", border: `1px dashed ${C.border}`, borderRadius: 4, color: C.muted, cursor: "pointer" }}>+ Option</button>
