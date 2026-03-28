@@ -567,7 +567,20 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <input value={ex.text} onChange={e => updateEx(ex.id,"text",e.target.value)} style={{ fontSize: 14, fontWeight: 500, marginBottom: 6, background: "transparent", border: "none", borderBottom: `1px solid transparent`, color: C.white, width: "100%", outline: "none", padding: "1px 0" }} onFocus={e => e.target.style.borderBottomColor=C.gray3} onBlur={e => e.target.style.borderBottomColor="transparent"} />
-                  <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                    <select value={ALL_CATEGORIES.includes(ex.category) ? ex.category : "__custom__"}
+                      onChange={e => { if (e.target.value !== "__custom__") updateEx(ex.id, "category", e.target.value); else updateEx(ex.id, "category", ""); }}
+                      style={{ ...mono, fontSize: 10, color: C.muted, background: "transparent", border: "none", outline: "none", cursor: "pointer", padding: 0, appearance: "none", WebkitAppearance: "none" }}>
+                      {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {!ALL_CATEGORIES.includes(ex.category) && ex.category && <option value="__custom__">{ex.category}</option>}
+                      <option value="__custom__">+ Custom...</option>
+                    </select>
+                    <span style={{ ...mono, fontSize: 9, color: C.muted, opacity: 0.5 }}>▾</span>
+                    {!ALL_CATEGORIES.includes(ex.category) && (
+                      <input value={ex.category} onChange={e => updateEx(ex.id, "category", e.target.value)} placeholder="Type category..."
+                        style={{ ...mono, fontSize: 10, color: C.muted, background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, outline: "none", padding: "1px 0", width: 120 }} />
+                    )}
+                  </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                     <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
                     <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
