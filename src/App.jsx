@@ -103,6 +103,7 @@ _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding
 document.head.appendChild(_gs);
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+const TEMPLATE_CREATOR_ID = "__template_creator__";
 const mono = { fontFamily: "'DM Mono', monospace" };
 const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
 
@@ -1667,6 +1668,14 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           </div>
           {sidebarOpen && (
             <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+              {/* Template Creator — fixed entry */}
+              <div style={{ marginBottom: 6 }}>
+                <button onClick={() => setSelectedId(TEMPLATE_CREATOR_ID)} style={{ width: "100%", textAlign: "left", background: selectedId===TEMPLATE_CREATOR_ID?"rgba(91,127,166,0.12)":"none", border: `1px solid ${selectedId===TEMPLATE_CREATOR_ID?C.purple:"rgba(91,127,166,0.3)"}`, borderRadius: 6, padding: "9px 12px", cursor: "pointer" }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.purple, marginBottom: 2 }}>Template Creator</div>
+                  <div style={{ ...mono, fontSize: 9, color: C.muted }}>scratch pad → save as ★</div>
+                </button>
+              </div>
+              <div style={{ borderBottom: `1px solid ${C.border}`, marginBottom: 6 }} />
               {athletes.map(a => (
                 <div key={a.id} style={{ position: "relative", marginBottom: 2 }}
                   onMouseEnter={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="1"; }}
@@ -1683,6 +1692,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           )}
           {!sidebarOpen && (
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+              <button onClick={() => { setSelectedId(TEMPLATE_CREATOR_ID); setSidebarOpen(true); }}
+                title="Template Creator"
+                style={{ width: "100%", height: 32, background: selectedId===TEMPLATE_CREATOR_ID?"rgba(91,127,166,0.15)":"none", border: "none", borderLeft: `2px solid ${selectedId===TEMPLATE_CREATOR_ID?C.purple:"transparent"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: selectedId===TEMPLATE_CREATOR_ID?C.purple:C.muted, fontSize: 10 }}>
+                ★
+              </button>
               {athletes.map(a => (
                 <button key={a.id} onClick={() => { setSelectedId(a.id); setSidebarOpen(true); }}
                   title={a.name}
@@ -1980,6 +1994,12 @@ export default function App() {
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
       setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
+      // ensure template creator has a plan
+      if (!pln[TEMPLATE_CREATOR_ID]) {
+        const blankPlan = { weeks: [{ label: "Week 1", days: [{ label: "Day 1", exercises: [] }] }], published: [], blockStart: "", blockEnd: "", blockNotes: "" };
+        await dbUpsertPlan(TEMPLATE_CREATOR_ID, blankPlan);
+        setPlans(prev => ({ ...prev, [TEMPLATE_CREATOR_ID]: blankPlan }));
+      }
       setLoading(false);
     })();
   }, []);
