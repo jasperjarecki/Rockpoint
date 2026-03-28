@@ -1701,14 +1701,47 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <p style={{ ...mono, fontSize: 12 }}>Select an athlete</p>
             </div>
           ) : mode === "coach" ? (
-            <CoachPlanEditor
-              athlete={selected}
-              plan={plans[selected.id]}
-              onPlanChange={(p) => onPlanChange(selected.id, p)}
-              onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
-              templates={templates}
-              onSaveTemplate={onSaveTemplate}
-            />
+            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
+              <CoachPlanEditor
+                athlete={selected}
+                plan={plans[selected.id]}
+                onPlanChange={(p) => onPlanChange(selected.id, p)}
+                onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
+                templates={templates}
+                onSaveTemplate={onSaveTemplate}
+              />
+              {/* Skip day panel */}
+              {(() => {
+                const overflow = (progress[selected.id] || {}).overflow || [];
+                if (overflow.length === 0) return null;
+                return (
+                  <div style={{ maxWidth: 700, margin: "0 auto", padding: "0 16px 28px", width: "100%" }}>
+                    <div style={{ background: "rgba(91,127,166,0.07)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 10, padding: "14px 16px" }}>
+                      <div style={{ ...mono, fontSize: 9, color: "#4a7aab", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
+                        Skip Day — {overflow.length} exercise{overflow.length !== 1 ? "s" : ""}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {overflow.map((ex, i) => (
+                          <div key={i} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                  {ex.sets && <span style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</span>}
+                                  <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
+                                  {ex.fromWeek != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>W{ex.fromWeek + 1} · Day {ex.fromDay + 1}</span>}
+                                </div>
+                                {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 4 }}>{ex.notes}</div>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           ) : (
             <AthleteView athlete={selected} plan={plans[selected.id]} progress={progress[selected.id]||{}}
               onProgressChange={(d,e,ep) => onProgressChange(selected.id,d,e,ep)}
