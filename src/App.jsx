@@ -369,7 +369,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                   {ex.options.map((opt, i) => {
                     const isSelected = selectedOption === i;
                     return (
-                      <button key={i} onClick={() => onNote(note, i)} style={{ textAlign: "left", padding: "10px 12px", borderRadius: 7, border: `1px solid ${isSelected ? C.orange : C.border}`, background: isSelected ? "rgba(61,158,122,0.1)" : C.gray2, cursor: "pointer", transition: "all 0.15s", width: "100%" }}>
+                      <button key={i} onClick={() => onNote(note, isSelected ? null : i)} style={{ textAlign: "left", padding: "10px 12px", borderRadius: 7, border: `1px solid ${isSelected ? C.orange : C.border}`, background: isSelected ? "rgba(61,158,122,0.1)" : C.gray2, cursor: "pointer", transition: "all 0.15s", width: "100%" }}>
                         <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.orange : C.white, marginBottom: (opt.sets || opt.notes) ? 4 : 0 }}>{opt.label}</div>
                         {opt.sets && <div style={{ ...mono, fontSize: 12, color: isSelected ? C.orange : C.muted, opacity: 0.9 }}>{opt.sets}</div>}
                         {opt.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 2, lineHeight: 1.4 }}>{opt.notes}</div>}
