@@ -1605,7 +1605,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [draftCreds, setDraftCreds] = useState({});
   const [savingPw, setSavingPw] = useState(false);
 
-  const selected = athletes.find(a => a.id === selectedId);
+  const selected = selectedId === TEMPLATE_CREATOR_ID
+    ? { id: TEMPLATE_CREATOR_ID, name: "Template Creator", type: "Adult Recreational", level: "" }
+    : athletes.find(a => a.id === selectedId);
   const btnS = (active) => ({ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, padding: "6px 10px", borderRadius: 4, border: `1px solid ${active?C.orange:C.border}`, background: active?"rgba(61,158,122,0.1)":"none", color: active?C.orange:C.muted, cursor: "pointer" });
 
   const openBackups = async () => {
@@ -1998,7 +2000,7 @@ export default function App() {
       if (!pln[TEMPLATE_CREATOR_ID]) {
         const blankPlan = { weeks: [{ label: "Week 1", days: [{ label: "Day 1", exercises: [] }] }], published: [], blockStart: "", blockEnd: "", blockNotes: "" };
         await dbUpsertPlan(TEMPLATE_CREATOR_ID, blankPlan);
-        setPlans(prev => ({ ...prev, [TEMPLATE_CREATOR_ID]: blankPlan }));
+        pln[TEMPLATE_CREATOR_ID] = blankPlan;
       }
       setLoading(false);
     })();
