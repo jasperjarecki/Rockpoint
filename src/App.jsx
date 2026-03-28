@@ -332,7 +332,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "" });
+  const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "" });
   const hasOptions = ex.options && ex.options.length > 0;
   const inp = { width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
 
@@ -348,8 +348,11 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <input value={draft.text} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} autoFocus style={{ ...inp, fontSize: 14, fontWeight: 500 }} />
               <input value={draft.sets} onChange={e => setDraft(d => ({ ...d, sets: e.target.value }))} placeholder="Sets / volume" style={inp} />
               <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Coach notes..." style={inp} />
+              <select value={ALL_CATEGORIES.includes(draft.category) ? draft.category : "Other"} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))} style={{ ...inp, color: C.muted }}>
+                {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button onClick={() => { setDraft({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "" }); setEditing(false); }} style={{ ...mono, fontSize: 11, padding: "6px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
+                <button onClick={() => { setDraft({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "" }); setEditing(false); }} style={{ ...mono, fontSize: 11, padding: "6px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
                 <button onClick={() => { onEdit({ ...ex, ...draft }); setEditing(false); }} style={{ ...mono, fontSize: 11, padding: "6px 14px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
               </div>
             </div>
