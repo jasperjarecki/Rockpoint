@@ -104,6 +104,28 @@ document.head.appendChild(_gs);
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const TEMPLATE_CREATOR_ID = "__template_creator__";
+
+function parseYouTubeTimestamp(url) {
+  if (!url) return 0;
+  // ?t=90 or &t=90 (seconds)
+  const tSecs = url.match(/[?&]t=(\d+)s?(?:&|$)/);
+  if (tSecs) return parseInt(tSecs[1]);
+  // ?t=1m30s or &t=1h2m3s
+  const tHMS = url.match(/[?&]t=(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:&|$)/);
+  if (tHMS && (tHMS[1] || tHMS[2] || tHMS[3])) {
+    return (parseInt(tHMS[1]||0)*3600) + (parseInt(tHMS[2]||0)*60) + (parseInt(tHMS[3]||0));
+  }
+  return 0;
+}
+function parseYouTubeEmbed(url, startSecs) {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  if (!match) return null;
+  const id = match[1];
+  // prefer explicit startSecs override, otherwise extract from URL
+  const start = parseInt(startSecs) || parseYouTubeTimestamp(url);
+  return `https://www.youtube.com/embed/${id}${start > 0 ? `?start=${start}` : ""}`;
+}
 const mono = { fontFamily: "'DM Mono', monospace" };
 const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
 
@@ -333,8 +355,10 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "" });
+  const [showVideo, setShowVideo] = useState(false);
+  const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "", videoUrl: ex.videoUrl || "", videoStart: ex.videoStart || "" });
   const hasOptions = ex.options && ex.options.length > 0;
+  const embedUrl = parseYouTubeEmbed(ex.videoUrl, ex.videoStart);
   const inp = { width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
 
   return (
@@ -349,17 +373,23 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <input value={draft.text} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} autoFocus style={{ ...inp, fontSize: 14, fontWeight: 500 }} />
               <input value={draft.sets} onChange={e => setDraft(d => ({ ...d, sets: e.target.value }))} placeholder="Sets / volume" style={inp} />
               <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Coach notes..." style={inp} />
+              <input value={draft.videoUrl||""} onChange={e => setDraft(d => ({ ...d, videoUrl: e.target.value }))} placeholder="YouTube URL (timestamp auto-detected from URL)..." style={inp} />
               <select value={ALL_CATEGORIES.includes(draft.category) ? draft.category : "Other"} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))} style={{ ...inp, color: C.muted }}>
                 {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button onClick={() => { setDraft({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "" }); setEditing(false); }} style={{ ...mono, fontSize: 11, padding: "6px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
+                <button onClick={() => { setDraft({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "", videoUrl: ex.videoUrl || "", videoStart: ex.videoStart || "" }); setEditing(false); }} style={{ ...mono, fontSize: 11, padding: "6px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
                 <button onClick={() => { onEdit({ ...ex, ...draft }); setEditing(false); }} style={{ ...mono, fontSize: 11, padding: "6px 14px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
               </div>
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.white, textDecoration: checked ? "line-through" : "none", marginBottom: 4, lineHeight: 1.4 }}>{ex.text}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.white, textDecoration: checked ? "line-through" : "none", lineHeight: 1.4 }}>{ex.text}</div>
+                {embedUrl && !editing && (
+                  <button onClick={() => setShowVideo(true)} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid #c0392b`, background: "rgba(192,57,43,0.08)", color: "#c0392b", cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 0.5 }}>▶ Demo</button>
+                )}
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
                 {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
@@ -401,6 +431,21 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
           <textarea value={note} onChange={e => onNote(e.target.value, selectedOption)} placeholder="Add a note..." rows={1} className="athlete-note"
             style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
             onFocus={e => e.target.style.borderColor = C.orange} onBlur={e => e.target.style.borderColor = C.border} />
+        </div>
+      )}
+      {/* Video modal */}
+      {showVideo && embedUrl && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 700, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ width: "100%", maxWidth: 560 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ ...bebas, fontSize: 18, color: "#fff", letterSpacing: 1 }}>{ex.text}</div>
+              <button onClick={() => setShowVideo(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 24, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 10, overflow: "hidden", background: "#000" }}>
+              <iframe src={embedUrl} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+            </div>
+            <button onClick={() => setShowVideo(false)} style={{ ...mono, marginTop: 14, width: "100%", padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: 12 }}>Close</button>
+          </div>
         </div>
       )}
     </div>
@@ -586,6 +631,13 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                     <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
                     <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
                   </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                    <input value={ex.videoUrl||""} onChange={e => updateEx(ex.id,"videoUrl",e.target.value)} placeholder="YouTube URL (timestamp auto-detected)..." style={{ flex: 1, minWidth: 160, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+                  </div>
+                  {ex.videoUrl && parseYouTubeEmbed(ex.videoUrl, ex.videoStart) && (() => {
+                    const t = parseYouTubeTimestamp(ex.videoUrl);
+                    return <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 4 }}>✓ Demo video set{t > 0 ? ` · starts at ${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}` : ""}</div>;
+                  })()}
                   {/* Options editor */}
                   {options.length > 0 && (
                     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
