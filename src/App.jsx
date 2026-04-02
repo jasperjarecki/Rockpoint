@@ -159,8 +159,8 @@ async function dbBackupPlan(athleteId, planData) {
   try {
     // keep only last 10 backups per athlete
     const { data: existing } = await sb.from("plan_backups").select("id").eq("athlete_id", athleteId).order("saved_at", { ascending: true });
-    if (existing && existing.length >= 10) {
-      const toDelete = existing.slice(0, existing.length - 9).map(r => r.id);
+    if (existing && existing.length >= 20) {
+      const toDelete = existing.slice(0, existing.length - 19).map(r => r.id);
       await sb.from("plan_backups").delete().in("id", toDelete);
     }
     await sb.from("plan_backups").insert({ athlete_id: athleteId, data: planData });
@@ -2228,11 +2228,17 @@ export default function App() {
   const lastBackup = React.useRef({});
   const updatePlan = useCallback(async (id, plan) => {
     setPlans(prev => {
-      const merged = { ...prev[id], ...plan };
+      const existing = prev[id];
+      // safety: never allow a save that would reduce week count below existing
+      if (existing?.weeks?.length && plan?.weeks?.length && plan.weeks.length < existing.weeks.length) {
+        console.warn('Blocked plan save: would reduce weeks from', existing.weeks.length, 'to', plan.weeks.length);
+        return prev;
+      }
+      const merged = { ...existing, ...plan };
       dbUpsertPlan(id, merged);
       // backup at most once per 60s per athlete
       const now = Date.now();
-      if (!lastBackup.current[id] || now - lastBackup.current[id] > 60000) {
+      if (!lastBackup.current[id] || now - lastBackup.current[id] > 10000) {
         lastBackup.current[id] = now;
         dbBackupPlan(id, merged);
       }
