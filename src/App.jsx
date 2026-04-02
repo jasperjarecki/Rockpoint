@@ -675,9 +675,12 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                         const shared = ex.sharedDays || [];
                         const isOn = shared.includes(di);
                         return (
-                          <button key={di} onClick={() => {
-                            const cur = ex.sharedDays || [];
-                            updateEx(ex.id, "sharedDays", isOn ? cur.filter(x => x !== di) : [...cur, di]);
+                          <button key={di} onClick={(e) => {
+                            e.stopPropagation();
+                            const fresh = days[activeDay]?.exercises?.find(x => x.id === ex.id);
+                            const cur = (fresh || ex).sharedDays || [];
+                            const nowOn = cur.includes(di);
+                            updateEx(ex.id, "sharedDays", nowOn ? cur.filter(x => x !== di) : [...cur, di]);
                           }} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid ${isOn ? C.purple : C.border}`, background: isOn ? "rgba(91,127,166,0.12)" : "transparent", color: isOn ? C.purple : C.muted, cursor: "pointer" }}>
                             {d.label}
                           </button>
