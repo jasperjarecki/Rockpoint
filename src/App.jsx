@@ -401,8 +401,11 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
               {alsoOnLabels && !checked && (
                 <button onClick={(e) => { e.stopPropagation(); onNote(note, selectedOption, true); }}
-                  style={{ marginTop: 6, ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 5, border: `1px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.3)"}`, background: deferToOtherDay ? "rgba(91,127,166,0.12)" : "transparent", color: deferToOtherDay ? C.purple : C.muted, cursor: "pointer", textAlign: "left" }}>
-                  {deferToOtherDay ? "✓ Completing on " + alsoOnLabels : "I'll complete this on " + alsoOnLabels}
+                  style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, ...mono, fontSize: 11, padding: "7px 12px", borderRadius: 6, border: `1px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.3)"}`, background: deferToOtherDay ? "rgba(91,127,166,0.1)" : "transparent", color: deferToOtherDay ? C.purple : C.muted, cursor: "pointer", textAlign: "left", width: "100%" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.4)"}`, background: deferToOtherDay ? C.purple : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {deferToOtherDay && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+                  </div>
+                  I'll complete this on {alsoOnLabels}
                 </button>
               )}
               {/* Options */}
@@ -573,16 +576,17 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
   const updateEx = (id, f, v) => updateDay(activeDay, days[activeDay].exercises.map(e=>e.id===id?{...e,[f]:v}:e));
   const day = days[activeDay] || { exercises: [] };
 
-  // inject shared exercises from other days
+  // inject shared exercises from other days, sorted by position
   const sharedInThisDay = days.reduce((acc, d, dIdx) => {
     if (dIdx === activeDay) return acc;
     d.exercises.forEach(ex => {
       if (ex.sharedDays && ex.sharedDays.includes(activeDay)) {
-        acc.push({ ...ex, _isShared: true, _sourceDay: dIdx });
+        const pos = ex.sharedDayPositions?.[activeDay] ?? 9999;
+        acc.push({ ...ex, _isShared: true, _sourceDay: dIdx, _pos: pos });
       }
     });
     return acc;
-  }, []);
+  }, []).sort((a, b) => a._pos - b._pos);
 
   return (
     <div>
@@ -718,22 +722,42 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
             </div>
           );
         })}
-        {/* Shared exercises from other days — read-only in coach view */}
-        {sharedInThisDay.map(ex => (
-          <div key={ex.id} style={{ background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 8, padding: "10px 14px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {days[ex._sourceDay]?.label}</span>
+        {/* Shared exercises from other days — positionable in coach view */}
+        {sharedInThisDay.map((ex, si) => {
+          const moveShared = (dir) => {
+            const srcEx = days[ex._sourceDay]?.exercises?.find(e => e.id === ex.id);
+            if (!srcEx) return;
+            const cur = srcEx.sharedDayPositions || {};
+            const pos = cur[activeDay] ?? (day.exercises.length + si);
+            const newPos = pos + dir;
+            const updatedPositions = { ...cur, [activeDay]: newPos };
+            // update the source day exercise
+            const newDays = days.map((d, di) => di === ex._sourceDay
+              ? { ...d, exercises: d.exercises.map(e => e.id === ex.id ? { ...e, sharedDayPositions: updatedPositions } : e) }
+              : d
+            );
+            onDaysChange(newDays);
+          };
+          return (
+            <div key={ex.id} style={{ background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 8, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                    <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {days[ex._sourceDay]?.label}</span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
+                  {ex.sets && <div style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</div>}
+                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</div>
+                  {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
-                {ex.sets && <div style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</div>}
-                <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</div>
-                {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
+                  <button onClick={() => moveShared(-1)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
+                  <button onClick={() => moveShared(1)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
@@ -1441,12 +1465,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     return acc;
   }, []) : [];
 
-  const visibleExs = currentDay
-    ? [
-        ...currentDay.exercises.filter(e => !overflowIds.has(e.id) && !((e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay)),
-        ...sharedFromOtherDays
-      ]
+  const baseExs = currentDay
+    ? currentDay.exercises.filter(e => !overflowIds.has(e.id) && !((e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay))
     : overflow;
+
+  // merge shared exercises at their designated positions
+  const visibleExs = !isOvf ? (() => {
+    const result = [...baseExs];
+    sharedFromOtherDays.forEach(ex => {
+      const pos = ex.sharedDayPositions?.[activeDay] ?? result.length;
+      const clampedPos = Math.min(Math.max(0, pos), result.length);
+      result.splice(clampedPos, 0, ex);
+    });
+    return result;
+  })() : overflow;
 
   const pk = isOvf ? OVF + "_checks" : progKey(activeWeekIdx, activeDay);
   const dayProg = progress[pk] || {};
@@ -1653,7 +1685,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             return (
               <ExerciseCard key={ex.id + (ex._sourceDay ?? "")} ex={ex} ep={ep} isOverflow={isOvf}
                 onToggle={() => handleToggle(ex)}
-                onNote={(v, sel) => handleNote(ex, v, sel)}
+                onNote={(v, sel, defer) => handleNote(ex, v, sel, defer)}
                 onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay, fromWeek: activeWeekIdx }])}
                 onRestoreDay={() => onOverflowChange(overflow.filter(e => e.id !== ex.id))}
                 onEdit={(updated) => onEditExercise(isOvf ? "overflow" : `w${activeWeekIdx}_d${activeDay}`, updated)}
