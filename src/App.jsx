@@ -627,9 +627,43 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
       {/* Exercises */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
         {day.exercises.length === 0 && sharedInThisDay.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, ...mono, fontSize: 12 }}>No exercises yet.</div>}
-        {day.exercises.map((ex, idx) => {
+        {(() => {
+          const combined = [];
+          day.exercises.forEach((ex, idx) => combined.push({ ex, idx, isShared: false }));
+          sharedInThisDay.forEach((ex, si) => {
+            const pos = ex.sharedDayPositions?.[activeDay] ?? (day.exercises.length + si);
+            combined.splice(Math.min(Math.max(0, pos), combined.length), 0, { ex, isShared: true, si });
+          });
+          return combined.map(({ ex, idx, isShared, si }, combinedIdx) => {
+            if (isShared) {
+              const moveShared = (dir) => {
+                const newPos = Math.max(0, Math.min(combined.length - 1, combinedIdx + dir));
+                const newDays = days.map((d, di) => di === ex._sourceDay
+                  ? { ...d, exercises: d.exercises.map(e => e.id === ex.id ? { ...e, sharedDayPositions: { ...(e.sharedDayPositions || {}), [activeDay]: newPos } } : e) }
+                  : d
+                );
+                onDaysChange(newDays);
+              };
+              return (
+                <div key={ex.id + "_shared"} style={{ background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 8, padding: "10px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3, display: "inline-block", marginBottom: 4 }}>from {days[ex._sourceDay]?.label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
+                      {ex.sets && <div style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</div>}
+                      <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</div>
+                      {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
+                      <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); moveShared(-1); }} disabled={combinedIdx === 0} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: combinedIdx===0?"#ccc":C.muted, cursor: combinedIdx===0?"default":"pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
+                      <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); moveShared(1); }} disabled={combinedIdx === combined.length-1} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: combinedIdx===combined.length-1?"#ccc":C.muted, cursor: combinedIdx===combined.length-1?"default":"pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
           const options = ex.options || [];
-          const addOption = () => updateEx(ex.id, "options", [...options, { label: "", sets: "", notes: "" }]);
+          const addOption = () => updateEx(ex.id, "options", options.length === 0 ? [{ label: "", sets: "", notes: "" }, { label: "", sets: "", notes: "" }] : [...options, { label: "", sets: "", notes: "" }]);
           const updateOption = (oi, updated) => updateEx(ex.id, "options", options.map((o, i) => i===oi ? { ...o, ...updated } : o));
           const removeOption = (oi) => updateEx(ex.id, "options", options.filter((_, i) => i !== oi));
           return (
@@ -721,41 +755,8 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
               </div>
             </div>
           );
-        })}
-        {/* Shared exercises from other days — shown after regular exercises, movable via position field */}
-        {sharedInThisDay.map((ex, si) => {
-          const allCount = day.exercises.length + sharedInThisDay.length;
-          const curPos = ex.sharedDayPositions?.[activeDay] ?? (day.exercises.length + si);
-          const moveShared = (dir) => {
-            const newPos = Math.max(0, Math.min(allCount - 1, curPos + dir));
-            const newDays = days.map((d, di) => di === ex._sourceDay
-              ? { ...d, exercises: d.exercises.map(e => e.id === ex.id
-                  ? { ...e, sharedDayPositions: { ...(e.sharedDayPositions || {}), [activeDay]: newPos } }
-                  : e) }
-              : d
-            );
-            onDaysChange(newDays);
-          };
-          return (
-            <div key={ex.id} style={{ background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 8, padding: "10px 14px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                    <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {days[ex._sourceDay]?.label}</span>
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
-                  {ex.sets && <div style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</div>}
-                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</div>
-                  {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
-                  <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); moveShared(-1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
-                  <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); moveShared(1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+          });
+        })()}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
