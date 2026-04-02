@@ -350,7 +350,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
 }
 
 // ── EXERCISE CARD ─────────────────────────────────────────────────────────────
-function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel }) {
+function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel, alsoOnLabels }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
@@ -394,8 +394,8 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
-                {isShared && sourceDayLabel && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {sourceDayLabel}</span>}
-                {isShared && !sourceDayLabel && ex.sharedDays && ex.sharedDays.length > 0 && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>shared</span>}
+                {sourceDayLabel && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
+                {alsoOnLabels && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {alsoOnLabels}</span>}
               </div>
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
               {/* Options */}
@@ -1605,7 +1605,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visibleExs.map(ex => {
             const ep = getEp(ex);
-            const isShared = !!(ex.sharedDays || ex._isShared);
+            const isShared = !!(ex.sharedDays?.length || ex._isShared);
+            // for source day: show which days it also appears on
+            const alsoOnLabels = !ex._isShared && ex.sharedDays?.length
+              ? ex.sharedDays.map(di => days[di]?.label).filter(Boolean).join(", ")
+              : null;
+            // for injected day: show which day it comes from
+            const sourceDayLabel = ex._isShared ? days[ex._sourceDay]?.label : null;
             return (
               <ExerciseCard key={ex.id + (ex._sourceDay ?? "")} ex={ex} ep={ep} isOverflow={isOvf}
                 onToggle={() => handleToggle(ex)}
@@ -1614,7 +1620,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 onRestoreDay={() => onOverflowChange(overflow.filter(e => e.id !== ex.id))}
                 onEdit={(updated) => onEditExercise(isOvf ? "overflow" : `w${activeWeekIdx}_d${activeDay}`, updated)}
                 isShared={isShared}
-                sourceDayLabel={ex._isShared ? days[ex._sourceDay]?.label : null}
+                sourceDayLabel={sourceDayLabel}
+                alsoOnLabels={alsoOnLabels}
               />
             );
           })}
