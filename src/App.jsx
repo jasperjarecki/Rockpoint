@@ -350,7 +350,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
 }
 
 // ── EXERCISE CARD ─────────────────────────────────────────────────────────────
-function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow }) {
+function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
@@ -394,6 +394,8 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
+                {isShared && sourceDayLabel && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {sourceDayLabel}</span>}
+                {isShared && !sourceDayLabel && ex.sharedDays && ex.sharedDays.length > 0 && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>shared</span>}
               </div>
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
               {/* Options */}
@@ -664,6 +666,26 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   {options.length === 0 && (
                     <button onClick={addOption} style={{ marginTop: 8, ...mono, fontSize: 10, padding: "4px 10px", background: "none", border: `1px dashed ${C.border}`, borderRadius: 4, color: C.muted, cursor: "pointer" }}>+ Add options</button>
                   )}
+                  {/* Shared days picker */}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Also appears on</div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {days.map((d, di) => {
+                        if (di === activeDay) return null;
+                        const shared = ex.sharedDays || [];
+                        const isOn = shared.includes(di);
+                        return (
+                          <button key={di} onClick={() => {
+                            const cur = ex.sharedDays || [];
+                            updateEx(ex.id, "sharedDays", isOn ? cur.filter(x => x !== di) : [...cur, di]);
+                          }} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid ${isOn ? C.purple : C.border}`, background: isOn ? "rgba(91,127,166,0.12)" : "transparent", color: isOn ? C.purple : C.muted, cursor: "pointer" }}>
+                            {d.label}
+                          </button>
+                        );
+                      })}
+                      {days.length <= 1 && <span style={{ ...mono, fontSize: 9, color: C.muted }}>Add more days first</span>}
+                    </div>
+                  </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
                   <button onClick={() => moveEx(ex.id,-1)} disabled={idx===0} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
@@ -1365,25 +1387,54 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   }
 
   const progKey = (wIdx, dIdx) => `w${wIdx}_d${dIdx}`;
+  const sharedKey = (exId) => `shared_${exId}`;
   const overflow = progress[OVF] || [];
   const overflowIds = new Set(overflow.map(e => e.id));
   const isOvf = activeDay === OVF;
   const currentDay = !isOvf ? days[activeDay] : null;
-  const visibleExs = currentDay ? currentDay.exercises.filter(e => !overflowIds.has(e.id)) : overflow;
+
+  // also inject shared exercises from other days into current day view
+  const sharedFromOtherDays = !isOvf ? days.reduce((acc, d, dIdx) => {
+    if (dIdx === activeDay) return acc;
+    d.exercises.forEach(ex => {
+      if (ex.sharedDays && ex.sharedDays.includes(activeDay) && !overflowIds.has(ex.id)) {
+        acc.push({ ...ex, _isShared: true, _sourceDay: dIdx });
+      }
+    });
+    return acc;
+  }, []) : [];
+
+  const visibleExs = currentDay
+    ? [...currentDay.exercises.filter(e => !overflowIds.has(e.id)), ...sharedFromOtherDays]
+    : overflow;
+
   const pk = isOvf ? OVF + "_checks" : progKey(activeWeekIdx, activeDay);
   const dayProg = progress[pk] || {};
-  const doneCount = visibleExs.filter(e => dayProg[e.id]?.checked).length;
+
+  // get progress for an exercise — shared ones use their own key
+  const getEp = (ex) => {
+    if (ex.sharedDays || ex._isShared) return progress[sharedKey(ex.id)] || {};
+    return dayProg[ex.id] || {};
+  };
+
+  const doneCount = visibleExs.filter(e => getEp(e).checked).length;
   const totalCount = visibleExs.length;
 
-  const handleToggle = (exId) => {
-    const ep = dayProg[exId] || {};
-    onProgressChange(pk, exId, { ...ep, checked: !ep.checked });
+  const handleToggle = (ex) => {
+    if (ex.sharedDays || ex._isShared) {
+      const ep = progress[sharedKey(ex.id)] || {};
+      onProgressChange(sharedKey(ex.id), ex.id, { ...ep, checked: !ep.checked });
+    } else {
+      const ep = dayProg[ex.id] || {};
+      onProgressChange(pk, ex.id, { ...ep, checked: !ep.checked });
+    }
   };
-  const handleNote = (exId, val, selectedOption) => {
-    const ep = dayProg[exId] || {};
+  const handleNote = (ex, val, selectedOption) => {
+    const key = (ex.sharedDays || ex._isShared) ? sharedKey(ex.id) : pk;
+    const ep = (ex.sharedDays || ex._isShared) ? (progress[sharedKey(ex.id)] || {}) : (dayProg[ex.id] || {});
     const update = { ...ep, note: val };
     if (selectedOption !== undefined) update.selectedOption = selectedOption;
-    onProgressChange(pk, exId, update);
+    onProgressChange(key, ex.id, update);
   };
 
   return (
@@ -1504,8 +1555,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             const pk2 = progKey(activeWeekIdx, i);
             const dp = progress[pk2] || {};
             const vis = d.exercises.filter(e => !overflowIds.has(e.id));
-            const done = vis.filter(e => dp[e.id]?.checked).length;
-            const total = vis.length;
+            // also count shared exercises from other days
+            const sharedVis = days.reduce((acc, od, odi) => {
+              if (odi === i) return acc;
+              od.exercises.forEach(ex => { if (ex.sharedDays && ex.sharedDays.includes(i) && !overflowIds.has(ex.id)) acc.push(ex); });
+              return acc;
+            }, []);
+            const allVis = [...vis, ...sharedVis];
+            const done = allVis.filter(e => (e.sharedDays ? (progress[`shared_${e.id}`] || {}) : dp)[e.id]?.checked).length;
+            const total = allVis.length;
             const isActive = activeDay === i;
             const allDone = done === total && total > 0;
             return (
@@ -1542,15 +1600,21 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {visibleExs.map(ex => (
-            <ExerciseCard key={ex.id} ex={ex} ep={dayProg[ex.id] || {}} isOverflow={isOvf}
-              onToggle={() => handleToggle(ex.id)}
-              onNote={(v, sel) => handleNote(ex.id, v, sel)}
-              onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay, fromWeek: activeWeekIdx }])}
-              onRestoreDay={() => onOverflowChange(overflow.filter(e => e.id !== ex.id))}
-              onEdit={(updated) => onEditExercise(isOvf ? "overflow" : `w${activeWeekIdx}_d${activeDay}`, updated)}
-            />
-          ))}
+          {visibleExs.map(ex => {
+            const ep = getEp(ex);
+            const isShared = !!(ex.sharedDays || ex._isShared);
+            return (
+              <ExerciseCard key={ex.id + (ex._sourceDay ?? "")} ex={ex} ep={ep} isOverflow={isOvf}
+                onToggle={() => handleToggle(ex)}
+                onNote={(v, sel) => handleNote(ex, v, sel)}
+                onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay, fromWeek: activeWeekIdx }])}
+                onRestoreDay={() => onOverflowChange(overflow.filter(e => e.id !== ex.id))}
+                onEdit={(updated) => onEditExercise(isOvf ? "overflow" : `w${activeWeekIdx}_d${activeDay}`, updated)}
+                isShared={isShared}
+                sourceDayLabel={ex._isShared ? days[ex._sourceDay]?.label : null}
+              />
+            );
+          })}
         </div>
 
         {!isOvf && doneCount === totalCount && totalCount > 0 && (
