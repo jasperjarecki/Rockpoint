@@ -354,6 +354,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   const checked = !!ep.checked;
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
+  const deferToOtherDay = !!ep.deferToOtherDay;
   const [editing, setEditing] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "", videoUrl: ex.videoUrl || "", videoStart: ex.videoStart || "" });
@@ -398,6 +399,12 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {alsoOnLabels && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {alsoOnLabels}</span>}
               </div>
               {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
+              {alsoOnLabels && !checked && (
+                <button onClick={(e) => { e.stopPropagation(); onNote(note, selectedOption, true); }}
+                  style={{ marginTop: 6, ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 5, border: `1px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.3)"}`, background: deferToOtherDay ? "rgba(91,127,166,0.12)" : "transparent", color: deferToOtherDay ? C.purple : C.muted, cursor: "pointer", textAlign: "left" }}>
+                  {deferToOtherDay ? "✓ Completing on " + alsoOnLabels : "I'll complete this on " + alsoOnLabels}
+                </button>
+              )}
               {/* Options */}
               {hasOptions && (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -566,6 +573,17 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
   const updateEx = (id, f, v) => updateDay(activeDay, days[activeDay].exercises.map(e=>e.id===id?{...e,[f]:v}:e));
   const day = days[activeDay] || { exercises: [] };
 
+  // inject shared exercises from other days
+  const sharedInThisDay = days.reduce((acc, d, dIdx) => {
+    if (dIdx === activeDay) return acc;
+    d.exercises.forEach(ex => {
+      if (ex.sharedDays && ex.sharedDays.includes(activeDay)) {
+        acc.push({ ...ex, _isShared: true, _sourceDay: dIdx });
+      }
+    });
+    return acc;
+  }, []);
+
   return (
     <div>
       {/* Day tabs */}
@@ -604,7 +622,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
 
       {/* Exercises */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-        {day.exercises.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, ...mono, fontSize: 12 }}>No exercises yet.</div>}
+        {day.exercises.length === 0 && sharedInThisDay.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, ...mono, fontSize: 12 }}>No exercises yet.</div>}
         {day.exercises.map((ex, idx) => {
           const options = ex.options || [];
           const addOption = () => updateEx(ex.id, "options", [...options, { label: "", sets: "", notes: "" }]);
@@ -700,6 +718,22 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
             </div>
           );
         })}
+        {/* Shared exercises from other days — read-only in coach view */}
+        {sharedInThisDay.map(ex => (
+          <div key={ex.id} style={{ background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {days[ex._sourceDay]?.label}</span>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
+                {ex.sets && <div style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</div>}
+                <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</div>
+                {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
@@ -1408,7 +1442,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   }, []) : [];
 
   const visibleExs = currentDay
-    ? [...currentDay.exercises.filter(e => !overflowIds.has(e.id)), ...sharedFromOtherDays]
+    ? [
+        ...currentDay.exercises.filter(e => !overflowIds.has(e.id) && !((e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay)),
+        ...sharedFromOtherDays
+      ]
     : overflow;
 
   const pk = isOvf ? OVF + "_checks" : progKey(activeWeekIdx, activeDay);
@@ -1432,11 +1469,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       onProgressChange(pk, ex.id, { ...ep, checked: !ep.checked });
     }
   };
-  const handleNote = (ex, val, selectedOption) => {
+  const handleNote = (ex, val, selectedOption, defer) => {
     const key = (ex.sharedDays?.length || ex._isShared) ? sharedKey(ex.id) : pk;
     const ep = (ex.sharedDays?.length || ex._isShared) ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : (dayProg[ex.id] || {});
     const update = { ...ep, note: val };
     if (selectedOption !== undefined) update.selectedOption = selectedOption;
+    if (defer !== undefined) update.deferToOtherDay = !ep.deferToOtherDay;
     onProgressChange(key, ex.id, update);
   };
 
@@ -1602,11 +1640,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </button>
         </div>
 
-        {sharedFromOtherDays.length > 0 && (
-          <div style={{ ...mono, fontSize: 10, color: C.purple, padding: "4px 8px", background: "rgba(91,127,166,0.1)", borderRadius: 4, marginBottom: 6 }}>
-            DEBUG: {sharedFromOtherDays.length} shared exercise(s) found for day {activeDay}
-          </div>
-        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visibleExs.map(ex => {
             const ep = getEp(ex);
