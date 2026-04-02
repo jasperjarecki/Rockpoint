@@ -722,18 +722,16 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
             </div>
           );
         })}
-        {/* Shared exercises from other days — positionable in coach view */}
+        {/* Shared exercises from other days — shown after regular exercises, movable via position field */}
         {sharedInThisDay.map((ex, si) => {
+          const allCount = day.exercises.length + sharedInThisDay.length;
+          const curPos = ex.sharedDayPositions?.[activeDay] ?? (day.exercises.length + si);
           const moveShared = (dir) => {
-            const srcEx = days[ex._sourceDay]?.exercises?.find(e => e.id === ex.id);
-            if (!srcEx) return;
-            const cur = srcEx.sharedDayPositions || {};
-            const pos = cur[activeDay] ?? (day.exercises.length + si);
-            const newPos = pos + dir;
-            const updatedPositions = { ...cur, [activeDay]: newPos };
-            // update the source day exercise
+            const newPos = Math.max(0, Math.min(allCount - 1, curPos + dir));
             const newDays = days.map((d, di) => di === ex._sourceDay
-              ? { ...d, exercises: d.exercises.map(e => e.id === ex.id ? { ...e, sharedDayPositions: updatedPositions } : e) }
+              ? { ...d, exercises: d.exercises.map(e => e.id === ex.id
+                  ? { ...e, sharedDayPositions: { ...(e.sharedDayPositions || {}), [activeDay]: newPos } }
+                  : e) }
               : d
             );
             onDaysChange(newDays);
@@ -751,8 +749,8 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
-                  <button onClick={(e) => { e.stopPropagation(); moveShared(-1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
-                  <button onClick={(e) => { e.stopPropagation(); moveShared(1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
+                  <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); moveShared(-1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
+                  <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); moveShared(1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
                 </div>
               </div>
             </div>
