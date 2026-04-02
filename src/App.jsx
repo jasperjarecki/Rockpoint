@@ -1416,7 +1416,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
   // get progress for an exercise — shared ones use their own key
   const getEp = (ex) => {
-    if (ex.sharedDays || ex._isShared) return progress[sharedKey(ex.id)] || {};
+    if (ex.sharedDays?.length || ex._isShared) return (progress[sharedKey(ex.id)] || {})[ex.id] || {};
     return dayProg[ex.id] || {};
   };
 
@@ -1424,8 +1424,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const totalCount = visibleExs.length;
 
   const handleToggle = (ex) => {
-    if (ex.sharedDays || ex._isShared) {
-      const ep = progress[sharedKey(ex.id)] || {};
+    if (ex.sharedDays?.length || ex._isShared) {
+      const ep = (progress[sharedKey(ex.id)] || {})[ex.id] || {};
       onProgressChange(sharedKey(ex.id), ex.id, { ...ep, checked: !ep.checked });
     } else {
       const ep = dayProg[ex.id] || {};
@@ -1433,8 +1433,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
   };
   const handleNote = (ex, val, selectedOption) => {
-    const key = (ex.sharedDays || ex._isShared) ? sharedKey(ex.id) : pk;
-    const ep = (ex.sharedDays || ex._isShared) ? (progress[sharedKey(ex.id)] || {}) : (dayProg[ex.id] || {});
+    const key = (ex.sharedDays?.length || ex._isShared) ? sharedKey(ex.id) : pk;
+    const ep = (ex.sharedDays?.length || ex._isShared) ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : (dayProg[ex.id] || {});
     const update = { ...ep, note: val };
     if (selectedOption !== undefined) update.selectedOption = selectedOption;
     onProgressChange(key, ex.id, update);
