@@ -690,7 +690,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   )}
                   {/* Shared days picker */}
                   <div style={{ marginTop: 10 }}>
-                    <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Also appears on</div>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Athlete can choose a different day to complete this exercise:</div>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {days.map((d, di) => {
                         if (di === activeDay) return null;
