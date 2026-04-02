@@ -1602,6 +1602,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </button>
         </div>
 
+        {sharedFromOtherDays.length > 0 && (
+          <div style={{ ...mono, fontSize: 10, color: C.purple, padding: "4px 8px", background: "rgba(91,127,166,0.1)", borderRadius: 4, marginBottom: 6 }}>
+            DEBUG: {sharedFromOtherDays.length} shared exercise(s) found for day {activeDay}
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visibleExs.map(ex => {
             const ep = getEp(ex);
