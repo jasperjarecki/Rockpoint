@@ -751,8 +751,8 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 3 }}>{ex.notes}</div>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 }}>
-                  <button onClick={() => moveShared(-1)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
-                  <button onClick={() => moveShared(1)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
+                  <button onClick={(e) => { e.stopPropagation(); moveShared(-1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↑</button>
+                  <button onClick={(e) => { e.stopPropagation(); moveShared(1); }} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer", padding: "3px 7px", fontSize: 11 }}>↓</button>
                 </div>
               </div>
             </div>
@@ -1465,6 +1465,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     return acc;
   }, []) : [];
 
+  const deferredExs = !isOvf && currentDay
+    ? currentDay.exercises.filter(e => !overflowIds.has(e.id) && (e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay)
+    : [];
+
   const baseExs = currentDay
     ? currentDay.exercises.filter(e => !overflowIds.has(e.id) && !((e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay))
     : overflow;
@@ -1696,6 +1700,24 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             );
           })}
         </div>
+
+        {deferredExs.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Deferred to another day</div>
+            {deferredExs.map(ex => {
+              const ep = getEp(ex);
+              const alsoOnLabels = ex.sharedDays?.map(di => days[di]?.label).filter(Boolean).join(", ");
+              return (
+                <div key={ex.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.2)`, borderRadius: 8, marginBottom: 4 }}>
+                  <div style={{ flex: 1, fontSize: 13, color: C.muted, textDecoration: "line-through" }}>{ex.text}</div>
+                  <span style={{ ...mono, fontSize: 9, color: C.purple }}>→ {alsoOnLabels}</span>
+                  <button onClick={() => handleNote(ex, ep.note || "", ep.selectedOption, true)}
+                    style={{ ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", whiteSpace: "nowrap" }}>Undo</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {!isOvf && doneCount === totalCount && totalCount > 0 && (
           <div style={{ textAlign: "center", marginTop: 28, padding: "20px", background: "rgba(61,158,122,0.07)", border: "1px solid rgba(61,158,122,0.25)", borderRadius: 10 }}>
