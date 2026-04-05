@@ -1966,6 +1966,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                                 </div>
                                 {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 4 }}>{ex.notes}</div>}
                               </div>
+                              <button onClick={() => onOverflowChange(selected.id, overflow.filter((_, j) => j !== i))}
+                                style={{ ...mono, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: "#a05555", cursor: "pointer", flexShrink: 0 }}>✕</button>
                             </div>
                           </div>
                         ))}
