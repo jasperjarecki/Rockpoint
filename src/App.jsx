@@ -551,8 +551,10 @@ function ExercisePicker({ onAdd, onClose }) {
 }
 
 // ── DAY EDITOR (used inside week editor) ─────────────────────────────────────
-function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopyDay, templates = [], onSaveTemplate, onInsertDayTemplate }) {
-  const [activeDay, setActiveDay] = useState(0);
+function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopyDay, templates = [], onSaveTemplate, onInsertDayTemplate, sharedDay, setSharedDay }) {
+  const [_activeDay, _setActiveDay] = useState(0);
+  const activeDay = sharedDay !== undefined ? sharedDay : _activeDay;
+  const setActiveDay = setSharedDay || _setActiveDay;
   const [showPicker, setShowPicker] = useState(false);
   const [editingLabel, setEditingLabel] = useState(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -769,8 +771,10 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
 }
 
 // ── COACH PLAN EDITOR ─────────────────────────────────────────────────────────
-function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [], onSaveTemplate }) {
-  const [activeWeek, setActiveWeek] = useState(0);
+function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [], onSaveTemplate, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
+  const [_activeWeek, _setActiveWeek] = useState(0);
+  const activeWeek = sharedWeekIdx !== undefined ? sharedWeekIdx : _activeWeek;
+  const setActiveWeek = setSharedWeekIdx || _setActiveWeek;
   const [clipboard, setClipboard] = useState(null);
   const [dayClipboard, setDayClipboard] = useState(null);
   const [editingWeekLabel, setEditingWeekLabel] = useState(null);
@@ -1051,6 +1055,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         <DayEditor
           days={week.days}
           onDaysChange={(days) => updateWeek(activeWeek, days)}
+          sharedDay={sharedDay} setSharedDay={setSharedDay}
           clipboard={clipboard}
           onCopy={setClipboard}
           dayClipboard={dayClipboard}
@@ -1402,7 +1407,7 @@ function TimerModal({ onClose }) {
 }
 
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
-function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout }) {
+function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
   const OVF = "overflow";
 
   // figure out which week to default to
@@ -1421,8 +1426,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     return closest;
   })();
 
-  const [activeWeekIdx, setActiveWeekIdx] = useState(currentWeekIdx ?? publishedIndices[0] ?? 0);
-  const [activeDay, setActiveDay] = useState(0);
+  const [_activeWeekIdx, _setActiveWeekIdx] = useState(currentWeekIdx ?? publishedIndices[0] ?? 0);
+  const [_activeDay, _setActiveDay] = useState(0);
+  const activeWeekIdx = sharedWeekIdx !== undefined ? sharedWeekIdx : _activeWeekIdx;
+  const setActiveWeekIdx = setSharedWeekIdx || _setActiveWeekIdx;
+  const activeDay = sharedDay !== undefined ? sharedDay : _activeDay;
+  const setActiveDay = setSharedDay || _setActiveDay;
   const [showOverview, setShowOverview] = useState(false);
   const [volumeExpanded, setVolumeExpanded] = useState(true);
   const [showTimer, setShowTimer] = useState(false);
@@ -1804,6 +1813,8 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
 function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
+  const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
+  const [sharedDay, setSharedDay] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "" });
@@ -1942,6 +1953,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                 onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
                 templates={templates}
                 onSaveTemplate={onSaveTemplate}
+                sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
+                sharedDay={sharedDay} setSharedDay={setSharedDay}
               />
               {/* Skip day panel */}
               {(() => {
@@ -1982,7 +1995,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               onProgressChange={(d,e,ep) => onProgressChange(selected.id,d,e,ep)}
               onOverflowChange={(ov) => onOverflowChange(selected.id,ov)}
               onEditExercise={(d,ex) => onEditExercise(selected.id,d,ex)}
-              onLogout={()=>{}} />
+              onLogout={()=>{}}
+              sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
+              sharedDay={sharedDay} setSharedDay={setSharedDay} />
           )}
         </div>
       </div>
