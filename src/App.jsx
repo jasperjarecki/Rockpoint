@@ -251,7 +251,8 @@ function WeekBadge({ plan }) {
 }
 
 // ── RICH TEXT EDITOR ──────────────────────────────────────────────────────────
-function renderMarkdown(text) {
+function renderMarkdown(text, textColor) {
+  const tc = textColor || C.white;
   if (!text) return null;
   const lines = text.split('\n');
   const els = [];
@@ -259,9 +260,9 @@ function renderMarkdown(text) {
   while (i < lines.length) {
     const line = lines[i];
     if (line.startsWith('# ')) {
-      els.push(<div key={i} style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color:C.white, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color:tc, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
     } else if (line.startsWith('## ')) {
-      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:C.white, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:tc, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
     } else if (line.startsWith('- ') || line.startsWith('• ')) {
       const items = [];
       while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• '))) {
@@ -1643,8 +1644,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                     <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block" }} />
                   </div>
                 )}
-                <div style={{ padding: "20px 24px", fontSize: 13, color: C.white }}>
-                  {renderMarkdown(plan.blockNotes)}
+                <div style={{ padding: "20px 24px", fontSize: 13, color: C.white, background: C.gray }}>
+                  {renderMarkdown(plan.blockNotes, C.white)}
                 </div>
               </div>
               <div style={{ padding: "14px 24px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
