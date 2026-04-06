@@ -22,10 +22,15 @@ const LIBRARY = {
 };
 const ALL_CATEGORIES = Object.keys(LIBRARY);
 
-const C = {
+const LIGHT = {
   black: "#f5f5f3", white: "#111111", orange: "#3d9e7a", purple: "#5b7fa6",
   gray: "#ffffff", gray2: "#f0efed", gray3: "#d8d8d6", muted: "#888884", border: "#e0e0de",
 };
+const DARK = {
+  black: "#111111", white: "#f0efed", orange: "#3d9e7a", purple: "#7a9fc2",
+  gray: "#1a1a1a", gray2: "#222222", gray3: "#333333", muted: "#888884", border: "#2e2e2e",
+};
+let C = { ...LIGHT };
 
 const SEED_ATHLETES = [
   { id: "a1", name: "Maya Torres", type: "Youth Comp", level: "V9" },
@@ -1407,7 +1412,7 @@ function TimerModal({ onClose }) {
 }
 
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
-function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
+function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark }) {
   const OVF = "overflow";
 
   // figure out which week to default to
@@ -1810,7 +1815,7 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
 }
 
 // ── COACH DASHBOARD ───────────────────────────────────────────────────────────
-function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved }) {
+function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
@@ -1882,6 +1887,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
           <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
           <div style={{ width: 1, height: 20, background: C.border }} />
+          <button onClick={onToggleDark} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }} title="Toggle dark mode">{darkMode ? "☀︎" : "☾"}</button>
           <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>↩</button>
         </div>
       </div>
@@ -1997,7 +2003,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               onEditExercise={(d,ex) => onEditExercise(selected.id,d,ex)}
               onLogout={()=>{}}
               sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
-              sharedDay={sharedDay} setSharedDay={setSharedDay} />
+              sharedDay={sharedDay} setSharedDay={setSharedDay}
+              darkMode={darkMode} onToggleDark={onToggleDark} />
           )}
         </div>
       </div>
@@ -2385,6 +2392,7 @@ export default function App() {
     const athlete = athletes.find(a => a.id === session.athleteId);
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
       onProgressChange={(d, e, ep) => updateProgress(session.athleteId, d, e, ep)}
+      darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
       onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
       onLogout={() => setSession(null)} />;
@@ -2404,6 +2412,7 @@ export default function App() {
     onPlanChange={updatePlan}
     onPublish={publishWeeks}
     onProgressChange={updateProgress}
+    darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
     onOverflowChange={updateOverflow}
     onEditExercise={editExercise}
     onAddAthlete={addAthlete}
