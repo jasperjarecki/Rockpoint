@@ -259,9 +259,9 @@ function renderMarkdown(text) {
   while (i < lines.length) {
     const line = lines[i];
     if (line.startsWith('# ')) {
-      els.push(<div key={i} style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color:"#111", marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color:C.white, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
     } else if (line.startsWith('## ')) {
-      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:"#111", marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:C.white, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
     } else if (line.startsWith('- ') || line.startsWith('• ')) {
       const items = [];
       while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• '))) {
@@ -890,13 +890,23 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
           <div style={{ ...bebas, fontSize: 26, letterSpacing: 1 }}>{athlete.name}</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 2 }}><Badge type={athlete.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{athlete.level}</span></div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => setShowBlockOverview(v => !v)} style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${showBlockOverview ? C.orange : C.border}`, background: showBlockOverview ? "rgba(61,158,122,0.08)" : "none", color: showBlockOverview ? C.orange : C.muted, cursor: "pointer" }}>
             {showBlockOverview ? "▲ Collapse" : "▼ View All"}
           </button>
-          <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer", letterSpacing: 0.5, fontWeight: 500 }}>
-            Publish to Athlete ↗
+          <button onClick={() => {
+            const next = window.prompt(`Set current week (1–${weeks.length}):`, currentWeekIdx != null ? currentWeekIdx + 1 : "");
+            if (next === null) return;
+            if (next.trim() === "") { onPlanChange({ ...plan, currentWeekOverride: null }); return; }
+            const idx = parseInt(next) - 1;
+            if (isNaN(idx) || idx < 0 || idx >= weeks.length) return;
+            onPlanChange({ ...plan, currentWeekOverride: idx });
+          }} style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+            {currentWeekIdx != null ? `Current: Week ${currentWeekIdx + 1}` : "Set current week"}
           </button>
+          {athlete.id !== TEMPLATE_CREATOR_ID && <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer", letterSpacing: 0.5, fontWeight: 500 }}>
+            Publish to Athlete ↗
+          </button>}
         </div>
       </div>
 
