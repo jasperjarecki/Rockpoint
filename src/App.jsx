@@ -30,7 +30,7 @@ const DARK = {
   black: "#111111", white: "#f0efed", orange: "#3d9e7a", purple: "#7a9fc2",
   gray: "#1a1a1a", gray2: "#222222", gray3: "#333333", muted: "#888884", border: "#2e2e2e",
 };
-let C = { ...LIGHT };
+let C = { ...LIGHT }; // v2 - updated each render
 
 const SEED_ATHLETES = [
   { id: "a1", name: "Maya Torres", type: "Youth Comp", level: "V9" },
@@ -2218,6 +2218,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
+  const [darkMode, setDarkMode] = useState(() => { try { return localStorage.getItem("rp_dark") === "1"; } catch(e) { return false; } });
+  C = darkMode ? DARK : LIGHT;
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState([]);
   const [plans, setPlans] = useState({});
