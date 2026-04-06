@@ -802,6 +802,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
 
   // figure out current week number for coach context
   const currentWeekIdx = (() => {
+    if (plan?.currentWeekOverride != null) return plan.currentWeekOverride;
     if (!plan?.blockStart) return null;
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd);
@@ -1423,6 +1424,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const publishedIndices = plan?.published || [];
 
   const currentWeekIdx = (() => {
+    if (plan?.currentWeekOverride != null && publishedIndices.includes(plan.currentWeekOverride)) return plan.currentWeekOverride;
     if (!plan?.blockStart || publishedIndices.length === 0) return publishedIndices[0] ?? null;
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd);
@@ -1823,6 +1825,34 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [mode, setMode] = useState("coach");
   const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
   const [sharedDay, setSharedDay] = useState(0);
+  const [planHistory, setPlanHistory] = useState({}); // athleteId -> { past: [], future: [] }
+
+  const pushHistory = (id, oldPlan) => {
+    setPlanHistory(h => {
+      const entry = h[id] || { past: [], future: [] };
+      return { ...h, [id]: { past: [...entry.past.slice(-29), oldPlan], future: [] } };
+    });
+  };
+  const undo = () => {
+    if (!selectedId) return;
+    const entry = planHistory[selectedId] || { past: [], future: [] };
+    if (!entry.past.length) return;
+    const prev = entry.past[entry.past.length - 1];
+    const current = plans[selectedId];
+    setPlanHistory(h => ({ ...h, [selectedId]: { past: entry.past.slice(0, -1), future: [current, ...entry.future.slice(0, 29)] } }));
+    onPlanChange(selectedId, prev);
+  };
+  const redo = () => {
+    if (!selectedId) return;
+    const entry = planHistory[selectedId] || { past: [], future: [] };
+    if (!entry.future.length) return;
+    const next = entry.future[0];
+    const current = plans[selectedId];
+    setPlanHistory(h => ({ ...h, [selectedId]: { past: [...entry.past.slice(-29), current], future: entry.future.slice(1) } }));
+    onPlanChange(selectedId, next);
+  };
+  const canUndo = !!(selectedId && (planHistory[selectedId]?.past?.length));
+  const canRedo = !!(selectedId && (planHistory[selectedId]?.future?.length));
   const [showAdd, setShowAdd] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "" });
@@ -1882,6 +1912,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
           {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
+          <button onClick={undo} disabled={!canUndo} title="Undo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.muted : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩</button>
+          <button onClick={redo} disabled={!canRedo} title="Redo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canRedo ? C.muted : C.gray3, cursor: canRedo ? "pointer" : "default" }}>↪</button>
           <button onClick={openPasswords} style={btnS(false)}>🔑</button>
           {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
           {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
@@ -1958,7 +1990,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <CoachPlanEditor
                 athlete={selected}
                 plan={plans[selected.id]}
-                onPlanChange={(p) => onPlanChange(selected.id, p)}
+                onPlanChange={(p) => { pushHistory(selected.id, plans[selected.id]); onPlanChange(selected.id, p); }}
                 onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
                 templates={templates}
                 onSaveTemplate={onSaveTemplate}
