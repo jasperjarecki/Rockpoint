@@ -1628,32 +1628,38 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
-        {showOverview && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-                <div>
-                  <div style={{ ...bebas, fontSize: 22, letterSpacing: 1 }}>Training Block Overview</div>
-                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{athlete.name}</div>
-                </div>
-                <button onClick={() => setShowOverview(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 20 }}>✕</button>
-              </div>
-              <div style={{ flex: 1, overflowY: "auto" }}>
-                {plan.blockImageUrl && (
-                  <div style={{ cursor: "pointer" }} onClick={() => window.open(plan.blockImageUrl, "_blank")}>
-                    <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block" }} />
+        {showOverview && (() => {
+          const modalBg = darkMode ? "#1a1a1a" : "#ffffff";
+          const modalText = darkMode ? "#f0efed" : "#111111";
+          const modalBorder = darkMode ? "#2e2e2e" : "#e0e0de";
+          const modalMuted = "#888884";
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+              <div style={{ background: modalBg, border: `1px solid ${modalBorder}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${modalBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: modalBg }}>
+                  <div>
+                    <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, color: modalText }}>Training Block Overview</div>
+                    <div style={{ ...mono, fontSize: 10, color: modalMuted, marginTop: 2 }}>{athlete.name}</div>
                   </div>
-                )}
-                <div style={{ padding: "20px 24px", fontSize: 13, color: C.white, background: C.gray }}>
-                  {renderMarkdown(plan.blockNotes, C.white)}
+                  <button onClick={() => setShowOverview(false)} style={{ background: "none", border: "none", color: modalMuted, cursor: "pointer", fontSize: 20 }}>✕</button>
                 </div>
-              </div>
-              <div style={{ padding: "14px 24px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
-                <button onClick={() => setShowOverview(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
+                <div style={{ flex: 1, overflowY: "auto", background: modalBg }}>
+                  {plan.blockImageUrl && (
+                    <div style={{ cursor: "pointer" }} onClick={() => window.open(plan.blockImageUrl, "_blank")}>
+                      <img src={plan.blockImageUrl} alt="block" style={{ width: "100%", maxHeight: 260, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block" }} />
+                    </div>
+                  )}
+                  <div style={{ padding: "20px 24px", fontSize: 13, color: modalText, background: modalBg }}>
+                    {renderMarkdown(plan.blockNotes, modalText)}
+                  </div>
+                </div>
+                <div style={{ padding: "14px 24px", borderTop: `1px solid ${modalBorder}`, flexShrink: 0, background: modalBg }}>
+                  <button onClick={() => setShowOverview(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Day tabs */}
         <div style={{ display: "flex", gap: 6, marginBottom: 6, overflowX: "auto", paddingBottom: 4 }}>
