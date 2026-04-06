@@ -104,8 +104,11 @@ _fl.rel = "stylesheet";
 _fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap";
 document.head.appendChild(_fl);
 const _gs = document.createElement("style");
-_gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'DM Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'DM Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
 document.head.appendChild(_gs);
+function updateGlobalStyles() {
+  _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'DM Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'DM Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
+}
+updateGlobalStyles();
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const TEMPLATE_CREATOR_ID = "__template_creator__";
@@ -338,7 +341,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
   );
 
   return (
-    <div style={{ border: `1px solid ${focused ? C.orange : C.border}`, borderRadius: 8, overflow: "hidden", background: "#eceae7" }}>
+    <div style={{ border: `1px solid ${focused ? C.orange : C.border}`, borderRadius: 8, overflow: "hidden", background: C.gray2 }}>
       <div style={{ display: "flex", gap: 4, padding: "6px 8px", borderBottom: `1px solid ${C.border}`, background: C.gray2, flexWrap: "wrap" }}>
         {toolBtn("B", () => wrap("**", "**"))}
         {toolBtn("I", () => wrap("*", "*"))}
@@ -365,7 +368,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "", videoUrl: ex.videoUrl || "", videoStart: ex.videoStart || "" });
   const hasOptions = ex.options && ex.options.length > 0;
   const embedUrl = parseYouTubeEmbed(ex.videoUrl, ex.videoStart);
-  const inp = { width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
+  const inp = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
 
   return (
     <div style={{ background: checked ? "rgba(61,158,122,0.06)" : isOverflow ? "rgba(91,127,166,0.07)" : C.gray, border: `1px solid ${editing ? C.orange : checked ? "rgba(61,158,122,0.4)" : isOverflow ? "rgba(91,127,166,0.25)" : C.border}`, borderRadius: 10, padding: "16px", transition: "all 0.15s" }}>
@@ -446,8 +449,8 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
       {!editing && (
         <div style={{ marginTop: 10, marginLeft: 40 }}>
           <textarea value={note} onChange={e => onNote(e.target.value, selectedOption)} placeholder="Add a note..." rows={1} className="athlete-note"
-            style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
-            onFocus={e => e.target.style.borderColor = C.orange} onBlur={e => e.target.style.borderColor = C.border} />
+            style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
+            onFocus={e => { e.target.style.borderColor = C.orange; e.target.style.background = C.gray2; }} onBlur={e => { e.target.style.borderColor = C.border; }} />
         </div>
       )}
       {/* Video modal */}
@@ -476,7 +479,7 @@ function ExercisePicker({ onAdd, onClose }) {
   const [openCat, setOpenCat] = useState(null);
   const [sets, setSets] = useState(""); const [coachNotes, setCoachNotes] = useState(""); const [selected, setSelected] = useState(null);
   const [customName, setCustomName] = useState(""); const [customCat, setCustomCat] = useState(ALL_CATEGORIES[0]); const [customSets, setCustomSets] = useState(""); const [customNotes, setCustomNotes] = useState("");
-  const inp = { width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" };
+  const inp = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" };
   const lbl = { ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 };
   const filtered = ALL_CATEGORIES.filter(cat => !search || cat.toLowerCase().includes(search.toLowerCase()) || LIBRARY[cat].some(e => e.toLowerCase().includes(search.toLowerCase())));
 
@@ -693,11 +696,11 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
-                    <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+                    <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
+                    <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                    <input value={ex.videoUrl||""} onChange={e => updateEx(ex.id,"videoUrl",e.target.value)} placeholder="YouTube URL (timestamp auto-detected)..." style={{ flex: 1, minWidth: 160, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+                    <input value={ex.videoUrl||""} onChange={e => updateEx(ex.id,"videoUrl",e.target.value)} placeholder="YouTube URL (timestamp auto-detected)..." style={{ flex: 1, minWidth: 160, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
                   </div>
                   {ex.videoUrl && parseYouTubeEmbed(ex.videoUrl, ex.videoStart) && (() => {
                     const t = parseYouTubeTimestamp(ex.videoUrl);
@@ -712,14 +715,14 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
                             <div style={{ ...mono, fontSize: 10, color: C.muted, minWidth: 16 }}>{oi + 1}.</div>
                             <input value={opt.label} onChange={e => updateOption(oi, { ...opt, label: e.target.value })} placeholder={`Option ${oi + 1} name...`}
-                              style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 12, outline: "none", fontWeight: 500 }} />
+                              style={{ flex: 1, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 12, outline: "none", fontWeight: 500 }} />
                             <button onClick={() => removeOption(oi)} style={{ background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 4px" }}>✕</button>
                           </div>
                           <div style={{ display: "flex", gap: 6, marginLeft: 22 }}>
                             <input value={opt.sets||""} onChange={e => updateOption(oi, { ...opt, sets: e.target.value })} placeholder="Sets / volume..."
-                              style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
+                              style={{ flex: 1, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
                             <input value={opt.notes||""} onChange={e => updateOption(oi, { ...opt, notes: e.target.value })} placeholder="Notes..."
-                              style={{ flex: 2, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", color: "#666", fontSize: 11, outline: "none" }} />
+                              style={{ flex: 2, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
                           </div>
                         </div>
                       ))}
@@ -950,12 +953,12 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
           <div style={{ flex: 1, minWidth: 120 }}>
             <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>START DATE</div>
             <input type="date" value={plan?.blockStart || ""} onChange={e => onPlanChange({ ...plan, blockStart: e.target.value })}
-              style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
+              style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", colorScheme: "light dark", ...mono }} />
           </div>
           <div style={{ flex: 1, minWidth: 120 }}>
             <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>END DATE</div>
             <input type="date" value={plan?.blockEnd || ""} onChange={e => onPlanChange({ ...plan, blockEnd: e.target.value })}
-              style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
+              style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", colorScheme: "light dark", ...mono }} />
           </div>
         </div>
         <RichTextEditor value={plan?.blockNotes || ""} onChange={v => onPlanChange({ ...plan, blockNotes: v })}
@@ -1080,7 +1083,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
             <input autoFocus value={templateName} onChange={e => setTemplateName(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && templateName.trim()) { handleSaveTemplate(templateName.trim(), savingTemplate.type, savingTemplate.data); setSavingTemplate(null); }}}
               placeholder={savingTemplate.type === "week" ? "e.g. Power Week, Deload..." : "e.g. Strength Day, Fitness Day..."}
-              style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", marginBottom: 16 }} />
+              style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", marginBottom: 16 }} />
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setSavingTemplate(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
               <button onClick={() => { if (!templateName.trim()) return; handleSaveTemplate(templateName.trim(), savingTemplate.type, savingTemplate.data); setSavingTemplate(null); }}
@@ -1448,7 +1451,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
         <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ ...bebas, fontSize: 20, letterSpacing: 2 }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
+          <div style={{ ...bebas, fontSize: 20, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
           <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: C.muted, padding: 24 }}>
@@ -1876,7 +1879,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.black }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
-        <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0 }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
+        <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
           {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
           <button onClick={openPasswords} style={btnS(false)}>🔑</button>
@@ -2016,12 +2019,12 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             {[{label:"Name",key:"name",ph:"Alex Torres"},{label:"Level",key:"level",ph:"V7, 5.12a..."}].map(f => (
               <div key={f.key} style={{ marginBottom: 14 }}>
                 <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>{f.label}</div>
-                <input value={newAthlete[f.key]} onChange={e => setNewAthlete(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph} style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
+                <input value={newAthlete[f.key]} onChange={e => setNewAthlete(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
               </div>
             ))}
             <div style={{ marginBottom: 18 }}>
               <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
-              <select value={newAthlete.type} onChange={e => setNewAthlete(p=>({...p,type:e.target.value}))} style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+              <select value={newAthlete.type} onChange={e => setNewAthlete(p=>({...p,type:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                 {["Youth Comp","Adult Performance","Adult Recreational"].map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
@@ -2139,9 +2142,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   {editingCoach?.id === c.id ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <input value={editingCoach.name} onChange={e => setEditingCoach(ec => ({...ec, name: e.target.value}))}
-                        style={{ background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                        style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 13, outline: "none" }} />
                       <input value={editingCoach.password} onChange={e => setEditingCoach(ec => ({...ec, password: e.target.value}))}
-                        placeholder="Password" style={{ background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                        placeholder="Password" style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 13, outline: "none" }} />
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                         <button onClick={() => setEditingCoach(null)} style={{ ...mono, fontSize: 11, padding: "6px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
                         <button onClick={() => { onUpdateCoach(editingCoach); setEditingCoach(null); }} style={{ ...mono, fontSize: 11, padding: "6px 14px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
@@ -2169,9 +2172,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Add Coach</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input value={newCoach.name} onChange={e => setNewCoach(c => ({...c, name: e.target.value}))}
-                  placeholder="Name" style={{ flex: 1, minWidth: 120, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                  placeholder="Name" style={{ flex: 1, minWidth: 120, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
                 <input value={newCoach.password} onChange={e => setNewCoach(c => ({...c, password: e.target.value}))}
-                  placeholder="Password" style={{ flex: 1, minWidth: 120, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
+                  placeholder="Password" style={{ flex: 1, minWidth: 120, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
                 <button onClick={() => {
                   if (!newCoach.name.trim() || !newCoach.password.trim()) return;
                   onAddCoach({ id: uid(), name: newCoach.name.trim(), password: newCoach.password.trim() });
@@ -2195,14 +2198,14 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             {isAdmin && (
               <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Admin Password</div>
-                <input type="text" value={draftCoachPw} onChange={e => setDraftCoachPw(e.target.value)} placeholder="Set admin password..." style={{ width: "100%", background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
+                <input type="text" value={draftCoachPw} onChange={e => setDraftCoachPw(e.target.value)} placeholder="Set admin password..." style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
               </div>
             )}
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Athlete Passwords</div>
             {athletes.map(a => (
               <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                 <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: C.white, minWidth: 100 }}>{a.name}</div>
-                <input type="text" value={draftCreds[a.id]||""} onChange={e => setDraftCreds(d=>({...d,[a.id]:e.target.value}))} placeholder="Set password..." style={{ flex: 1, background: "#eceae7", border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
+                <input type="text" value={draftCreds[a.id]||""} onChange={e => setDraftCreds(d=>({...d,[a.id]:e.target.value}))} placeholder="Set password..." style={{ flex: 1, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "7px 10px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
               </div>
             ))}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
@@ -2220,6 +2223,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => { try { return localStorage.getItem("rp_dark") === "1"; } catch(e) { return false; } });
   C = darkMode ? DARK : LIGHT;
+  updateGlobalStyles();
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState([]);
   const [plans, setPlans] = useState({});
