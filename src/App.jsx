@@ -353,7 +353,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
       <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} rows={rows}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={{ width: "100%", background: "transparent", border: "none", color: "#111", fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Mono', monospace" }} />
+        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Mono', monospace" }} />
     </div>
   );
 }
@@ -1009,6 +1009,14 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         </div>
       </div>
 
+      {/* Update */}
+      <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
+        <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Athlete Update</div>
+        <RichTextEditor value={plan?.blockUpdate || ""} onChange={v => onPlanChange({ ...plan, blockUpdate: v, blockUpdateAt: new Date().toISOString() })}
+          placeholder="Write a quick update for your athlete — schedule changes, block adjustments, etc."
+          rows={3} />
+      </div>
+
       {/* Week tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
         {weeks.map((wk, i) => {
@@ -1454,6 +1462,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const activeDay = sharedDay !== undefined ? sharedDay : _activeDay;
   const setActiveDay = setSharedDay || _setActiveDay;
   const [showOverview, setShowOverview] = useState(false);
+  const [showUpdate, setShowUpdate] = useState(false);
   const [volumeExpanded, setVolumeExpanded] = useState(true);
   const [showTimer, setShowTimer] = useState(false);
 
@@ -1557,6 +1566,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
             <div style={{ ...bebas, fontSize: 30, letterSpacing: 1 }}>{athlete.name}</div>
             {(plan.blockNotes || plan.blockImageUrl) && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer" }}>Overview ↗</button>}
+            {plan.blockUpdate && (() => {
+              const isNew = plan.blockUpdateAt && (!(progress._meta || {})._lastViewedUpdate || plan.blockUpdateAt > (progress._meta || {})._lastViewedUpdate);
+              return (
+                <button onClick={() => { setShowUpdate(true); onProgressChange("_meta", "_lastViewedUpdate", new Date().toISOString()); }}
+                  style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.purple}`, background: "rgba(91,127,166,0.08)", color: C.purple, cursor: "pointer", position: "relative", display: "flex", alignItems: "center", gap: 5 }}>
+                  Update ↗
+                  {isNew && <span style={{ background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5 }}>NEW</span>}
+                </button>
+              );
+            })()}
             <WeekBadge plan={plan} />
           </div>
           <Badge type={athlete.type} />
@@ -1655,6 +1674,34 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 </div>
                 <div style={{ padding: "14px 24px", borderTop: `1px solid ${modalBorder}`, flexShrink: 0, background: modalBg }}>
                   <button onClick={() => setShowOverview(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {showUpdate && (() => {
+          const modalBg = darkMode ? "#1a1a1a" : "#ffffff";
+          const modalText = darkMode ? "#f0efed" : "#111111";
+          const modalBorder = darkMode ? "#2e2e2e" : "#e0e0de";
+          const modalMuted = "#888884";
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+              <div style={{ background: modalBg, border: `1px solid ${modalBorder}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${modalBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: modalBg }}>
+                  <div>
+                    <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, color: modalText }}>Update</div>
+                    <div style={{ ...mono, fontSize: 10, color: modalMuted, marginTop: 2 }}>{athlete.name}</div>
+                  </div>
+                  <button onClick={() => setShowUpdate(false)} style={{ background: "none", border: "none", color: modalMuted, cursor: "pointer", fontSize: 20 }}>✕</button>
+                </div>
+                <div style={{ flex: 1, overflowY: "auto", background: modalBg }}>
+                  <div style={{ padding: "20px 24px", fontSize: 13, color: modalText, background: modalBg }}>
+                    {renderMarkdown(plan.blockUpdate, modalText)}
+                  </div>
+                </div>
+                <div style={{ padding: "14px 24px", borderTop: `1px solid ${modalBorder}`, flexShrink: 0, background: modalBg }}>
+                  <button onClick={() => setShowUpdate(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
                 </div>
               </div>
             </div>
@@ -1819,7 +1866,10 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
           ) : (
             <>
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Name (leave blank for admin)</div>
-              <input value={coachName} onChange={e => { setCoachName(e.target.value); setError(""); }} placeholder="Coach name (optional)" style={inputStyle} />
+              <select value={coachName} onChange={e => { setCoachName(e.target.value); setError(""); }} style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none", cursor: "pointer" }}>
+                <option value="">— Admin —</option>
+                {coaches.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Password</div>
               <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleCoachLogin()} placeholder="Enter password" style={inputStyle} />
             </>
