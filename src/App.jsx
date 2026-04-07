@@ -3076,14 +3076,12 @@ export default function App() {
         for (const [id, plan] of Object.entries(SEED_PLANS)) await dbUpsertPlan(id, plan);
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
-      // ensure test001 exists
-      if (!ath.find(a => a.id === "test001")) {
-        const testAthlete = { id: "test001", name: "Test Athlete", type: "Adult Performance", level: "V8-V10", coach_id: "admin" };
-        await dbUpsertAthlete(testAthlete);
-        await dbUpsertPlan("test001", TEST_ATHLETE_PLAN);
-        ath = [...ath, testAthlete];
-        pln = { ...pln, "test001": TEST_ATHLETE_PLAN };
-      }
+      // ensure test001 exists with full plan
+      const testAthlete = { id: "test001", name: "Test Athlete", type: "Adult Performance", level: "V8-V10", coach_id: "admin" };
+      await dbUpsertAthlete(testAthlete);
+      await dbUpsertPlan("test001", TEST_ATHLETE_PLAN);
+      if (!ath.find(a => a.id === "test001")) ath = [...ath, testAthlete];
+      pln = { ...pln, "test001": TEST_ATHLETE_PLAN };
       setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
       // ensure template creator has a plan
       if (!pln[TEMPLATE_CREATOR_ID]) {
