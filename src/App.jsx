@@ -572,7 +572,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
   const updateDay = (i, exs) => onDaysChange(days.map((d, j) => j===i ? {...d, exercises: exs} : d));
   const renameDay = (i, l) => onDaysChange(days.map((d, j) => j===i ? {...d, label: l} : d));
   const addDay = () => { const nd = [...days, {label:`Day ${days.length+1}`, exercises:[]}]; onDaysChange(nd); setActiveDay(nd.length-1); };
-  const removeDay = (i) => { if(days.length<=1) return; const nd=days.filter((_,j)=>j!==i); onDaysChange(nd); setActiveDay(Math.min(activeDay, nd.length-1)); };
+  const removeDay = (i) => { console.log('[removeDay] called i='+i+' days.length='+days.length+' activeDay='+activeDay); if(days.length<=1) { console.log('[removeDay] blocked: only 1 day'); return; } const nd=days.filter((_,j)=>j!==i); console.log('[removeDay] nd.length='+nd.length); onDaysChange(nd); setActiveDay(Math.min(activeDay, nd.length-1)); };
   const moveDay = (i, dir) => {
     const j = i + dir;
     if (j < 0 || j >= days.length) return;
@@ -2360,6 +2360,7 @@ export default function App() {
     setPlans(prev => {
       const existing = prev[id];
       // safety: never allow a save that would reduce week count below existing
+      console.log('[updatePlan] existing.weeks='+existing?.weeks?.length+' plan.weeks='+plan?.weeks?.length);
       if (existing?.weeks?.length && plan?.weeks?.length && plan.weeks.length < existing.weeks.length) {
         console.warn('Blocked plan save: would reduce weeks from', existing.weeks.length, 'to', plan.weeks.length);
         return prev;
