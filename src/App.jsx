@@ -272,6 +272,15 @@ function renderMarkdown(text, textColor) {
       }
       els.push(<ul key={'ul'+i} style={{ paddingLeft: 18, marginBottom: 8, marginTop: 2 }}>{items}</ul>);
       continue;
+    } else if (/^\d+\. /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) {
+        const content = lines[i].replace(/^\d+\. /, '');
+        items.push(<li key={i} style={{ marginBottom: 3 }}>{inlineFormat(content)}</li>);
+        i++;
+      }
+      els.push(<ol key={'ol'+i} style={{ paddingLeft: 20, marginBottom: 8, marginTop: 2 }}>{items}</ol>);
+      continue;
     } else if (line.trim() === '') {
       els.push(<div key={i} style={{ height: 6 }} />);
     } else {
@@ -337,6 +346,16 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
     setTimeout(() => { el.focus(); el.selectionStart = el.selectionEnd = start + 2; }, 0);
   };
 
+  const insertNumbered = () => {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const newVal = value.slice(0, lineStart) + '1. ' + value.slice(lineStart);
+    onChange(newVal);
+    setTimeout(() => { el.focus(); el.selectionStart = el.selectionEnd = start + 3; }, 0);
+  };
+
   const toolBtn = (label, action) => (
     <button key={label} onMouseDown={e => { e.preventDefault(); action(); }}
       style={{ ...mono, fontSize: 11, padding: "4px 9px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.gray, color: C.white, cursor: "pointer", fontWeight: label==="B"?700:"normal", fontStyle: label==="I"?"italic":"normal" }}>{label}</button>
@@ -350,6 +369,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
         {toolBtn("H1", () => wrap("# ", ""))}
         {toolBtn("H2", () => wrap("## ", ""))}
         {toolBtn("•", insertBullet)}
+        {toolBtn("1.", insertNumbered)}
       </div>
       <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} rows={rows}
@@ -383,7 +403,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <input value={draft.text} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} autoFocus style={{ ...inp, fontSize: 14, fontWeight: 500 }} />
               <input value={draft.sets} onChange={e => setDraft(d => ({ ...d, sets: e.target.value }))} placeholder="Sets / volume" style={inp} />
-              <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Coach notes..." style={inp} />
+              <RichTextEditor value={draft.notes} onChange={v => setDraft(d => ({ ...d, notes: v }))} placeholder="Coach notes..." rows={3} />
               <input value={draft.videoUrl||""} onChange={e => setDraft(d => ({ ...d, videoUrl: e.target.value }))} placeholder="YouTube URL (timestamp auto-detected from URL)..." style={inp} />
               <select value={ALL_CATEGORIES.includes(draft.category) ? draft.category : "Other"} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))} style={{ ...inp, color: C.muted }}>
                 {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -408,7 +428,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {sourceDayLabel && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
                 {alsoOnLabels && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {alsoOnLabels}</span>}
               </div>
-              {ex.notes && <div style={{ ...mono, fontSize: 12, color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>{ex.notes}</div>}
+              {ex.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{renderMarkdown(ex.notes, C.muted)}</div>}
               {alsoOnLabels && !checked && (
                 <button onClick={(e) => { e.stopPropagation(); onNote(note, selectedOption, true); }}
                   style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, ...mono, fontSize: 11, padding: "7px 12px", borderRadius: 6, border: `1px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.3)"}`, background: deferToOtherDay ? "rgba(91,127,166,0.1)" : "transparent", color: deferToOtherDay ? C.purple : C.muted, cursor: "pointer", textAlign: "left", width: "100%" }}>
@@ -697,9 +717,9 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                         style={{ ...mono, fontSize: 10, color: C.muted, background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, outline: "none", padding: "1px 0", width: 120 }} />
                     )}
                   </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ flex: 1, minWidth: 80, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none" }} />
-                    <input value={ex.notes||""} onChange={e => updateEx(ex.id,"notes",e.target.value)} placeholder="Coach notes..." style={{ flex: 2, minWidth: 100, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
+                  <div style={{ marginTop: 8 }}>
+                    <input value={ex.sets||""} onChange={e => updateEx(ex.id,"sets",e.target.value)} placeholder="Sets / volume" style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.orange, fontSize: 11, ...mono, outline: "none", marginBottom: 6 }} />
+                    <RichTextEditor value={ex.notes||""} onChange={v => updateEx(ex.id,"notes",v)} placeholder="Coach notes (bold, bullets, numbered lists supported)..." rows={2} />
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                     <input value={ex.videoUrl||""} onChange={e => updateEx(ex.id,"videoUrl",e.target.value)} placeholder="YouTube URL (timestamp auto-detected)..." style={{ flex: 1, minWidth: 160, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
