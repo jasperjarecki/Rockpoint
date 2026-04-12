@@ -1868,7 +1868,7 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
             <>
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Name (leave blank for admin)</div>
               <select value={coachName} onChange={e => { setCoachName(e.target.value); setError(""); }} style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none", cursor: "pointer" }}>
-                <option value="">— Admin —</option>
+                <option value="">— Jasper (Admin) —</option>
                 {coaches.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Password</div>
