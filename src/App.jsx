@@ -1465,7 +1465,7 @@ function FatigueLog({ athlete, isCoach = false }) {
   const [showForm, setShowForm] = useState(false);
   const [chartView, setChartView] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ summary: "", sleep: "", load: "", strong: "", tweaks: "" });
+  const [form, setForm] = useState({ date: today, summary: "", sleep: "", load: "", strong: "", tweaks: "" });
   const [editingId, setEditingId] = useState(null);
 
   const todayLog = logs.find(l => l.date === today);
@@ -1480,10 +1480,10 @@ function FatigueLog({ athlete, isCoach = false }) {
 
   const openForm = (log = null) => {
     if (log) {
-      setForm({ summary: log.summary || "", sleep: log.sleep ?? "", load: log.load ?? "", strong: log.strong ?? "", tweaks: log.tweaks || "" });
+      setForm({ date: log.date, summary: log.summary || "", sleep: log.sleep ?? "", load: log.load ?? "", strong: log.strong ?? "", tweaks: log.tweaks || "" });
       setEditingId(log.id);
     } else {
-      setForm({ summary: "", sleep: "", load: "", strong: "", tweaks: "" });
+      setForm({ date: today, summary: "", sleep: "", load: "", strong: "", tweaks: "" });
       setEditingId(null);
     }
     setShowForm(true);
@@ -1492,7 +1492,7 @@ function FatigueLog({ athlete, isCoach = false }) {
   const save = async () => {
     if (!form.sleep || form.load === "" || !form.strong) return;
     setSaving(true);
-    const payload = { athlete_id: athlete.id, date: today, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: parseInt(form.strong), tweaks: form.tweaks };
+    const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: parseInt(form.strong), tweaks: form.tweaks };
     const result = editingId
       ? await sb.from("fatigue_logs").update(payload).eq("id", editingId).select().single()
       : await sb.from("fatigue_logs").insert(payload).select().single();
@@ -1514,7 +1514,7 @@ function FatigueLog({ athlete, isCoach = false }) {
   const strongColor = (v) => v === 1 ? C.muted : v === 2 ? C.orange : "#3d9e7a";
   const sleepColor = (v) => v >= 7.5 ? "#3d9e7a" : v >= 6 ? C.orange : "#c0392b";
 
-  const ChartSection = () => {
+  const renderChart = () => {
     const recent = [...withMetrics].reverse().slice(-30);
     if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet.</div>;
     const chartH = 72;
@@ -1612,6 +1612,21 @@ function FatigueLog({ athlete, isCoach = false }) {
           <div style={{ ...bebas, fontSize: 16, marginBottom: 16, color: C.orange }}>TODAY'S CHECK-IN</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
+              <Lbl text="Date" />
+              <div style={{ display: "flex", gap: 8 }}>
+                {[today, (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })(), (() => { const d = new Date(); d.setDate(d.getDate()-2); return d.toISOString().slice(0,10); })()].map(dt => {
+                  const label = dt === today ? "Today" : dt === (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })() ? "Yesterday" : "2 days ago";
+                  const alreadyLogged = logs.some(l => l.date === dt && l.id !== editingId);
+                  return (
+                    <button key={dt} onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, date: dt })); }}
+                      style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 5, border: `1px solid ${form.date === dt ? C.orange : C.border}`, background: form.date === dt ? "rgba(61,158,122,0.1)" : C.gray2, color: form.date === dt ? C.orange : alreadyLogged ? C.muted : C.white, cursor: "pointer" }}>
+                      {label}{alreadyLogged ? " ✓" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
               <Lbl text="What did you do today?" />
               <input value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} placeholder="As few words as possible, just get it on the page" style={inp} />
             </div>
@@ -1653,7 +1668,7 @@ function FatigueLog({ athlete, isCoach = false }) {
       {loading ? (
         <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>
       ) : chartView && !isCoach ? (
-        <ChartSection />
+        <>{renderChart()}</>
       ) : (
         <div>
           {withMetrics.length === 0 && !showForm && (
