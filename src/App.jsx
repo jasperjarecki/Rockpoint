@@ -1517,7 +1517,9 @@ function FatigueLog({ athlete, isCoach = false }) {
   const renderChart = () => {
     // logs is newest-first; reverse to chronological, take last 30
     const recent = [...withMetrics].reverse().slice(0, 30);
-    if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet.</div>;
+    if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet. ({withMetrics.length} total logs loaded)</div>;
+    // Debug: show raw counts
+    console.log('[chart] recent.length='+recent.length+' first='+JSON.stringify(recent[0]));
     const chartH = 72;
     const barW = Math.max(6, Math.floor(260 / recent.length) - 2);
     return (
