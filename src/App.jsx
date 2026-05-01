@@ -1456,6 +1456,216 @@ function TimerModal({ onClose }) {
 }
 
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
+
+// ─── Fatigue Log ─────────────────────────────────────────────────────────────
+function FatigueLog({ athlete, isCoach = false }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [chartView, setChartView] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ summary: "", sleep: "", load: "", strong: "", tweaks: "" });
+  const [editingId, setEditingId] = useState(null);
+
+  const todayLog = logs.find(l => l.date === today);
+
+  useEffect(() => {
+    if (!athlete?.id) return;
+    setLoading(true);
+    sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id)
+      .order("date", { ascending: false }).limit(90)
+      .then(({ data }) => { setLogs(data || []); setLoading(false); });
+  }, [athlete?.id]);
+
+  const openForm = (log = null) => {
+    if (log) {
+      setForm({ summary: log.summary || "", sleep: log.sleep ?? "", load: log.load ?? "", strong: log.strong ?? "", tweaks: log.tweaks || "" });
+      setEditingId(log.id);
+    } else {
+      setForm({ summary: "", sleep: "", load: "", strong: "", tweaks: "" });
+      setEditingId(null);
+    }
+    setShowForm(true);
+  };
+
+  const save = async () => {
+    if (!form.sleep || form.load === "" || !form.strong) return;
+    setSaving(true);
+    const payload = { athlete_id: athlete.id, date: today, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: parseInt(form.strong), tweaks: form.tweaks };
+    const result = editingId
+      ? await sb.from("fatigue_logs").update(payload).eq("id", editingId).select().single()
+      : await sb.from("fatigue_logs").insert(payload).select().single();
+    if (result.data) {
+      setLogs(prev => [result.data, ...prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
+    }
+    setSaving(false);
+    setShowForm(false);
+  };
+
+  const withMetrics = logs.map((log, i) => {
+    const slice = logs.slice(i, i + 7);
+    const avgSleep = slice.reduce((s, l) => s + (l.sleep || 0), 0) / slice.length;
+    const weekLoad = slice.reduce((s, l) => s + (l.load || 0), 0);
+    return { ...log, avgSleep: Math.round(avgSleep * 10) / 10, weekLoad };
+  });
+
+  const loadColor = (v) => v <= 1 ? "#5b7fa6" : v === 2 ? C.orange : v === 3 ? "#e07a3a" : "#c0392b";
+  const strongColor = (v) => v === 1 ? C.muted : v === 2 ? C.orange : "#3d9e7a";
+  const sleepColor = (v) => v >= 7.5 ? "#3d9e7a" : v >= 6 ? C.orange : "#c0392b";
+
+  const ChartSection = () => {
+    const recent = [...withMetrics].reverse().slice(-30);
+    if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet.</div>;
+    const chartH = 72;
+    const barW = Math.max(6, Math.floor(260 / recent.length) - 2);
+    const Bar = ({ val, max, color, label }) => (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+        <div style={{ ...mono, fontSize: 8, color }}>{val}</div>
+        <div style={{ width: barW, height: chartH, display: "flex", alignItems: "flex-end" }}>
+          <div style={{ width: "100%", height: `${Math.max(2, (val / max) * 100)}%`, background: color, borderRadius: "2px 2px 0 0" }} />
+        </div>
+        <div style={{ ...mono, fontSize: 7, color: C.muted, writingMode: "vertical-rl", transform: "rotate(180deg)", height: 26, overflow: "hidden" }}>{label}</div>
+      </div>
+    );
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {[{ key: "sleep", label: "Sleep", max: 10, color: "#5b7fa6" }, { key: "load", label: "Load", max: 4, color: C.orange }, { key: "strong", label: "Strong", max: 3, color: "#3d9e7a" }].map(({ key, label, max, color }) => (
+          <div key={key}>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{label}</div>
+            <div style={{ display: "flex", gap: 2, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
+              {recent.map((log, i) => <Bar key={i} val={log[key] ?? 0} max={max} color={color} label={log.date.slice(5)} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const LogRow = ({ log }) => {
+    const d = new Date(log.date + "T12:00:00");
+    const dayLabel = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const isToday = log.date === today;
+    return (
+      <div style={{ background: C.gray2, border: `1px solid ${isToday ? C.orange : C.border}`, borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ ...mono, fontSize: 10, color: isToday ? C.orange : C.muted }}>{dayLabel}</span>
+            {isToday && <span style={{ ...mono, fontSize: 8, color: C.orange, background: "rgba(61,158,122,0.12)", padding: "1px 6px", borderRadius: 3 }}>TODAY</span>}
+          </div>
+          {(isToday || isCoach) && (
+            <button onMouseDown={e => { e.preventDefault(); openForm(log); }}
+              style={{ ...mono, fontSize: 9, padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>edit</button>
+          )}
+        </div>
+        {log.summary && <div style={{ fontSize: 13, color: C.white, marginBottom: 8 }}>{log.summary}</div>}
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+          {[["SLEEP", (log.sleep ?? "—") + (log.sleep != null ? "h" : ""), sleepColor(log.sleep)], ["LOAD", log.load ?? "—", loadColor(log.load)], ["STRONG", log.strong ?? "—", strongColor(log.strong)]].map(([lbl, val, col]) => (
+            <div key={lbl}>
+              <div style={{ ...mono, fontSize: 9, color: C.muted }}>{lbl}</div>
+              <div style={{ ...mono, fontSize: 18, color: col, lineHeight: 1.2 }}>{val}</div>
+            </div>
+          ))}
+          {log.tweaks && (
+            <div style={{ flex: 1, minWidth: 100 }}>
+              <div style={{ ...mono, fontSize: 9, color: "#c0392b" }}>TWEAKS</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{log.tweaks}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const inp = { background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const Hint = ({ text }) => <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>{text}</div>;
+  const Lbl = ({ text }) => <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>{text}</div>;
+  const ScaleBtn = ({ val, current, color, onPick }) => (
+    <button onMouseDown={e => { e.preventDefault(); onPick(val); }}
+      style={{ ...mono, fontSize: 14, width: 46, height: 46, borderRadius: 6, border: `1px solid ${current == val ? color : C.border}`, background: current == val ? color + "22" : C.gray2, color: current == val ? color : C.muted, cursor: "pointer", fontWeight: current == val ? 700 : 400 }}>
+      {val}
+    </button>
+  );
+
+  return (
+    <div style={{ paddingTop: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>VOLUME TRACKING</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {!isCoach && (
+            <button onMouseDown={e => { e.preventDefault(); setChartView(v => !v); }}
+              style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${chartView ? C.orange : C.border}`, background: chartView ? "rgba(61,158,122,0.1)" : "none", color: chartView ? C.orange : C.muted, cursor: "pointer" }}>
+              {chartView ? "Log" : "Chart"}
+            </button>
+          )}
+          {!isCoach && !showForm && (
+            <button onMouseDown={e => { e.preventDefault(); openForm(todayLog || null); }}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: todayLog ? `1px solid ${C.orange}` : "none", background: todayLog ? "none" : C.orange, color: todayLog ? C.orange : "#fff", cursor: "pointer" }}>
+              {todayLog ? "Edit Today" : "+ Log Today"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showForm && (
+        <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
+          <div style={{ ...bebas, fontSize: 16, marginBottom: 16, color: C.orange }}>TODAY'S CHECK-IN</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <Lbl text="What did you do today?" />
+              <input value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} placeholder="As few words as possible, just get it on the page" style={inp} />
+            </div>
+            <div>
+              <Lbl text="Sleep" />
+              <input value={form.sleep} onChange={e => setForm(f => ({ ...f, sleep: e.target.value }))} placeholder="Hours" type="number" step="0.5" min="0" max="14" style={{ ...inp, width: 100 }} />
+              <Hint text="Take hours asleep, subtract 0.5 for bad sleep, subtract 1 for really bad. Don't overthink it." />
+            </div>
+            <div>
+              <Lbl text="Load" />
+              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                {[0,1,2,3,4].map(v => <ScaleBtn key={v} val={v} current={form.load} color={loadColor(v)} onPick={v => setForm(f => ({ ...f, load: v }))} />)}
+              </div>
+              <Hint text="0 = rest  ·  1 = light (walk, fingerboard only)  ·  2 = climbing session, real work  ·  3 = big session, soreness, high volume  ·  4 = huge mission (multipitch + approach)" />
+            </div>
+            <div>
+              <Lbl text="Strong?" />
+              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                {[1,2,3].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v }))} />)}
+              </div>
+              <Hint text="1 = felt weak, slow, heavy  ·  2 = standard day  ·  3 = felt really great" />
+            </div>
+            <div>
+              <Lbl text="Any tweaks?" />
+              <input value={form.tweaks} onChange={e => setForm(f => ({ ...f, tweaks: e.target.value }))} placeholder="Anything bugging you? (optional)" style={inp} />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button onMouseDown={e => { e.preventDefault(); save(); }} disabled={saving}
+                style={{ ...mono, fontSize: 11, padding: "9px 20px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button onMouseDown={e => { e.preventDefault(); setShowForm(false); }}
+                style={{ ...mono, fontSize: 11, padding: "9px 16px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>
+      ) : chartView && !isCoach ? (
+        <ChartSection />
+      ) : (
+        <div>
+          {withMetrics.length === 0 && !showForm && (
+            <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 32 }}>No entries yet. Tap "+ Log Today" to start.</div>
+          )}
+          {withMetrics.map(log => <LogRow key={log.id} log={log} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark }) {
   const OVF = "overflow";
 
@@ -1573,6 +1783,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     onProgressChange(key, ex.id, update);
   };
 
+  const [athleteTab, setAthleteTab] = useState("plan");
+
   return (
     <div style={{ minHeight: "100vh", background: C.black, display: "flex", flexDirection: "column" }}>
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -1580,7 +1792,17 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
-
+      <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, display: "flex", flexShrink: 0 }}>
+        {[["plan","Plan"],["fatigue","Volume"]].map(([k,l]) => (
+          <button key={k} onClick={() => setAthleteTab(k)}
+            style={{ ...mono, fontSize: 11, padding: "10px 20px", background: "none", border: "none", borderBottom: `2px solid ${athleteTab===k?C.orange:"transparent"}`, color: athleteTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
+        ))}
+      </div>
+      {athleteTab === "fatigue" ? (
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
+          <FatigueLog athlete={athlete} isCoach={false} />
+        </div>
+      ) : <>
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
         {/* Athlete name + badges */}
         <div style={{ marginBottom: 16 }}>
@@ -1830,6 +2052,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         )}
       </div>
       {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
+      </>}
     </div>
   );
 }
@@ -2009,6 +2232,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
           <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
+          <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={onToggleDark} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }} title="Toggle dark mode">{darkMode ? "☀︎" : "☾"}</button>
           <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>↩</button>
@@ -2118,6 +2342,10 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   </div>
                 );
               })()}
+            </div>
+          ) : mode === "fatigue" ? (
+            <div style={{ padding: "0 24px 40px", maxWidth: 700, margin: "0 auto", width: "100%" }}>
+              <FatigueLog athlete={selected} isCoach={true} />
             </div>
           ) : (
             <AthleteView athlete={selected} plan={plans[selected.id]} progress={progress[selected.id]||{}}
