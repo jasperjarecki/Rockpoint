@@ -1473,9 +1473,10 @@ function FatigueLog({ athlete, isCoach = false }) {
   useEffect(() => {
     if (!athlete?.id) return;
     setLoading(true);
+    console.log('[fatigue] fetching for athlete.id='+athlete.id);
     sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id)
       .order("date", { ascending: false }).limit(90)
-      .then(({ data }) => { setLogs(data || []); setLoading(false); });
+      .then(({ data, error }) => { console.log('[fatigue] rows='+( data && data.length)+' error='+JSON.stringify(error)); setLogs(data || []); setLoading(false); });
   }, [athlete?.id]);
 
   const openForm = (log = null) => {
