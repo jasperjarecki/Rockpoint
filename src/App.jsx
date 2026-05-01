@@ -1515,26 +1515,26 @@ function FatigueLog({ athlete, isCoach = false }) {
   const sleepColor = (v) => v >= 7.5 ? "#3d9e7a" : v >= 6 ? C.orange : "#c0392b";
 
   const renderChart = () => {
-    const recent = [...withMetrics].reverse().slice(-30);
+    // logs is newest-first; reverse to chronological, take last 30
+    const recent = [...withMetrics].reverse().slice(0, 30);
     if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet.</div>;
     const chartH = 72;
     const barW = Math.max(6, Math.floor(260 / recent.length) - 2);
-    const Bar = ({ val, max, color, label }) => (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-        <div style={{ ...mono, fontSize: 8, color }}>{val}</div>
-        <div style={{ width: barW, height: chartH, display: "flex", alignItems: "flex-end" }}>
-          <div style={{ width: "100%", height: `${Math.max(2, (val / max) * 100)}%`, background: color, borderRadius: "2px 2px 0 0" }} />
-        </div>
-        <div style={{ ...mono, fontSize: 7, color: C.muted, writingMode: "vertical-rl", transform: "rotate(180deg)", height: 26, overflow: "hidden" }}>{label}</div>
-      </div>
-    );
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         {[{ key: "sleep", label: "Sleep", max: 10, color: "#5b7fa6" }, { key: "load", label: "Load", max: 4, color: C.orange }, { key: "strong", label: "Strong", max: 3, color: "#3d9e7a" }].map(({ key, label, max, color }) => (
           <div key={key}>
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{label}</div>
             <div style={{ display: "flex", gap: 2, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
-              {recent.map((log, i) => <Bar key={i} val={log[key] ?? 0} max={max} color={color} label={log.date.slice(5)} />)}
+              {recent.map((log, i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <div style={{ ...mono, fontSize: 8, color }}>{log[key] ?? 0}</div>
+                  <div style={{ width: barW, height: chartH, display: "flex", alignItems: "flex-end" }}>
+                    <div style={{ width: "100%", height: `${Math.max(3, ((log[key] ?? 0) / max) * 100)}%`, background: color, borderRadius: "2px 2px 0 0" }} />
+                  </div>
+                  <div style={{ ...mono, fontSize: 7, color: C.muted, writingMode: "vertical-rl", transform: "rotate(180deg)", height: 26, overflow: "hidden" }}>{log.date.slice(5)}</div>
+                </div>
+              ))}
             </div>
           </div>
         ))}
