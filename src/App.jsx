@@ -1815,6 +1815,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   };
 
   const [athleteTab, setAthleteTab] = useState("plan");
+  // Force non-Jasper athletes off the fatigue tab
+  const safeAthleteTab = (athlete?.id === "bzmmql6") ? athleteTab : "plan";
 
   return (
     <div style={{ minHeight: "100vh", background: C.black, display: "flex", flexDirection: "column" }}>
@@ -1829,7 +1831,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             style={{ ...mono, fontSize: 11, padding: "10px 20px", background: "none", border: "none", borderBottom: `2px solid ${athleteTab===k?C.orange:"transparent"}`, color: athleteTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
         ))}
       </div>
-      {athleteTab === "fatigue" ? (
+      {safeAthleteTab === "fatigue" ? (
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
           <FatigueLog athlete={athlete} isCoach={false} />
         </div>
@@ -2263,7 +2265,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
           <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
-          <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>
+          {selectedId === "bzmmql6" && <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>}
           <div style={{ width: 1, height: 20, background: C.border }} />
           <button onClick={onToggleDark} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }} title="Toggle dark mode">{darkMode ? "☀︎" : "☾"}</button>
           <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>↩</button>
