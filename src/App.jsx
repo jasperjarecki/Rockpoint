@@ -130,6 +130,18 @@ function parseYouTubeEmbed(url, startSecs) {
   const start = parseInt(startSecs) || parseYouTubeTimestamp(url);
   return `https://www.youtube.com/embed/${id}${start > 0 ? `?start=${start}` : ""}`;
 }
+function getVideoMeta(url) {
+  if (!url) return null;
+  // YouTube
+  const embedUrl = parseYouTubeEmbed(url);
+  if (embedUrl) return { type: 'embed', url: embedUrl };
+  // Google Drive: convert /view or /edit to /preview for iframe embedding
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveMatch) return { type: 'embed', url: `https://drive.google.com/file/d/${driveMatch[1]}/preview` };
+  // Any other URL — open in new tab
+  try { new URL(url); return { type: 'link', url }; } catch(e) { return null; }
+}
+
 const mono = { fontFamily: "'DM Mono', monospace" };
 const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
 
@@ -395,7 +407,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   const [showVideo, setShowVideo] = useState(false);
   const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "", videoUrl: ex.videoUrl || "", videoStart: ex.videoStart || "" });
   const hasOptions = ex.options && ex.options.length > 0;
-  const embedUrl = parseYouTubeEmbed(ex.videoUrl, ex.videoStart);
+  const videoMeta = getVideoMeta(ex.videoUrl);
   const inp = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
 
   return (
@@ -410,7 +422,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <input value={draft.text} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} autoFocus style={{ ...inp, fontSize: 14, fontWeight: 500 }} />
               <input value={draft.sets} onChange={e => setDraft(d => ({ ...d, sets: e.target.value }))} placeholder="Sets / volume" style={inp} />
               <RichTextEditor value={draft.notes} onChange={v => setDraft(d => ({ ...d, notes: v }))} placeholder="Coach notes..." rows={3} />
-              <input value={draft.videoUrl||""} onChange={e => setDraft(d => ({ ...d, videoUrl: e.target.value }))} placeholder="YouTube URL (timestamp auto-detected from URL)..." style={inp} />
+              <input value={draft.videoUrl||""} onChange={e => setDraft(d => ({ ...d, videoUrl: e.target.value }))} placeholder="Video URL (YouTube, Google Drive, etc.)..." style={inp} />
               <select value={ALL_CATEGORIES.includes(draft.category) ? draft.category : "Other"} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))} style={{ ...inp, color: C.muted }}>
                 {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -423,8 +435,8 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                 <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.white, textDecoration: checked ? "line-through" : "none", lineHeight: 1.4 }}>{ex.text}</div>
-                {embedUrl && !editing && (
-                  <button onClick={() => setShowVideo(true)} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid #c0392b`, background: "rgba(192,57,43,0.08)", color: "#c0392b", cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 0.5 }}>▶ Demo</button>
+                {videoMeta && !editing && (
+                  <button onClick={() => videoMeta.type === 'embed' ? setShowVideo(true) : window.open(videoMeta.url, '_blank')} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid #c0392b`, background: "rgba(192,57,43,0.08)", color: "#c0392b", cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 0.5 }}>▶ Demo</button>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
@@ -482,7 +494,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
         </div>
       )}
       {/* Video modal */}
-      {showVideo && embedUrl && (
+      {showVideo && videoMeta?.type === 'embed' && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 700, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ width: "100%", maxWidth: 560 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -490,7 +502,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <button onClick={() => setShowVideo(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 24, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 10, overflow: "hidden", background: "#000" }}>
-              <iframe src={embedUrl} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+              <iframe src={videoMeta.url} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
             </div>
             <button onClick={() => setShowVideo(false)} style={{ ...mono, marginTop: 14, width: "100%", padding: "11px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: 12 }}>Close</button>
           </div>
@@ -728,9 +740,9 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                     <RichTextEditor value={ex.notes||""} onChange={v => updateEx(ex.id,"notes",v)} placeholder="Coach notes (bold, bullets, numbered lists supported)..." rows={2} />
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                    <input value={ex.videoUrl||""} onChange={e => updateEx(ex.id,"videoUrl",e.target.value)} placeholder="YouTube URL (timestamp auto-detected)..." style={{ flex: 1, minWidth: 160, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
+                    <input value={ex.videoUrl||""} onChange={e => updateEx(ex.id,"videoUrl",e.target.value)} placeholder="Video URL (YouTube, Google Drive, etc.)..." style={{ flex: 1, minWidth: 160, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.muted, fontSize: 11, outline: "none" }} />
                   </div>
-                  {ex.videoUrl && parseYouTubeEmbed(ex.videoUrl, ex.videoStart) && (() => {
+                  {ex.videoUrl && getVideoMeta(ex.videoUrl) && (() => {
                     const t = parseYouTubeTimestamp(ex.videoUrl);
                     return <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 4 }}>✓ Demo video set{t > 0 ? ` · starts at ${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}` : ""}</div>;
                   })()}
