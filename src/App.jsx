@@ -1699,14 +1699,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const publishedIndices = plan?.published || [];
 
   const currentWeekIdx = (() => {
-    if (plan?.currentWeekOverride != null && publishedIndices.includes(plan.currentWeekOverride)) return plan.currentWeekOverride;
     if (!plan?.blockStart || publishedIndices.length === 0) return publishedIndices[0] ?? null;
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd);
     const now = new Date(); now.setHours(0,0,0,0);
     if (now < start) return publishedIndices[0];
-    const weekNum = Math.floor((now - start) / (7*24*60*60*1000));
-    // find the published week closest to current
+    let weekNum = Math.floor((now - start) / (7*24*60*60*1000));
+    // If override is set (stored as a date string), compute current week relative to that anchor
+    if (plan?.currentWeekOverride != null && typeof plan.currentWeekOverride === 'string' && plan.currentWeekOverride.includes('-')) {
+      const [oy, om, od] = plan.currentWeekOverride.split("-").map(Number);
+      const overrideStart = new Date(oy, om - 1, od);
+      const overrideIdx = Math.round((overrideStart - start) / (7*24*60*60*1000));
+      const weeksSinceOverride = Math.floor((now - overrideStart) / (7*24*60*60*1000));
+      weekNum = Math.min(Math.max(0, overrideIdx + weeksSinceOverride), (plan.weeks?.length ?? 1) - 1);
+    }
     const closest = publishedIndices.reduce((best, idx) => Math.abs(idx - weekNum) < Math.abs(best - weekNum) ? idx : best, publishedIndices[0]);
     return closest;
   })();
@@ -1818,7 +1824,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, display: "flex", flexShrink: 0 }}>
-        {[["plan","Plan"],["fatigue","Volume"]].map(([k,l]) => (
+        {[["plan","Plan"], ...(athlete?.id === "bzmmql6" ? [["fatigue","Volume"]] : [])].map(([k,l]) => (
           <button key={k} onClick={() => setAthleteTab(k)}
             style={{ ...mono, fontSize: 11, padding: "10px 20px", background: "none", border: "none", borderBottom: `2px solid ${athleteTab===k?C.orange:"transparent"}`, color: athleteTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
         ))}
