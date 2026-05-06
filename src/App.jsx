@@ -2121,33 +2121,33 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
       <div style={{ width: "100%", maxWidth: 380 }}>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ ...bebas, fontSize: 38, letterSpacing: 3 }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
-          <div style={{ ...mono, fontSize: 11, color: C.muted, marginTop: 4, letterSpacing: 1 }}>TRAINING PORTAL</div>
+
         </div>
         <div style={{ display: "flex", background: C.gray2, borderRadius: 10, padding: 4, marginBottom: 24 }}>
           {[["athlete","Athlete"],["coach","Coach"]].map(([key,label]) => (
             <button key={key} onClick={() => { setTab(key); setPassword(""); setError(""); setSelectedAthlete(""); setCoachName(""); }}
-              style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", cursor: "pointer", background: tab===key?C.gray:"transparent", color: tab===key?C.white:C.muted, ...mono, fontSize: 12 }}>{label}</button>
+              style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", cursor: "pointer", background: tab===key?C.gray:"transparent", color: tab===key?C.white:C.muted, fontSize: 13, fontWeight: tab===key?500:400 }}>{label}</button>
           ))}
         </div>
         <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24 }}>
           {tab === "athlete" ? (
             <>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Your Name</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Your Name</div>
               <select value={selectedAthlete} onChange={e => { setSelectedAthlete(e.target.value); setError(""); }} style={{ ...inputStyle, appearance: "none" }}>
                 <option value="">Select your name...</option>
                 {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Password</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Password</div>
               <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleAthleteLogin()} placeholder="Enter your password" style={inputStyle} />
             </>
           ) : (
             <>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Name (leave blank for admin)</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Name</div>
               <select value={coachName} onChange={e => { setCoachName(e.target.value); setError(""); }} style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none", cursor: "pointer" }}>
                 <option value="">— Jasper (Admin) —</option>
                 {coaches.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Password</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Password</div>
               <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleCoachLogin()} placeholder="Enter password" style={inputStyle} />
             </>
           )}
