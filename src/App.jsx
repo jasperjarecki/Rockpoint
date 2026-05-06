@@ -93,12 +93,7 @@ const SEED_PLANS = {
     published: [0],
     blockStart: "", blockEnd: "", blockNotes: "",
   },
-  "8ygufmv": {
-    weeks: [{ label: "Week 1", days: PATRICK_DAYS }],
-    published: [0],
-    blockStart: "", blockEnd: "", blockNotes: "",
-  },
-};
+};  // Patrick's plan lives in Supabase — removed from seed to prevent overwrite on network errors
 
 const _fl = document.createElement("link");
 _fl.rel = "stylesheet";
@@ -164,16 +159,27 @@ async function dbGetPlans() {
   return result;
 }
 async function dbUpsertPlan(athleteId, planData) { await sb.from("plans").upsert({ athlete_id: athleteId, data: planData }); }
-async function dbBackupPlan(athleteId, planData) {
+async function dbBackupPlan(athleteId, planData, backupType = 'edit') {
   try {
-    // keep only last 10 backups per athlete
-    const { data: existing } = await sb.from("plan_backups").select("id").eq("athlete_id", athleteId).order("saved_at", { ascending: true });
-    if (existing && existing.length >= 20) {
-      const toDelete = existing.slice(0, existing.length - 19).map(r => r.id);
+    const limit = backupType === 'daily' ? 90 : 50;
+    const { data: existing } = await sb.from("plan_backups").select("id").eq("athlete_id", athleteId).eq("backup_type", backupType).order("saved_at", { ascending: true });
+    if (existing && existing.length >= limit) {
+      const toDelete = existing.slice(0, existing.length - limit + 1).map(r => r.id);
       await sb.from("plan_backups").delete().in("id", toDelete);
     }
-    await sb.from("plan_backups").insert({ athlete_id: athleteId, data: planData });
+    await sb.from("plan_backups").insert({ athlete_id: athleteId, data: planData, backup_type: backupType });
   } catch(e) { console.warn("Backup failed:", e); }
+}
+async function dbBackupProgress(athleteId, progressData, backupType = 'edit') {
+  try {
+    const limit = backupType === 'daily' ? 90 : 50;
+    const { data: existing } = await sb.from("progress_backups").select("id").eq("athlete_id", athleteId).eq("backup_type", backupType).order("saved_at", { ascending: true });
+    if (existing && existing.length >= limit) {
+      const toDelete = existing.slice(0, existing.length - limit + 1).map(r => r.id);
+      await sb.from("progress_backups").delete().in("id", toDelete);
+    }
+    await sb.from("progress_backups").insert({ athlete_id: athleteId, data: progressData, backup_type: backupType });
+  } catch(e) { console.warn("Progress backup failed:", e); }
 }
 async function dbGetProgress() {
   const { data } = await sb.from("progress").select("*");
@@ -1473,10 +1479,9 @@ function FatigueLog({ athlete, isCoach = false }) {
   useEffect(() => {
     if (!athlete?.id) return;
     setLoading(true);
-    console.log('[fatigue] fetching for athlete.id='+athlete.id);
     sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id)
       .order("date", { ascending: false }).limit(90)
-      .then(({ data, error }) => { console.log('[fatigue] rows='+( data && data.length)+' error='+JSON.stringify(error)); setLogs(data || []); setLoading(false); });
+      .then(({ data }) => { setLogs(data || []); setLoading(false); });
   }, [athlete?.id]);
 
   const openForm = (log = null) => {
@@ -1518,13 +1523,15 @@ function FatigueLog({ athlete, isCoach = false }) {
   const renderChart = () => {
     // logs is newest-first; reverse to chronological, take last 30
     const recent = [...withMetrics].reverse().slice(0, 30);
-    if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet. ({withMetrics.length} total logs loaded)</div>;
-    // Debug: show raw counts
-    console.log('[chart] recent.length='+recent.length+' first='+JSON.stringify(recent[0]));
+    if (!recent.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No data yet.</div>;
     const chartH = 72;
     const barW = Math.max(6, Math.floor(260 / recent.length) - 2);
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={{ background: "rgba(91,127,166,0.08)", border: `1px solid rgba(91,127,166,0.25)`, borderRadius: 8, padding: "10px 14px" }}>
+          <span style={{ ...mono, fontSize: 9, color: C.purple, textTransform: "uppercase", letterSpacing: 1 }}>Prototype</span>
+          <p style={{ ...mono, fontSize: 11, color: C.muted, margin: "4px 0 0" }}>This chart is a work in progress. We're actively developing how to best interpret and present this data.</p>
+        </div>
         {[{ key: "sleep", label: "Sleep", max: 10, color: "#5b7fa6" }, { key: "load", label: "Load", max: 4, color: C.orange }, { key: "strong", label: "Strong", max: 3, color: "#3d9e7a" }].map(({ key, label, max, color }) => (
           <div key={key}>
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{label}</div>
@@ -2209,7 +2216,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
     if (!selectedId) return;
     setLoadingBackups(true);
     setShowBackups(true);
-    const { data } = await sb.from("plan_backups").select("*").eq("athlete_id", selectedId).order("saved_at", { ascending: false }).limit(10);
+    const { data } = await sb.from("plan_backups").select("*").eq("athlete_id", selectedId).order("saved_at", { ascending: false }).limit(20);
     setBackups(data || []);
     setLoadingBackups(false);
   };
@@ -2603,12 +2610,27 @@ export default function App() {
   useEffect(() => {
     (async () => {
       let [ath, pln, prg, creds, coachs] = await Promise.all([dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials(), dbGetCoaches()]);
-      if (ath.length === 0) {
+      // Only seed if BOTH athletes and plans are completely empty (true fresh install)
+      // Using insert (not upsert) so existing plans are never overwritten
+      if (ath.length === 0 && Object.keys(pln).length === 0) {
         for (const a of SEED_ATHLETES) await dbUpsertAthlete(a);
-        for (const [id, plan] of Object.entries(SEED_PLANS)) await dbUpsertPlan(id, plan);
+        for (const [id, plan] of Object.entries(SEED_PLANS)) {
+          await sb.from("plans").insert({ athlete_id: id, data: plan }).select();
+        }
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
       setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
+      // Daily backup on app load — runs once per day, uses 'daily' type so edit backups can't overwrite it
+      const todayKey = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem('lastDailyBackup') !== todayKey) {
+        Object.entries(pln).forEach(([aid, plan]) => {
+          if (plan?.weeks?.length > 0) dbBackupPlan(aid, plan, 'daily');
+        });
+        Object.entries(prg).forEach(([aid, progress]) => {
+          if (Object.keys(progress).length > 0) dbBackupProgress(aid, progress, 'daily');
+        });
+        localStorage.setItem('lastDailyBackup', todayKey);
+      }
       // ensure template creator has a plan
       if (!pln[TEMPLATE_CREATOR_ID]) {
         const blankPlan = { weeks: [{ label: "Week 1", days: [{ label: "Day 1", exercises: [] }] }], published: [], blockStart: "", blockEnd: "", blockNotes: "" };
@@ -2622,15 +2644,26 @@ export default function App() {
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1800); };
 
   const lastBackup = React.useRef({});
+  const lastProgressBackup = React.useRef({});
   const updatePlan = useCallback(async (id, plan) => {
     setPlans(prev => {
       const existing = prev[id];
 
       const merged = { ...existing, ...plan };
+      // Hard guard: never save a plan with no weeks
+      if (merged.weeks && merged.weeks.length === 0) {
+        console.warn('[updatePlan] Blocked: would save empty plan for', id);
+        return prev;
+      }
+      // Hard guard: never save if weeks drop to less than half of existing
+      if (existing?.weeks?.length > 2 && merged?.weeks?.length < Math.floor(existing.weeks.length / 2)) {
+        console.warn('[updatePlan] Blocked: suspicious week drop from', existing.weeks.length, 'to', merged.weeks.length);
+        return prev;
+      }
       dbUpsertPlan(id, merged);
-      // backup at most once per 60s per athlete
+      // backup at most once per 2 min per athlete
       const now = Date.now();
-      if (!lastBackup.current[id] || now - lastBackup.current[id] > 10000) {
+      if (!lastBackup.current[id] || now - lastBackup.current[id] > 120000) {
         lastBackup.current[id] = now;
         dbBackupPlan(id, merged);
       }
@@ -2642,6 +2675,11 @@ export default function App() {
   const publishWeeks = useCallback(async (id, publishedIndices) => {
     setPlans(prev => {
       const p = prev[id];
+      // Guard: never publish if plan is missing or has no weeks
+      if (!p || !p.weeks || p.weeks.length === 0) {
+        console.warn('[publishWeeks] Blocked: plan missing or empty for', id);
+        return prev;
+      }
       const np = { ...prev, [id]: { ...p, published: publishedIndices } };
       dbUpsertPlan(id, np[id]);
       return np;
@@ -2655,6 +2693,12 @@ export default function App() {
       const dp = ap[dayKey] || {};
       const np = { ...prev, [id]: { ...ap, [dayKey]: { ...dp, [exId]: ep } } };
       dbUpsertProgress(id, np[id]);
+      // Backup progress at most once per 2 min per athlete
+      const now = Date.now();
+      if (!lastProgressBackup.current[id] || now - lastProgressBackup.current[id] > 120000) {
+        lastProgressBackup.current[id] = now;
+        dbBackupProgress(id, np[id], 'edit');
+      }
       return np;
     });
   }, []);
