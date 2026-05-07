@@ -1545,7 +1545,7 @@ function FatigueLog({ athlete, isCoach = false }) {
       setForm({ date: log.date, summary: log.summary || "", sleep: log.sleep ?? "", load: log.load ?? "", strong: log.strong ?? "", tweaks: log.tweaks || "" });
       setEditingId(log.id);
     } else {
-      setForm({ date: today, summary: "", sleep: "", load: "", strong: "", tweaks: "" });
+      setForm({ date: today, summary: "", sleep: "", load: null, strong: "", tweaks: "" });
       setEditingId(null);
     }
     setShowForm(true);
@@ -1732,7 +1732,7 @@ function FatigueLog({ athlete, isCoach = false }) {
               <input value={form.tweaks} onChange={e => setForm(f => ({ ...f, tweaks: e.target.value }))} placeholder="Anything bugging you? (optional)" style={inp} />
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-              <button onMouseDown={e => { e.preventDefault(); save(); }} disabled={saving}
+              <button onClick={() => save()} disabled={saving}
                 style={{ ...mono, fontSize: 11, padding: "9px 20px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>
                 {saving ? "Saving..." : "Save"}
               </button>
