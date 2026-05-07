@@ -1552,7 +1552,11 @@ function FatigueLog({ athlete, isCoach = false }) {
   };
 
   const save = async () => {
-    if (!form.sleep || form.load === "" || form.load === null || form.load === undefined) return;
+    console.log('[save] form=', JSON.stringify(form));
+    const sleepVal = parseFloat(form.sleep);
+    const loadVal = form.load;
+    if (isNaN(sleepVal) || sleepVal <= 0) { alert("Please enter a sleep value."); return; }
+    if (loadVal === "" || loadVal === null || loadVal === undefined) { alert("Please select a load value."); return; }
     setSaving(true);
     try {
       const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: (form.strong !== null && form.strong !== "") ? parseInt(form.strong) : null, tweaks: form.tweaks };
