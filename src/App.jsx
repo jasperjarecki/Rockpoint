@@ -1675,10 +1675,18 @@ function FatigueLog({ athlete, isCoach = false }) {
             </button>
           )}
           {!isCoach && !showForm && (
-            <button onMouseDown={e => { e.preventDefault(); openForm(todayLog || null); }}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: todayLog ? `1px solid ${C.orange}` : "none", background: todayLog ? "none" : C.orange, color: todayLog ? C.orange : "#fff", cursor: "pointer" }}>
-              {todayLog ? "Edit Today" : "+ Log Today"}
-            </button>
+            <>
+              {todayLog && (
+                <button onMouseDown={e => { e.preventDefault(); openForm(todayLog); }}
+                  style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "none", color: C.orange, cursor: "pointer" }}>
+                  Edit Today
+                </button>
+              )}
+              <button onMouseDown={e => { e.preventDefault(); openForm(null); }}
+                style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>
+                {todayLog ? "+ Log Past Day" : "+ Log Today"}
+              </button>
+            </>
           )}
         </div>
       </div>
