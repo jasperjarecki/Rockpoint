@@ -182,6 +182,15 @@ async function dbBackupPlan(athleteId, planData, backupType = 'edit') {
     await sb.from("plan_backups").insert({ athlete_id: athleteId, data: planData, backup_type: backupType });
   } catch(e) { console.warn("Backup failed:", e); }
 }
+async function uploadExerciseImage(file, exId) {
+  const ext = file.name.split('.').pop();
+  const path = `${exId}-${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('exercise-images').upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data } = sb.storage.from('exercise-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
 async function dbBackupProgress(athleteId, progressData, backupType = 'edit') {
   try {
     const limit = backupType === 'daily' ? 90 : 50;
@@ -438,6 +447,9 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {videoMeta && !editing && (
                   <button onClick={() => videoMeta.type === 'embed' ? setShowVideo(true) : window.open(videoMeta.url, '_blank')} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid #c0392b`, background: "rgba(192,57,43,0.08)", color: "#c0392b", cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 0.5 }}>▶ Demo</button>
                 )}
+                {ex.imageUrl && !videoMeta && !editing && (
+                  <button onClick={() => setShowVideo(true)} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", whiteSpace: "nowrap" }}>📷</button>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
                 {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
@@ -447,6 +459,12 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 {alsoOnLabels && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {alsoOnLabels}</span>}
               </div>
               {ex.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{renderMarkdown(ex.notes, C.muted)}</div>}
+              {ex.imageUrl && !editing && (
+                <div style={{ marginTop: 8 }}>
+                  <img src={ex.imageUrl} alt={ex.text} onClick={() => setShowVideo(true)}
+                    style={{ width: "100%", maxHeight: 180, objectFit: "cover", borderRadius: 7, cursor: "pointer", border: `1px solid ${C.border}` }} />
+                </div>
+              )}
               {alsoOnLabels && !checked && (
                 <button onClick={(e) => { e.stopPropagation(); onNote(note, selectedOption, true); }}
                   style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, ...mono, fontSize: 11, padding: "7px 12px", borderRadius: 6, border: `1px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.3)"}`, background: deferToOtherDay ? "rgba(91,127,166,0.1)" : "transparent", color: deferToOtherDay ? C.purple : C.muted, cursor: "pointer", textAlign: "left", width: "100%" }}>
@@ -491,6 +509,18 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
           <textarea value={note} onChange={e => onNote(e.target.value, selectedOption)} placeholder="Add a note..." rows={1} className="athlete-note"
             style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
             onFocus={e => { e.target.style.borderColor = C.orange; e.target.style.background = C.gray2; }} onBlur={e => { e.target.style.borderColor = C.border; }} />
+        </div>
+      )}
+      {/* Image modal */}
+      {showVideo && ex.imageUrl && !videoMeta && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 700, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setShowVideo(false)}>
+          <div style={{ width: "100%", maxWidth: 560 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ ...bebas, fontSize: 18, color: "#fff", letterSpacing: 1 }}>{ex.text}</div>
+              <button onClick={() => setShowVideo(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 24, lineHeight: 1 }}>✕</button>
+            </div>
+            <img src={ex.imageUrl} alt={ex.text} style={{ width: "100%", borderRadius: 10, objectFit: "contain", maxHeight: "70vh" }} onClick={e => e.stopPropagation()} />
+          </div>
         </div>
       )}
       {/* Video modal */}
@@ -723,6 +753,17 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                     <input value={ex.text} onChange={e => updateEx(ex.id,"text",e.target.value)} style={{ flex: 1, fontSize: 14, fontWeight: 500, background: "transparent", border: "none", borderBottom: `1px solid transparent`, color: C.white, outline: "none", padding: "1px 0" }} onFocus={e => e.target.style.borderBottomColor=C.gray3} onBlur={e => e.target.style.borderBottomColor="transparent"} />
                     <button onMouseDown={e => { e.preventDefault(); updateEx(ex.id,"type", ex.type === "alternating" ? undefined : "alternating"); }} style={{ ...mono, fontSize: 8, padding: "3px 6px", background: ex.type === "alternating" ? "rgba(91,127,166,0.2)" : "none", border: `1px solid ${ex.type === "alternating" ? "#5b7fa6" : C.border}`, borderRadius: 3, color: ex.type === "alternating" ? "#5b7fa6" : C.muted, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>A/B</button>
+                    <label style={{ ...mono, fontSize: 8, padding: "3px 6px", background: "none", border: `1px solid ${ex.imageUrl ? C.orange : C.border}`, borderRadius: 3, color: ex.imageUrl ? C.orange : C.muted, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      {ex.imageUrl ? "📷 ✓" : "📷"}
+                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
+                        const file = e.target.files[0]; if (!file) return;
+                        try {
+                          const url = await uploadExerciseImage(file, ex.id);
+                          updateEx(ex.id, "imageUrl", url);
+                        } catch(err) { alert("Upload failed: " + err.message); }
+                      }} />
+                    </label>
+                    {ex.imageUrl && <button onMouseDown={e => { e.preventDefault(); updateEx(ex.id, "imageUrl", ""); }} style={{ ...mono, fontSize: 8, padding: "3px 6px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer", flexShrink: 0 }}>✕</button>}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
                     <select value={ALL_CATEGORIES.includes(ex.category) ? ex.category : "__custom__"}
