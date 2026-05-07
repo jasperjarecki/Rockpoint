@@ -720,7 +720,10 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
             <div key={ex.id} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <input value={ex.text} onChange={e => updateEx(ex.id,"text",e.target.value)} style={{ fontSize: 14, fontWeight: 500, marginBottom: 6, background: "transparent", border: "none", borderBottom: `1px solid transparent`, color: C.white, width: "100%", outline: "none", padding: "1px 0" }} onFocus={e => e.target.style.borderBottomColor=C.gray3} onBlur={e => e.target.style.borderBottomColor="transparent"} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <input value={ex.text} onChange={e => updateEx(ex.id,"text",e.target.value)} style={{ flex: 1, fontSize: 14, fontWeight: 500, background: "transparent", border: "none", borderBottom: `1px solid transparent`, color: C.white, outline: "none", padding: "1px 0" }} onFocus={e => e.target.style.borderBottomColor=C.gray3} onBlur={e => e.target.style.borderBottomColor="transparent"} />
+                    <button onMouseDown={e => { e.preventDefault(); updateEx(ex.id,"type", ex.type === "alternating" ? undefined : "alternating"); }} style={{ ...mono, fontSize: 8, padding: "3px 6px", background: ex.type === "alternating" ? "rgba(91,127,166,0.2)" : "none", border: `1px solid ${ex.type === "alternating" ? "#5b7fa6" : C.border}`, borderRadius: 3, color: ex.type === "alternating" ? "#5b7fa6" : C.muted, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>A/B</button>
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
                     <select value={ALL_CATEGORIES.includes(ex.category) ? ex.category : "__custom__"}
                       onChange={e => { if (e.target.value !== "__custom__") updateEx(ex.id, "category", e.target.value); else updateEx(ex.id, "category", ""); }}
