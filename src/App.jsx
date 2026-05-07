@@ -1552,17 +1552,23 @@ function FatigueLog({ athlete, isCoach = false }) {
   };
 
   const save = async () => {
-    if (!form.sleep || form.load === "" || !form.strong) return;
+    if (!form.sleep || form.load === "" || form.load === null || form.load === undefined) return;
     setSaving(true);
-    const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: parseInt(form.strong), tweaks: form.tweaks };
-    const result = editingId
-      ? await sb.from("fatigue_logs").update(payload).eq("id", editingId).select().single()
-      : await sb.from("fatigue_logs").insert(payload).select().single();
-    if (result.data) {
-      setLogs(prev => [result.data, ...prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
+    try {
+      const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: (form.strong !== null && form.strong !== "") ? parseInt(form.strong) : null, tweaks: form.tweaks };
+      const result = editingId
+        ? await sb.from("fatigue_logs").update(payload).eq("id", editingId).select().single()
+        : await sb.from("fatigue_logs").insert(payload).select().single();
+      if (result.error) throw result.error;
+      if (result.data) {
+        setLogs(prev => [result.data, ...prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
+      }
+      setShowForm(false);
+    } catch(e) {
+      alert("Save failed: " + e.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowForm(false);
   };
 
   const withMetrics = logs.map((log, i) => {
@@ -1712,8 +1718,10 @@ function FatigueLog({ athlete, isCoach = false }) {
               <Lbl text="Strong?" />
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                 {[1,2,3].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v }))} />)}
+                <button onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, strong: null })); }}
+                  style={{ ...mono, fontSize: 11, padding: "0 12px", height: 46, borderRadius: 6, border: `1px solid ${form.strong === null || form.strong === "" ? C.muted : C.border}`, background: (form.strong === null || form.strong === "") ? "rgba(255,255,255,0.08)" : C.gray2, color: C.muted, cursor: "pointer" }}>N/A</button>
               </div>
-              <Hint text="1 = felt weak, slow, heavy  ·  2 = standard day  ·  3 = felt really great" />
+              <Hint text="1 = felt weak, slow, heavy  ·  2 = standard day  ·  3 = felt really great  ·  N/A = rest day" />
             </div>
             <div>
               <Lbl text="Any tweaks?" />
