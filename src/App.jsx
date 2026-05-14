@@ -1583,8 +1583,54 @@ function FatigueLog({ athlete, isCoach = false }) {
   });
 
   const loadColor = (v) => v <= 1 ? "#5b7fa6" : v === 2 ? C.orange : v === 3 ? "#e07a3a" : "#c0392b";
-  const strongColor = (v) => v === 1 ? C.muted : v === 2 ? C.orange : "#3d9e7a";
+  const strongColor = (v) => v === 0 ? "#c0392b" : v === 1 ? C.orange : "#3d9e7a";
   const sleepColor = (v) => v >= 7.5 ? "#3d9e7a" : v >= 6 ? C.orange : "#c0392b";
+
+  const getRecommendation = () => {
+    if (withMetrics.length < 3) return null;
+    const recent7 = withMetrics.slice(0, 7);
+    const avgSleep = recent7.reduce((s, l) => s + (l.sleep || 0), 0) / recent7.length;
+    const weekLoad = recent7.reduce((s, l) => s + (l.load || 0), 0);
+    const last3 = withMetrics.slice(0, 3);
+    const strongLogs = last3.filter(l => l.strong != null);
+    const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
+    const last3Loads = last3.map(l => l.load ?? 0);
+    const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
+    const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
+    const lowSleep = avgSleep < 6.5;
+    const lowStrong = avgStrong !== null && avgStrong < 0.75;
+    const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
+    const highLoad = loadRatio > 1.3;
+    const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
+    const redCount = [twoDaysOn, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+    const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+    let label, color, bg, reasons;
+    if (redCount >= 2 || lowStrong) {
+      label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
+      reasons = [
+        twoDaysOn && "Two hard sessions back to back",
+        highLoad && ("Weekly load is high (" + weekLoad + " vs " + avgSleep.toFixed(1) + "h avg sleep)"),
+        lowSleep && ("Sleep avg is low (" + avgSleep.toFixed(1) + "h)"),
+        lowStrong && "Consistently feeling off",
+      ].filter(Boolean);
+    } else if (redCount === 1 || yellowCount >= 1) {
+      label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)";
+      reasons = [
+        twoDaysOn && "Two hard days recently — keep it easy",
+        borderlineLoad && ("Load is building (" + weekLoad + " this week)"),
+        lowSleep && ("Sleep avg below ideal (" + avgSleep.toFixed(1) + "h)"),
+        borderlineStrong && "Feeling a bit flat lately",
+      ].filter(Boolean);
+    } else {
+      label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)";
+      reasons = [
+        "Sleep avg " + avgSleep.toFixed(1) + "h",
+        "Weekly load " + weekLoad,
+        avgStrong !== null ? ("Feeling " + (avgStrong >= 1.5 ? "great" : "good")) : null,
+      ].filter(Boolean);
+    }
+    return { label, color, bg, reasons };
+  };
 
   const renderChart = () => {
     // logs is newest-first; reverse to chronological, take last 30
@@ -1729,11 +1775,11 @@ function FatigueLog({ athlete, isCoach = false }) {
             <div>
               <Lbl text="Strong?" />
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                {[1,2,3].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v }))} />)}
+                {[0,1,2].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v }))} />)}
                 <button onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, strong: null })); }}
                   style={{ ...mono, fontSize: 11, padding: "0 12px", height: 46, borderRadius: 6, border: `1px solid ${form.strong === null || form.strong === "" ? C.muted : C.border}`, background: (form.strong === null || form.strong === "") ? "rgba(255,255,255,0.08)" : C.gray2, color: C.muted, cursor: "pointer" }}>N/A</button>
               </div>
-              <Hint text="1 = felt weak, slow, heavy  ·  2 = standard day  ·  3 = felt really great  ·  N/A = rest day" />
+              <Hint text="0 = felt bad  ·  1 = standard day  ·  2 = felt great  ·  N/A = rest day" />
             </div>
             <div>
               <Lbl text="Any tweaks?" />
@@ -1757,6 +1803,15 @@ function FatigueLog({ athlete, isCoach = false }) {
         <>{renderChart()}</>
       ) : (
         <div>
+          {(() => { const rec = getRecommendation(); if (!rec) return null; return (
+            <div style={{ background: rec.bg, border: `1px solid ${rec.color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <div style={{ ...bebas, fontSize: 24, color: rec.color, letterSpacing: 1 }}>{rec.label}</div>
+                <div style={{ ...mono, fontSize: 9, color: rec.color, padding: "2px 8px", border: `1px solid ${rec.color}`, borderRadius: 10, opacity: 0.8 }}>TODAY</div>
+              </div>
+              {rec.reasons.map((r, i) => <div key={i} style={{ fontSize: 12, color: C.muted }}>· {r}</div>)}
+            </div>
+          ); })()}
           {withMetrics.length === 0 && !showForm && (
             <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 32 }}>No entries yet. Tap "+ Log Today" to start.</div>
           )}
