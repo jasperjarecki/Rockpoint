@@ -1838,7 +1838,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
     const dayLabel = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     const isToday = log.date === today;
     return (
-      <div style={{ background: C.gray2, border: `1px solid ${isToday ? C.orange : C.border}`, borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+      <div style={{ background: C.gray2, border: `1px solid ${isToday ? C.orange : C.border}`, borderRadius: 10, padding: "14px 16px", marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ ...mono, fontSize: 10, color: isToday ? C.orange : C.muted }}>{dayLabel}</span>
@@ -1868,12 +1868,12 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
     );
   };
 
-  const inp = { background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
-  const Hint = ({ text }) => <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>{text}</div>;
-  const Lbl = ({ text }) => <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>{text}</div>;
+  const inp = { background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.white, fontSize: 14, outline: "none", width: "100%", boxSizing: "border-box" };
+  const Hint = ({ text }) => <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.6 }}>{text}</div>;
+  const Lbl = ({ text }) => <div style={{ ...bebas, fontSize: 13, color: C.white, letterSpacing: 1, marginBottom: 8 }}>{text}</div>;
   const ScaleBtn = ({ val, current, color, onPick }) => (
     <button onMouseDown={e => { e.preventDefault(); onPick(val); }}
-      style={{ ...mono, fontSize: 14, width: 46, height: 46, borderRadius: 6, border: `1px solid ${current == val ? color : C.border}`, background: current == val ? color + "22" : C.gray2, color: current == val ? color : C.muted, cursor: "pointer", fontWeight: current == val ? 700 : 400 }}>
+      style={{ ...mono, fontSize: 15, width: 52, height: 52, borderRadius: 8, border: `1px solid ${current == val ? color : C.border}`, background: current == val ? color + "22" : "transparent", color: current == val ? color : C.muted, cursor: "pointer", fontWeight: current == val ? 700 : 400, transition: "all 0.1s" }}>
       {val}
     </button>
   );
@@ -1909,9 +1909,9 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
       </div>
 
       {showForm && (
-        <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
-          <div style={{ ...bebas, fontSize: 16, marginBottom: 16, color: C.orange }}>TODAY'S CHECK-IN</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 20px", marginBottom: 20 }}>
+          <div style={{ ...bebas, fontSize: 18, marginBottom: 20, color: C.orange, letterSpacing: 1 }}>TODAY'S CHECK-IN</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             <div>
               <Lbl text="Date" />
               <div style={{ display: "flex", gap: 8 }}>
@@ -1948,7 +1948,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                 {[0,1,2].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v }))} />)}
                 <button onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, strong: null })); }}
-                  style={{ ...mono, fontSize: 11, padding: "0 12px", height: 46, borderRadius: 6, border: `1px solid ${form.strong === null || form.strong === "" ? C.muted : C.border}`, background: (form.strong === null || form.strong === "") ? "rgba(255,255,255,0.08)" : C.gray2, color: C.muted, cursor: "pointer" }}>N/A</button>
+                  style={{ ...mono, fontSize: 12, padding: "0 14px", height: 52, borderRadius: 8, border: `1px solid ${form.strong === null || form.strong === "" ? C.white : C.border}`, background: (form.strong === null || form.strong === "") ? "rgba(255,255,255,0.08)" : "transparent", color: (form.strong === null || form.strong === "") ? C.white : C.muted, cursor: "pointer" }}>N/A</button>
               </div>
               <Hint text="0 = felt bad  ·  1 = standard day  ·  2 = felt great  ·  N/A = rest day" />
             </div>
@@ -1956,13 +1956,13 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
               <Lbl text="Any tweaks?" />
               <input value={form.tweaks} onChange={e => setForm(f => ({ ...f, tweaks: e.target.value }))} placeholder="Anything bugging you? (optional)" style={inp} />
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <button onClick={() => save()} disabled={saving}
-                style={{ ...mono, fontSize: 11, padding: "9px 20px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>
+                style={{ flex: 1, ...mono, fontSize: 13, padding: "14px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", fontWeight: 600 }}>
                 {saving ? "Saving..." : "Save"}
               </button>
               <button onMouseDown={e => { e.preventDefault(); setShowForm(false); }}
-                style={{ ...mono, fontSize: 11, padding: "9px 16px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
+                style={{ ...mono, fontSize: 13, padding: "14px 20px", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2290,22 +2290,27 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           const { label, color, bg } = fLogs;
           const subtitle = label === "Train Light" ? "Pick just 2 exercises to complete, not a full day." : null;
           return (
-            <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ ...mono, fontSize: 11, color: C.muted }}>{dateLabel}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1 }}>{label}</div>
-                  <div style={{ ...mono, fontSize: 16, color, opacity: 0.5 }}>›</div>
-                </div>
+            <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
+              {/* Title row: date + recommendation */}
+              <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1, marginBottom: 4 }}>
+                {dateLabel}: {label}
               </div>
-              {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{subtitle}</div>}
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${color}22` }}>
-                <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
-                {fLogs.todayLogged && fLogs.tomorrow
-                  ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
-                  : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
-                }
+              {/* Subtitle for Train Light */}
+              {label === "Train Light" && (
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
+                  "Train Light" means pick two exercises to complete, rather than a whole day of training. You can finish the day another time.
+                </div>
+              )}
+              {/* Divider */}
+              <div style={{ borderTop: `1px solid ${color}22`, paddingTop: 10, marginTop: label === "Train Light" ? 0 : 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
+                  {fLogs.todayLogged && fLogs.tomorrow
+                    ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                    : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
+                  }
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
               </div>
             </div>
           );
