@@ -1978,26 +1978,6 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
         <>{renderSheet()}</>
       ) : (
         <div>
-          {(() => { const rec = getRecommendation(); if (!rec) return null; return (
-            <div onClick={() => setShowVolumeModal(true)} style={{ background: rec.bg, border: `1px solid ${rec.color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ ...bebas, fontSize: 24, color: rec.color, letterSpacing: 1 }}>{rec.label}</div>
-                  <div style={{ ...mono, fontSize: 9, color: rec.color, padding: "2px 8px", border: `1px solid ${rec.color}`, borderRadius: 10, opacity: 0.8 }}>TODAY</div>
-                </div>
-                <div style={{ ...mono, fontSize: 16, color: rec.color, opacity: 0.6 }}>›</div>
-              </div>
-              {subtitle && <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{subtitle}</div>}
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, borderTop: `1px solid ${rec.color}22` }}>
-                <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
-                {fLogs.todayLogged && fLogs.tomorrow
-                  ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
-                  : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
-                }
-              </div>
-            </div>
-          ); })()}
           {withMetrics.length === 0 && !showForm && (
             <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 32 }}>No entries yet. Tap "+ Log Today" to start.</div>
           )}
@@ -2238,12 +2218,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
-      <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, display: "flex", flexShrink: 0 }}>
-        {[["plan","Plan"]].map(([k,l]) => (
-          <button key={k} onClick={() => setAthleteTab(k)}
-            style={{ ...mono, fontSize: 11, padding: "10px 20px", background: "none", border: "none", borderBottom: `2px solid ${athleteTab===k?C.orange:"transparent"}`, color: athleteTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
-        ))}
-      </div>
+
       {/* Volume Element modal */}
       {showVolumeModal && ReactDOM.createPortal(
         <div style={{ position: "fixed", inset: 0, zIndex: 9998, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowVolumeModal(false)}>
