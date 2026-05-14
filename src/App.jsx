@@ -1,6 +1,7 @@
 import React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import ReactDOM from "react-dom";
 
 const SUPABASE_URL = "https://mhpjmofctkxxjbjjcvwt.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ocGptb2ZjdGt4eGpiampjdnd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MDgyNTAsImV4cCI6MjA4ODQ4NDI1MH0.p4eZQcd0lUlE2D0J8-arRDJqOSEV4TNMmg6vTlSwLvU";
@@ -2295,9 +2296,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </button>
           </div>
         )}
-        {showCalendar && fatigueLogs.length > 0 && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 700, display: "flex", flexDirection: "column" }} onClick={() => setShowCalendar(false)}>
-            <div style={{ background: C.black, flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 480, margin: "0 auto", width: "100%" }} onClick={e => e.stopPropagation()}>
+        {showCalendar && fatigueLogs.length > 0 && ReactDOM.createPortal(
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" }} onClick={() => setShowCalendar(false)}>
+            <div style={{ background: C.black, flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 480, margin: "0 auto", width: "100%", WebkitOverflowScrolling: "touch" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>CONSISTENCY</div>
                 <button onClick={() => setShowCalendar(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1 }}>✕</button>
@@ -2387,7 +2388,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
           })()}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Athlete name + badges */}
