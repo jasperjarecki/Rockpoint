@@ -2128,8 +2128,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // Only show sleep prompt for test users (Jasper + Patrick)
     const sleepPromptAthletes = ["bzmmql6", "8ygufmv"];
     if (!sleepPromptAthletes.includes(athlete.id)) return;
-    sb.from("fatigue_logs").select("id,sleep").eq("athlete_id", athlete.id).eq("date", todayStr).maybeSingle()
-      .then(({ data }) => {
+    sb.from("fatigue_logs").select("id,sleep").eq("athlete_id", athlete.id).eq("date", todayStr).order("created_at", { ascending: false }).limit(1)
+      .then(({ data: rows }) => {
+        const data = rows?.[0];
         if (!data || data.sleep == null) setShowSleepPrompt(true);
       });
   }, [athlete?.id]);
@@ -2139,7 +2140,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (isNaN(val) || val <= 0) return;
     setSleepPromptSaving(true);
     const todayStr = new Date().toISOString().slice(0, 10);
-    const { data: existing } = await sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).maybeSingle();
+    // Use limit(1) instead of maybeSingle() so duplicates don't cause an error
+    const { data: rows } = await sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).order("created_at", { ascending: false }).limit(1);
+    const existing = rows?.[0];
     if (existing) {
       await sb.from("fatigue_logs").update({ sleep: val }).eq("id", existing.id);
     } else {
