@@ -1653,7 +1653,8 @@ function FatigueLog({ athlete, isCoach = false }) {
       if (!byMonth[ym]) byMonth[ym] = {};
       byMonth[ym][log.date] = log;
     });
-    const months = Object.keys(byMonth).sort().reverse();
+    const minMonth = athlete?.id === "bzmmql6" ? "2026-04" : "0000-00";
+    const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -2119,6 +2120,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
   const [athleteTab, setAthleteTab] = useState("plan");
   const [showSleepPrompt, setShowSleepPrompt] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [sleepPromptValue, setSleepPromptValue] = useState("");
   const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
 
@@ -2285,7 +2287,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         })()}
 
         {/* Consistency calendar — identical to Volume tab calendar view */}
-        {fatigueLogs.length > 0 && (() => {
+        {fatigueLogs.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <button onClick={() => setShowCalendar(v => !v)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${showCalendar ? C.orange : C.border}`, background: "none", color: showCalendar ? C.orange : C.muted, cursor: "pointer", marginBottom: showCalendar ? 12 : 0 }}>
+              {showCalendar ? "✕ Hide Calendar" : "📅 Show Calendar"}
+            </button>
+          </div>
+        )}
+        {fatigueLogs.length > 0 && showCalendar && (() => {
           const todayStr = new Date().toISOString().slice(0, 10);
           const byMonth = {};
           fatigueLogs.forEach(log => {
@@ -2293,7 +2303,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             if (!byMonth[ym]) byMonth[ym] = {};
             byMonth[ym][log.date] = log;
           });
-          const months = Object.keys(byMonth).sort().reverse();
+          const minMonth = athlete?.id === "bzmmql6" ? "2026-04" : "0000-00";
+          const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
           return (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
