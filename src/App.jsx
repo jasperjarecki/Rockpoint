@@ -2117,6 +2117,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showVolumeModal, setShowVolumeModal] = useState(false);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
+  const [showAthleteInfo, setShowAthleteInfo] = useState(false);
   const [sleepPromptValue, setSleepPromptValue] = useState("");
   const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
 
@@ -2208,8 +2209,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         setFatigueRec({ label, color, bg, tomorrow, todayLogged });
       });
   }, [athlete?.id]);
-  // Force non-Jasper athletes off the fatigue tab
-  const safeAthleteTab = (athlete?.id === "bzmmql6") ? athleteTab : "plan";
+
 
   return (
     <div style={{ minHeight: "100vh", background: C.black, display: "flex", flexDirection: "column" }}>
@@ -2273,11 +2273,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         </div>
       )}
 
-      {safeAthleteTab === "fatigue" ? (
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
-          <FatigueLog athlete={athlete} isCoach={false} />
-        </div>
-      ) : <>
+      <>
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
         {/* Date + recommendation banner */}
         {(() => {
@@ -2416,25 +2412,75 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           document.body
         )}
 
-        {/* Athlete name + badges */}
+        {/* Athlete name — tappable, opens overview/update modal */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
-            <div style={{ ...bebas, fontSize: 30, letterSpacing: 1 }}>{athlete.name}</div>
-            {(plan.blockNotes || plan.blockImageUrl) && <button onClick={() => setShowOverview(true)} style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.08)", color: C.orange, cursor: "pointer" }}>Overview ↗</button>}
-            {plan.blockUpdate && (() => {
-              const isNew = plan.blockUpdateAt && (!(progress._meta || {})._lastViewedUpdate || plan.blockUpdateAt > (progress._meta || {})._lastViewedUpdate);
-              return (
-                <button onClick={() => { setShowUpdate(true); onProgressChange("_meta", "_lastViewedUpdate", new Date().toISOString()); }}
-                  style={{ ...mono, fontSize: 10, padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.purple}`, background: "rgba(91,127,166,0.08)", color: C.purple, cursor: "pointer", position: "relative", display: "flex", alignItems: "center", gap: 5 }}>
-                  Update ↗
-                  {isNew && <span style={{ background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5 }}>NEW</span>}
-                </button>
-              );
-            })()}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div onClick={() => setShowAthleteInfo(true)}
+              style={{ ...bebas, fontSize: 30, letterSpacing: 1, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 10px", display: "inline-block" }}>
+              {athlete.name}
+              {plan.blockUpdate && (() => {
+                const isNew = plan.blockUpdateAt && (!(progress._meta || {})._lastViewedUpdate || plan.blockUpdateAt > (progress._meta || {})._lastViewedUpdate);
+                return isNew ? <span style={{ background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5, marginLeft: 8, verticalAlign: "middle" }}>NEW</span> : null;
+              })()}
+            </div>
             <WeekBadge plan={plan} />
           </div>
-          <Badge type={athlete.type} />
         </div>
+
+        {/* Athlete info modal */}
+        {showAthleteInfo && ReactDOM.createPortal(
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAthleteInfo(false)}>
+            <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "85vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 20px 16px" }}>
+                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>{athlete.name}</div>
+                <button onClick={() => setShowAthleteInfo(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 24px" }}>
+                {plan.blockUpdate && (
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ ...mono, fontSize: 10, color: C.purple, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Update from Coach</div>
+                    <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockUpdate, C.white)}</div>
+                  </div>
+                )}
+                {plan.blockNotes && (
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ ...mono, fontSize: 10, color: C.orange, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Block Overview</div>
+                    <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.muted)}</div>
+                  </div>
+                )}
+                {plan.blockImageUrl && <img src={plan.blockImageUrl} alt="Overview" style={{ width: "100%", borderRadius: 8, marginBottom: 24 }} />}
+                {fatigueLogs.length > 2 && (() => {
+                  const recent = [...fatigueLogs].reverse().slice(-30);
+                  const chartH = 72;
+                  const barW = Math.max(6, Math.floor(260 / recent.length) - 2);
+                  return (
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Training Load · Last 30 Days</div>
+                      <div style={{ display: "flex", gap: 2, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
+                        {recent.map((log, i) => (
+                          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                            <div style={{ ...mono, fontSize: 8, color: C.muted }}>{log.load ?? 0}</div>
+                            <div style={{ width: barW, height: chartH, display: "flex", alignItems: "flex-end" }}>
+                              <div style={{ width: "100%", height: `${Math.max(3, ((log.load ?? 0) / 4) * 100)}%`, background: (log.load ?? 0) === 0 ? "rgba(255,255,255,0.1)" : (log.load ?? 0) <= 2 ? C.orange : "#c0392b", borderRadius: "2px 2px 0 0" }} />
+                            </div>
+                            <div style={{ ...mono, fontSize: 7, color: C.muted, writingMode: "vertical-rl", transform: "rotate(180deg)", height: 24, overflow: "hidden" }}>{log.date.slice(5)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {!plan.blockUpdate && !plan.blockNotes && !plan.blockImageUrl && fatigueLogs.length < 3 && (
+                  <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Nothing here yet.</div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* Week selector (if multiple published weeks) */}
         {publishedIndices.length > 1 && (
