@@ -2229,24 +2229,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 20px 12px" }}>
-              <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>VOLUME ELEMENT</div>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <button onClick={() => setShowVolumeInfo(v => !v)} style={{ background: "none", border: `1px solid ${showVolumeInfo ? C.orange : C.border}`, borderRadius: "50%", color: showVolumeInfo ? C.orange : C.muted, fontSize: 13, cursor: "pointer", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", ...mono }}>i</button>
-                <button onClick={() => setShowVolumeModal(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 20px 12px" }}>
+              <div>
+                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>VOLUME TRACKING</div>
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, maxWidth: 260 }}>Here is the volume tracker. Once daily, you log a few key stats. In return, I use a simple equation to recommend how much you should train or rest.</div>
               </div>
+              <button onClick={() => setShowVolumeModal(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1, flexShrink: 0, marginLeft: 12 }}>✕</button>
             </div>
-            {showVolumeInfo && (
-              <div style={{ margin: "0 20px 12px", background: C.gray2, borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>Here is the volume tracker. Once daily, you log a few key stats. In return, I use a simple equation to recommend how much you should train or rest.</div>
-              </div>
-            )}
-            <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-              {[["log","Log"],["chart","Chart"],["calendar","Cal"],["sheet","Sheet"]].map(([k,l]) => (
-                <button key={k} onClick={() => setVolumeModalTab(k)}
-                  style={{ ...mono, fontSize: 11, padding: "10px 16px", background: "none", border: "none", borderBottom: `2px solid ${volumeModalTab===k?C.orange:"transparent"}`, color: volumeModalTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
-              ))}
-            </div>
+
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", WebkitOverflowScrolling: "touch" }}>
               <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} />
             </div>
