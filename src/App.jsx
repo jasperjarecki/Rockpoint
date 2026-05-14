@@ -2290,12 +2290,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           const { label, color, bg } = fLogs;
           const subtitle = label === "Train Light" ? "Pick just 2 exercises to complete, not a full day." : null;
           return (
-            <div style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+            <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, cursor: "pointer" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div style={{ ...mono, fontSize: 11, color: C.muted }}>{dateLabel}</div>
-                <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1 }}>{label}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1 }}>{label}</div>
+                  <div style={{ ...mono, fontSize: 16, color, opacity: 0.5 }}>›</div>
+                </div>
               </div>
               {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{subtitle}</div>}
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${color}22` }}>
                 <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
                 {fLogs.todayLogged && fLogs.tomorrow
@@ -2452,28 +2456,36 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   </div>
                 )}
                 {plan.blockImageUrl && <img src={plan.blockImageUrl} alt="Overview" style={{ width: "100%", borderRadius: 8, marginBottom: 24 }} />}
-                {fatigueLogs.length > 2 && (() => {
-                  const recent = [...fatigueLogs].reverse().slice(-30);
-                  const chartH = 72;
-                  const barW = Math.max(6, Math.floor(260 / recent.length) - 2);
+                {plan.volumePublished && plan.weeks && plan.weeks.some(wk => wk.volume) && (() => {
+                  const MAX_VOL = 5;
+                  const graphHeight = 72;
+                  const allWeeks = plan.weeks;
                   return (
                     <div style={{ marginBottom: 24 }}>
-                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Training Load · Last 30 Days</div>
-                      <div style={{ display: "flex", gap: 2, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
-                        {recent.map((log, i) => (
-                          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                            <div style={{ ...mono, fontSize: 8, color: C.muted }}>{log.load ?? 0}</div>
-                            <div style={{ width: barW, height: chartH, display: "flex", alignItems: "flex-end" }}>
-                              <div style={{ width: "100%", height: `${Math.max(3, ((log.load ?? 0) / 4) * 100)}%`, background: (log.load ?? 0) === 0 ? "rgba(255,255,255,0.1)" : (log.load ?? 0) <= 2 ? C.orange : "#c0392b", borderRadius: "2px 2px 0 0" }} />
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Training Load</div>
+                      <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.6, marginBottom: 12, fontStyle: "italic" }}>
+                        Your training arc for this block. Use it to plan your rest.
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: graphHeight + 20 }}>
+                        {allWeeks.map((wk, i) => {
+                          const vol = wk.volume || 0;
+                          const barH = vol ? (vol / MAX_VOL) * graphHeight : 0;
+                          const isCurrent = currentWeekIdx === i;
+                          const isPublished = publishedIndices.includes(i);
+                          const barColor = vol <= 2 ? "rgba(91,127,166,0.7)" : vol === 5 ? "#e07a3a" : C.orange;
+                          return (
+                            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end", opacity: isPublished ? 1 : 0.3 }}>
+                              {vol > 0 && <div style={{ ...mono, fontSize: 9, color: isCurrent ? C.purple : C.muted }}>{vol}</div>}
+                              <div style={{ width: "100%", height: barH, background: isCurrent ? C.purple : barColor, borderRadius: "3px 3px 0 0", outline: isCurrent ? `2px solid ${C.purple}` : "none", outlineOffset: 2 }} />
+                              <div style={{ ...mono, fontSize: 8, color: isCurrent ? C.purple : C.muted, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{wk.label.replace("Week ","W")}</div>
                             </div>
-                            <div style={{ ...mono, fontSize: 7, color: C.muted, writingMode: "vertical-rl", transform: "rotate(180deg)", height: 24, overflow: "hidden" }}>{log.date.slice(5)}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
                 })()}
-                {!plan.blockUpdate && !plan.blockNotes && !plan.blockImageUrl && fatigueLogs.length < 3 && (
+                {!plan.blockUpdate && !plan.blockNotes && !plan.blockImageUrl && !(plan.volumePublished && plan.weeks?.some(wk => wk.volume)) && (
                   <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Nothing here yet.</div>
                 )}
               </div>
