@@ -1704,103 +1704,6 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
     );
   };
 
-  const renderSheet = () => {
-    if (!withMetrics.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No entries yet.</div>;
-
-    const headers = ["Date", "Summary", "Sleep", "Load", "Strong", "Tweaks", "Avg Sleep", "Week Load"];
-
-    const exportCSV = () => {
-      const rows = [headers];
-      [...withMetrics].reverse().forEach(l => {
-        rows.push([
-          l.date,
-          l.summary || "",
-          l.sleep ?? "",
-          l.load ?? "",
-          l.strong ?? "",
-          l.tweaks || "",
-          l.avgSleep ?? "",
-          l.weekLoad ?? "",
-        ]);
-      });
-      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "volume_log.csv"; a.click();
-      URL.revokeObjectURL(url);
-    };
-
-    const cellStyle = (align = "left") => ({ padding: "7px 10px", fontSize: 11, color: C.white, textAlign: align, borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" });
-    const headStyle = (align = "left") => ({ ...cellStyle(align), ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5, background: C.gray });
-
-    return (
-      <div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-          <button onMouseDown={e => { e.preventDefault(); exportCSV(); }}
-            style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-            ↓ Export CSV
-          </button>
-        </div>
-        <div style={{ overflowX: "auto", borderRadius: 8, border: `1px solid ${C.border}` }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 540 }}>
-            <thead>
-              <tr>
-                {headers.map(h => <th key={h} style={headStyle()}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {[...withMetrics].reverse().map((l, i) => {
-                const d = new Date(l.date + "T12:00:00");
-                const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-                return (
-                  <tr key={l.id} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
-                    <td style={cellStyle()}><span style={{ ...mono, fontSize: 10, color: C.muted }}>{dateLabel}</span></td>
-                    <td style={{ ...cellStyle(), maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{l.summary || "—"}</td>
-                    <td style={{ ...cellStyle("center"), color: l.sleep < 6 ? "#c0392b" : l.sleep < 6.5 ? C.orange : "#3d9e7a" }}>{l.sleep != null ? l.sleep + "h" : "—"}</td>
-                    <td style={{ ...cellStyle("center"), color: l.load === 0 ? C.muted : l.load <= 2 ? C.orange : "#c0392b" }}>{l.load ?? "—"}</td>
-                    <td style={{ ...cellStyle("center"), color: l.strong === 0 ? "#c0392b" : l.strong === 1 ? C.orange : "#3d9e7a" }}>{l.strong != null ? l.strong : "—"}</td>
-                    <td style={{ ...cellStyle(), color: C.muted, fontSize: 10 }}>{l.tweaks || "—"}</td>
-                    <td style={{ ...cellStyle("center"), ...mono, color: C.muted, fontSize: 10 }}>{l.avgSleep ?? "—"}</td>
-                    <td style={{ ...cellStyle("center"), ...mono, color: C.muted, fontSize: 10 }}>{l.weekLoad ?? "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      {(() => {
-        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-        const cutoffStr = cutoff.toISOString().slice(0, 10);
-        const last30 = logs.filter(l => l.date >= cutoffStr);
-        const trainCount = last30.filter(l => (l.load ?? 0) > 0).length;
-        const restCount = last30.filter(l => (l.load ?? 0) === 0).length;
-        const total = trainCount + restCount;
-        const trainPct = total > 0 ? Math.round(trainCount / total * 100) : 0;
-        const restPct = total > 0 ? 100 - trainPct : 0;
-        return (
-          <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>🚂</span>
-              <div>
-                <div style={{ ...mono, fontSize: 14, color: "#3d9e7a" }}>{trainCount}</div>
-                <div style={{ ...mono, fontSize: 9, color: C.muted }}>{trainPct}% train · last 30 days</div>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>🛌</span>
-              <div>
-                <div style={{ ...mono, fontSize: 14, color: C.muted }}>{restCount}</div>
-                <div style={{ ...mono, fontSize: 9, color: C.muted }}>{restPct}% rest</div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-      </div>
-    );
-  };
-
   const renderChart = () => {
     // logs is newest-first; reverse to chronological, take last 30
     const recent = [...withMetrics].reverse().slice(0, 30);
@@ -1885,7 +1788,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
         <div style={{ display: "flex", gap: 8 }}>
           {!isCoach && !forcedView && (
             <div style={{ display: "flex", background: C.gray2, borderRadius: 6, padding: 2, gap: 2 }}>
-              {[["log","Log"],["chart","Chart"],["calendar","Cal"],["sheet","Sheet"]].map(([v,l]) => (
+              {[["log","Log"],["chart","Chart"],["calendar","Cal"]].map(([v,l]) => (
                 <button key={v} onMouseDown={e => { e.preventDefault(); setActiveView(v); }}
                   style={{ ...mono, fontSize: 10, padding: "5px 10px", borderRadius: 4, border: "none", background: activeView===v ? C.gray : "transparent", color: activeView===v ? C.orange : C.muted, cursor: "pointer" }}>{l}</button>
               ))}
@@ -1929,11 +1832,11 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
             </div>
             <div>
               <Lbl text="What did you do today?" />
-              <input value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} placeholder="As few words as possible, just get it on the page" style={inp} />
+              <input value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} placeholder="As few words as possible, just get it on the page" style={{ ...inp, boxSizing: "border-box" }} />
             </div>
             <div>
               <Lbl text="Sleep" />
-              <input value={form.sleep} onChange={e => setForm(f => ({ ...f, sleep: e.target.value }))} placeholder="Hours" type="number" step="0.5" min="0" max="14" style={{ ...inp, width: 100 }} />
+              <input value={form.sleep} onChange={e => setForm(f => ({ ...f, sleep: e.target.value }))} placeholder="Hours" type="number" step="0.5" min="0" max="14" style={{ ...inp, width: 100, boxSizing: "border-box" }} />
               <Hint text="Take hours asleep, subtract 0.5 for bad sleep, subtract 1 for really bad. Don't overthink it." />
             </div>
             <div>
@@ -1954,7 +1857,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
             </div>
             <div>
               <Lbl text="Any tweaks?" />
-              <input value={form.tweaks} onChange={e => setForm(f => ({ ...f, tweaks: e.target.value }))} placeholder="Anything bugging you? (optional)" style={inp} />
+              <input value={form.tweaks} onChange={e => setForm(f => ({ ...f, tweaks: e.target.value }))} placeholder="Anything bugging you? (optional)" style={{ ...inp, boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <button onClick={() => save()} disabled={saving}
@@ -1974,8 +1877,6 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
         <>{renderChart()}</>
       ) : effectiveView === 'calendar' && !isCoach ? (
         <>{renderCalendar()}</>
-      ) : effectiveView === 'sheet' && !isCoach ? (
-        <>{renderSheet()}</>
       ) : (
         <div>
           {withMetrics.length === 0 && !showForm && (
@@ -2022,7 +1923,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const setActiveDay = setSharedDay || _setActiveDay;
   const [showOverview, setShowOverview] = useState(false);
   const [showUpdate, setShowUpdate] = useState(false);
-  const [volumeExpanded, setVolumeExpanded] = useState(true);
   const [showTimer, setShowTimer] = useState(false);
 
   const week = plan?.weeks?.[activeWeekIdx];
@@ -2225,7 +2125,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {/* Volume Element modal */}
       {showVolumeModal && ReactDOM.createPortal(
         <div style={{ position: "fixed", inset: 0, zIndex: 9998, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowVolumeModal(false)}>
-          <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 480, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
             </div>
@@ -2432,7 +2332,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         {/* Athlete info modal */}
         {showAthleteInfo && ReactDOM.createPortal(
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAthleteInfo(false)}>
-            <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "85vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+            <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "85vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 420, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
                 <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
               </div>
@@ -2509,54 +2409,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>
         )}
 
-        {/* Volume graph */}
-        {plan.volumePublished && plan.weeks && plan.weeks.some(wk => wk.volume) && (() => {
-          const MAX_VOL = 5;
-          const graphHeight = 72;
-          const allWeeks = plan.weeks;
-          const currentWi = currentWeekIdx;
-          return (
-            <div style={{ marginBottom: 16, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-              <button onClick={() => setVolumeExpanded(v => !v)}
-                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
-                <span style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Training Load</span>
-                <span style={{ ...mono, fontSize: 11, color: C.muted }}>{volumeExpanded ? "▲" : "▼"}</span>
-              </button>
-              {volumeExpanded && (
-                <div style={{ padding: "0 16px 14px" }}>
-                  <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.6, marginBottom: 12, fontStyle: "italic" }}>
-                    Here is the volume map for your training block. Use it to better understand your training arc, and to plan plenty of rest.
-                  </div>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: graphHeight + 20 }}>
-                    {allWeeks.map((wk, i) => {
-                      const vol = wk.volume || 0;
-                      const barH = vol ? (vol / MAX_VOL) * graphHeight : 0;
-                      const isActive = activeWeekIdx === i && publishedIndices.includes(i);
-                      const isCurrent = currentWi === i;
-                      const isPublished = publishedIndices.includes(i);
-                      const barColor = vol <= 2 ? "rgba(91,127,166,0.7)" : vol === 5 ? "#e07a3a" : C.orange;
-                      return (
-                        <div key={i} onClick={() => { if(isPublished){ setActiveWeekIdx(i); setActiveDay(0); } }}
-                          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end", cursor: isPublished ? "pointer" : "default", opacity: isPublished ? 1 : 0.35 }}>
-                          {vol > 0 && <div style={{ ...mono, fontSize: 9, color: isActive ? C.orange : C.muted }}>{vol}</div>}
-                          <div style={{ width: "100%", height: barH, background: isActive ? C.orange : barColor, borderRadius: "3px 3px 0 0", transition: "all 0.2s", outline: isCurrent ? `2px solid ${C.purple}` : "none", outlineOffset: 2 }} />
-                          <div style={{ ...mono, fontSize: 8, color: isActive ? C.orange : isCurrent ? C.purple : C.muted, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{wk.label.replace("Week ","W")}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-                    {[[C.orange,"Selected"],[C.purple,"This week"],["rgba(91,127,166,0.7)","Low"],["#e07a3a","Peak"]].map(([color, label]) => (
-                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 4, ...mono, fontSize: 9, color: C.muted }}>
-                        <div style={{ width: 8, height: 8, borderRadius: 2, background: color }} />{label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+
 
         {showOverview && (() => {
           const modalBg = darkMode ? "#1a1a1a" : "#ffffff";
@@ -2773,7 +2626,7 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
                 {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Password</div>
-              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleAthleteLogin()} placeholder="Enter your password" style={inputStyle} />
+              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleAthleteLogin()} placeholder="Enter your password" style={{ ...inputStyle, boxSizing: "border-box" }} />
             </>
           ) : (
             <>
