@@ -2286,16 +2286,23 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
-        {/* Consistency calendar — identical to Volume tab calendar view */}
+        {/* Consistency calendar modal */}
         {fatigueLogs.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <button onClick={() => setShowCalendar(v => !v)}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${showCalendar ? C.orange : C.border}`, background: "none", color: showCalendar ? C.orange : C.muted, cursor: "pointer", marginBottom: showCalendar ? 12 : 0 }}>
-              {showCalendar ? "✕ Hide Calendar" : "📅 Show Calendar"}
+          <div style={{ marginBottom: 16 }}>
+            <button onClick={() => setShowCalendar(true)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+              📅 Calendar
             </button>
           </div>
         )}
-        {fatigueLogs.length > 0 && showCalendar && (() => {
+        {showCalendar && fatigueLogs.length > 0 && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 700, display: "flex", flexDirection: "column" }} onClick={() => setShowCalendar(false)}>
+            <div style={{ background: C.black, flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 480, margin: "0 auto", width: "100%" }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>CONSISTENCY</div>
+                <button onClick={() => setShowCalendar(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+              {(() => {
           const todayStr = new Date().toISOString().slice(0, 10);
           const byMonth = {};
           fatigueLogs.forEach(log => {
@@ -2304,7 +2311,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             byMonth[ym][log.date] = log;
           });
           const minMonth = athlete?.id === "bzmmql6" ? "2026-04" : "0000-00";
-          const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
+          const months = Object.keys(byMonth).filter(m => m >= minMonth).sort().reverse();
           return (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
@@ -2378,7 +2385,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               })()}
             </div>
           );
-        })()}
+          })()}
+            </div>
+          </div>
+        )}
 
         {/* Athlete name + badges */}
         <div style={{ marginBottom: 16 }}>
