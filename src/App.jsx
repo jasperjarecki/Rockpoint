@@ -1596,27 +1596,38 @@ function FatigueLog({ athlete, isCoach = false }) {
     const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
     const last3Loads = last3.map(l => l.load ?? 0);
     const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
+    // 4 consecutive strong=2 days signals connective tissue stress risk
+    const last4 = withMetrics.slice(0, 4);
+    const fourStrongDays = last4.length === 4 && last4.every(l => l.strong === 2);
     const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
     const lowSleep = avgSleep < 6.5;
     const lowStrong = avgStrong !== null && avgStrong < 0.75;
     const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
     const highLoad = loadRatio > 1.3;
     const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
-    const redCount = [twoDaysOn, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+    const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
     const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+    const lastNightSleep = withMetrics[0]?.sleep ?? null;
+    const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
+
     let label, color, bg, reasons;
-    if (redCount >= 2 || lowStrong) {
+    if (sleptUnder6) {
+      label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
+      reasons = ["Last night's sleep was under 6 hours — no training today."];
+    } else if (redCount >= 2 || lowStrong) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = [
         twoDaysOn && "Two hard sessions back to back",
+        fourStrongDays && "4 consecutive peak days — connective tissue needs rest",
         highLoad && ("Weekly load is high (" + weekLoad + " vs " + avgSleep.toFixed(1) + "h avg sleep)"),
         lowSleep && ("Sleep avg is low (" + avgSleep.toFixed(1) + "h)"),
         lowStrong && "Consistently feeling off",
       ].filter(Boolean);
-    } else if (redCount === 1 || yellowCount >= 1) {
+    } else if (!sleptUnder6 && (redCount === 1 || yellowCount >= 1)) {
       label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)";
       reasons = [
         twoDaysOn && "Two hard days recently — keep it easy",
+
         borderlineLoad && ("Load is building (" + weekLoad + " this week)"),
         lowSleep && ("Sleep avg below ideal (" + avgSleep.toFixed(1) + "h)"),
         borderlineStrong && "Feeling a bit flat lately",
@@ -2008,6 +2019,96 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   };
 
   const [athleteTab, setAthleteTab] = useState("plan");
+  const [showSleepPrompt, setShowSleepPrompt] = useState(false);
+  const [sleepPromptValue, setSleepPromptValue] = useState("");
+  const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
+
+  // Show sleep prompt if today's sleep not yet logged
+  useEffect(() => {
+    if (!athlete?.id) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    // Only show sleep prompt for test users (Jasper + Patrick)
+    const sleepPromptAthletes = ["bzmmql6", "8ygufmv"];
+    if (!sleepPromptAthletes.includes(athlete.id)) return;
+    sb.from("fatigue_logs").select("id,sleep").eq("athlete_id", athlete.id).eq("date", todayStr).maybeSingle()
+      .then(({ data }) => {
+        if (!data || data.sleep == null) setShowSleepPrompt(true);
+      });
+  }, [athlete?.id]);
+
+  const submitSleepPrompt = async () => {
+    const val = parseFloat(sleepPromptValue);
+    if (isNaN(val) || val <= 0) return;
+    setSleepPromptSaving(true);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const { data: existing } = await sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).maybeSingle();
+    if (existing) {
+      await sb.from("fatigue_logs").update({ sleep: val }).eq("id", existing.id);
+    } else {
+      await sb.from("fatigue_logs").insert({ athlete_id: athlete.id, date: todayStr, sleep: val });
+    }
+    setSleepPromptSaving(false);
+    setShowSleepPrompt(false);
+  };
+
+  // Compute recommendation for banner using fatigue logs stored in state
+  const [fatigueRec, setFatigueRec] = useState(null);
+  useEffect(() => {
+    if (!athlete?.id) return;
+    sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id)
+      .order("date", { ascending: false }).limit(10)
+      .then(({ data }) => {
+        const logs = data || [];
+        if (logs.length < 3) return;
+        const recent7 = logs.slice(0, 7);
+        const last3 = logs.slice(0, 3);
+        const last4 = logs.slice(0, 4);
+        const avgSleep = recent7.reduce((s,l) => s+(l.sleep||0),0)/recent7.length;
+        const weekLoad = recent7.reduce((s,l) => s+(l.load||0),0);
+        const strongLogs = last3.filter(l => l.strong != null);
+        const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
+        const last3Loads = last3.map(l => l.load ?? 0);
+        const last4Strong = last4.map(l => l.strong);
+        const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
+        const fourStrongDays = last4.length === 4 && last4Strong.every(s => s === 2);
+        const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
+        const lowSleep = avgSleep < 6.5;
+        const lowStrong = avgStrong !== null && avgStrong < 0.75;
+        const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
+        const highLoad = loadRatio > 1.3;
+        const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
+        const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+        const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+        const lastNightSleep = logs[0]?.sleep ?? null;
+        const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
+        let label, color, bg;
+        if (sleptUnder6) { label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)"; }
+        else if (redCount >= 2 || lowStrong) { label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)"; }
+        else if (redCount === 1 || yellowCount >= 1) { label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)"; }
+        else { label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)"; }
+        // Tomorrow's recommendation — only if today is logged
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayLogged = logs.some(l => l.date === todayStr);
+        let tomorrow = null;
+        if (todayLogged) {
+          // For tomorrow, same windows but today's log is already included
+          const tomorrowRedCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+          const tomorrowYellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+          // Shift: today counts as "yesterday" for tomorrow
+          const tomorrowLast3Loads = [last3Loads[0], last3Loads[0], last3Loads[1]]; // today repeated as most recent
+          const tomorrowTwoDaysOn = tomorrowLast3Loads.filter(l => l >= 2).length >= 2;
+          const tomorrowRedCount2 = [tomorrowTwoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+          const tomorrowYellowCount2 = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+          let tLabel, tColor;
+          if (tomorrowRedCount2 >= 2 || lowStrong) { tLabel = "Rest"; tColor = "#c0392b"; }
+          else if (tomorrowRedCount2 === 1 || tomorrowYellowCount2 >= 1) { tLabel = "Train Light"; tColor = C.orange; }
+          else { tLabel = "Train"; tColor = "#3d9e7a"; }
+          tomorrow = { label: tLabel, color: tColor };
+        }
+
+        setFatigueRec({ label, color, bg, tomorrow, todayLogged });
+      });
+  }, [athlete?.id]);
   // Force non-Jasper athletes off the fatigue tab
   const safeAthleteTab = (athlete?.id === "bzmmql6") ? athleteTab : "plan";
 
@@ -2024,12 +2125,64 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             style={{ ...mono, fontSize: 11, padding: "10px 20px", background: "none", border: "none", borderBottom: `2px solid ${athleteTab===k?C.orange:"transparent"}`, color: athleteTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
         ))}
       </div>
+      {/* Sleep prompt modal */}
+      {showSleepPrompt && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 340 }}>
+            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 4 }}>Good morning 👋</div>
+            <div style={{ fontSize: 14, color: C.muted, marginBottom: 20, lineHeight: 1.5 }}>How did you sleep last night?</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Hours</div>
+            <input type="number" step="0.5" min="0" max="14" value={sleepPromptValue}
+              onChange={e => setSleepPromptValue(e.target.value)}
+              placeholder="e.g. 7.5"
+              autoFocus
+              style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.white, fontSize: 16, outline: "none", marginBottom: 6, boxSizing: "border-box" }} />
+            <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 20, lineHeight: 1.5 }}>Take the hours you spent asleep, subtract 0.5 if it was bad sleep, subtract 1 if it was really bad. This is pretty subjective, so don't worry too much about nailing it.</div>
+            <button onClick={submitSleepPrompt} disabled={!sleepPromptValue || sleepPromptSaving}
+              style={{ width: "100%", ...mono, fontSize: 12, padding: "14px", borderRadius: 8, border: "none", background: sleepPromptValue ? C.orange : C.border, color: "#fff", cursor: sleepPromptValue ? "pointer" : "default" }}>
+              {sleepPromptSaving ? "Saving..." : "Log Sleep"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {safeAthleteTab === "fatigue" ? (
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
           <FatigueLog athlete={athlete} isCoach={false} />
         </div>
       ) : <>
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
+        {/* Date + recommendation banner */}
+        {(() => {
+          const now = new Date();
+          const dateLabel = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+          // Compute recommendation from progress/fatigue data if available
+          const fLogs = fatigueRec;
+          if (!fLogs) return (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ ...mono, fontSize: 11, color: C.muted }}>{dateLabel}</div>
+            </div>
+          );
+          const { label, color, bg } = fLogs;
+          const subtitle = label === "Train Light" ? "Pick just 2 exercises to complete, not a full day." : null;
+          return (
+            <div style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ ...mono, fontSize: 11, color: C.muted }}>{dateLabel}</div>
+                <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1 }}>{label}</div>
+              </div>
+              {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{subtitle}</div>}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${color}22` }}>
+                <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
+                {fLogs.todayLogged && fLogs.tomorrow
+                  ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                  : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
+                }
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Athlete name + badges */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
