@@ -1689,7 +1689,7 @@ function FatigueLog({ athlete, isCoach = false }) {
                   return (
                     <div key={i} style={{ aspectRatio: "1", borderRadius: 6, background: bg, border: `1px solid ${border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
                       <div style={{ ...mono, fontSize: 9, color: isToday ? C.orange : log ? C.white : C.muted }}>{d}</div>
-                      {icon && <div style={{ fontSize: 11, lineHeight: 1 }}>{icon}</div>}
+                      {icon && <div style={{ fontSize: 18, lineHeight: 1 }}>{icon}</div>}
                     </div>
                   );
                 })}
@@ -1697,6 +1697,103 @@ function FatigueLog({ athlete, isCoach = false }) {
             </div>
           );
         })}
+      </div>
+    );
+  };
+
+  const renderSheet = () => {
+    if (!withMetrics.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No entries yet.</div>;
+
+    const headers = ["Date", "Summary", "Sleep", "Load", "Strong", "Tweaks", "Avg Sleep", "Week Load"];
+
+    const exportCSV = () => {
+      const rows = [headers];
+      [...withMetrics].reverse().forEach(l => {
+        rows.push([
+          l.date,
+          l.summary || "",
+          l.sleep ?? "",
+          l.load ?? "",
+          l.strong ?? "",
+          l.tweaks || "",
+          l.avgSleep ?? "",
+          l.weekLoad ?? "",
+        ]);
+      });
+      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "volume_log.csv"; a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    const cellStyle = (align = "left") => ({ padding: "7px 10px", fontSize: 11, color: C.white, textAlign: align, borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" });
+    const headStyle = (align = "left") => ({ ...cellStyle(align), ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5, background: C.gray });
+
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button onMouseDown={e => { e.preventDefault(); exportCSV(); }}
+            style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+            ↓ Export CSV
+          </button>
+        </div>
+        <div style={{ overflowX: "auto", borderRadius: 8, border: `1px solid ${C.border}` }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 540 }}>
+            <thead>
+              <tr>
+                {headers.map(h => <th key={h} style={headStyle()}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {[...withMetrics].reverse().map((l, i) => {
+                const d = new Date(l.date + "T12:00:00");
+                const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+                return (
+                  <tr key={l.id} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                    <td style={cellStyle()}><span style={{ ...mono, fontSize: 10, color: C.muted }}>{dateLabel}</span></td>
+                    <td style={{ ...cellStyle(), maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{l.summary || "—"}</td>
+                    <td style={{ ...cellStyle("center"), color: l.sleep < 6 ? "#c0392b" : l.sleep < 6.5 ? C.orange : "#3d9e7a" }}>{l.sleep != null ? l.sleep + "h" : "—"}</td>
+                    <td style={{ ...cellStyle("center"), color: l.load === 0 ? C.muted : l.load <= 2 ? C.orange : "#c0392b" }}>{l.load ?? "—"}</td>
+                    <td style={{ ...cellStyle("center"), color: l.strong === 0 ? "#c0392b" : l.strong === 1 ? C.orange : "#3d9e7a" }}>{l.strong != null ? l.strong : "—"}</td>
+                    <td style={{ ...cellStyle(), color: C.muted, fontSize: 10 }}>{l.tweaks || "—"}</td>
+                    <td style={{ ...cellStyle("center"), ...mono, color: C.muted, fontSize: 10 }}>{l.avgSleep ?? "—"}</td>
+                    <td style={{ ...cellStyle("center"), ...mono, color: C.muted, fontSize: 10 }}>{l.weekLoad ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      {(() => {
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const last30 = logs.filter(l => l.date >= cutoffStr);
+        const trainCount = last30.filter(l => (l.load ?? 0) > 0).length;
+        const restCount = last30.filter(l => (l.load ?? 0) === 0).length;
+        const total = trainCount + restCount;
+        const trainPct = total > 0 ? Math.round(trainCount / total * 100) : 0;
+        const restPct = total > 0 ? 100 - trainPct : 0;
+        return (
+          <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 14 }}>🚂</span>
+              <div>
+                <div style={{ ...mono, fontSize: 14, color: "#3d9e7a" }}>{trainCount}</div>
+                <div style={{ ...mono, fontSize: 9, color: C.muted }}>{trainPct}% train · last 30 days</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 14 }}>🛌</span>
+              <div>
+                <div style={{ ...mono, fontSize: 14, color: C.muted }}>{restCount}</div>
+                <div style={{ ...mono, fontSize: 9, color: C.muted }}>{restPct}% rest</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       </div>
     );
   };
@@ -1744,7 +1841,7 @@ function FatigueLog({ athlete, isCoach = false }) {
             <span style={{ ...mono, fontSize: 10, color: isToday ? C.orange : C.muted }}>{dayLabel}</span>
             {isToday && <span style={{ ...mono, fontSize: 8, color: C.orange, background: "rgba(61,158,122,0.12)", padding: "1px 6px", borderRadius: 3 }}>TODAY</span>}
           </div>
-          {(isToday || isCoach) && (
+          {true && (
             <button onMouseDown={e => { e.preventDefault(); openForm(log); }}
               style={{ ...mono, fontSize: 9, padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>edit</button>
           )}
@@ -1785,7 +1882,7 @@ function FatigueLog({ athlete, isCoach = false }) {
         <div style={{ display: "flex", gap: 8 }}>
           {!isCoach && (
             <div style={{ display: "flex", background: C.gray2, borderRadius: 6, padding: 2, gap: 2 }}>
-              {[["log","Log"],["chart","Chart"],["calendar","Cal"]].map(([v,l]) => (
+              {[["log","Log"],["chart","Chart"],["calendar","Cal"],["sheet","Sheet"]].map(([v,l]) => (
                 <button key={v} onMouseDown={e => { e.preventDefault(); setActiveView(v); }}
                   style={{ ...mono, fontSize: 10, padding: "5px 10px", borderRadius: 4, border: "none", background: activeView===v ? C.gray : "transparent", color: activeView===v ? C.orange : C.muted, cursor: "pointer" }}>{l}</button>
               ))}
@@ -1874,6 +1971,8 @@ function FatigueLog({ athlete, isCoach = false }) {
         <>{renderChart()}</>
       ) : activeView === 'calendar' && !isCoach ? (
         <>{renderCalendar()}</>
+      ) : activeView === 'sheet' && !isCoach ? (
+        <>{renderSheet()}</>
       ) : (
         <div>
           {(() => { const rec = getRecommendation(); if (!rec) return null; return (
@@ -2053,12 +2152,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
   // Compute recommendation for banner using fatigue logs stored in state
   const [fatigueRec, setFatigueRec] = useState(null);
+  const [fatigueLogs, setFatigueLogs] = useState([]);
   useEffect(() => {
     if (!athlete?.id) return;
     sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id)
-      .order("date", { ascending: false }).limit(10)
+      .order("date", { ascending: false }).limit(90)
       .then(({ data }) => {
         const logs = data || [];
+        setFatigueLogs(logs);
         if (logs.length < 3) return;
         const recent7 = logs.slice(0, 7);
         const last3 = logs.slice(0, 3);
@@ -2179,6 +2280,91 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
                 }
               </div>
+            </div>
+          );
+        })()}
+
+        {/* Consistency calendar — identical to Volume tab calendar view */}
+        {fatigueLogs.length > 0 && (() => {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const byMonth = {};
+          fatigueLogs.forEach(log => {
+            const ym = log.date.slice(0, 7);
+            if (!byMonth[ym]) byMonth[ym] = {};
+            byMonth[ym][log.date] = log;
+          });
+          const months = Object.keys(byMonth).sort().reverse();
+          return (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                {months.map(ym => {
+                  const [y, m] = ym.split("-").map(Number);
+                  const monthName = new Date(y, m-1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                  const firstDay = new Date(y, m-1, 1).getDay();
+                  const daysInMonth = new Date(y, m, 0).getDate();
+                  const cells = [];
+                  for (let i = 0; i < firstDay; i++) cells.push(null);
+                  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                  return (
+                    <div key={ym}>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>{monthName}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                        {["S","M","T","W","T","F","S"].map((d,i) => (
+                          <div key={i} style={{ ...mono, fontSize: 9, color: C.muted, textAlign: "center", paddingBottom: 4 }}>{d}</div>
+                        ))}
+                        {cells.map((d, i) => {
+                          if (!d) return <div key={i} />;
+                          const dateStr = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+                          const log = byMonth[ym][dateStr];
+                          const isToday = dateStr === todayStr;
+                          let icon = null, bg = "transparent", border = "transparent";
+                          if (log) {
+                            const load = log.load ?? 0;
+                            icon = load === 0 ? "🛌" : "🚂";
+                            bg = load === 0 ? "rgba(255,255,255,0.04)" : "rgba(61,158,122,0.15)";
+                          }
+                          if (isToday) border = C.orange;
+                          return (
+                            <div key={i} style={{ aspectRatio: "1", borderRadius: 6, background: bg, border: `1px solid ${border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                              <div style={{ ...mono, fontSize: 8, color: isToday ? C.orange : log ? C.white : C.muted, lineHeight: 1 }}>{d}</div>
+                              {icon && <div style={{ fontSize: 18, lineHeight: 1 }}>{icon}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {(() => {
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+                const cutoffStr = cutoff.toISOString().slice(0, 10);
+                const last30 = fatigueLogs.filter(l => l.date >= cutoffStr);
+                const trainCount = last30.filter(l => (l.load ?? 0) > 0).length;
+                const restCount = last30.filter(l => (l.load ?? 0) === 0).length;
+                const total = trainCount + restCount;
+                const trainPct = total > 0 ? Math.round(trainCount / total * 100) : 0;
+                const restPct = total > 0 ? 100 - trainPct : 0;
+                return (
+                  <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 14 }}>🚂</span>
+                      <div>
+                        <div style={{ ...mono, fontSize: 14, color: "#3d9e7a" }}>{trainCount}</div>
+                        <div style={{ ...mono, fontSize: 9, color: C.muted }}>{trainPct}% train · last 30 days</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 14 }}>🛌</span>
+                      <div>
+                        <div style={{ ...mono, fontSize: 14, color: C.muted }}>{restCount}</div>
+                        <div style={{ ...mono, fontSize: 9, color: C.muted }}>{restPct}% rest</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
