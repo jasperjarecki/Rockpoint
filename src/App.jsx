@@ -1521,12 +1521,13 @@ function TimerModal({ onClose }) {
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
 
 // ─── Fatigue Log ─────────────────────────────────────────────────────────────
-function FatigueLog({ athlete, isCoach = false }) {
+function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
   const today = new Date().toISOString().slice(0, 10);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [activeView, setActiveView] = useState('log');
+  const effectiveView = forcedView || activeView;
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: today, summary: "", sleep: "", load: "", strong: "", tweaks: "" });
   const [editingId, setEditingId] = useState(null);
@@ -1882,7 +1883,7 @@ function FatigueLog({ athlete, isCoach = false }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>VOLUME TRACKING</div>
         <div style={{ display: "flex", gap: 8 }}>
-          {!isCoach && (
+          {!isCoach && !forcedView && (
             <div style={{ display: "flex", background: C.gray2, borderRadius: 6, padding: 2, gap: 2 }}>
               {[["log","Log"],["chart","Chart"],["calendar","Cal"],["sheet","Sheet"]].map(([v,l]) => (
                 <button key={v} onMouseDown={e => { e.preventDefault(); setActiveView(v); }}
@@ -1969,21 +1970,32 @@ function FatigueLog({ athlete, isCoach = false }) {
 
       {loading ? (
         <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>
-      ) : activeView === 'chart' && !isCoach ? (
+      ) : effectiveView === 'chart' && !isCoach ? (
         <>{renderChart()}</>
-      ) : activeView === 'calendar' && !isCoach ? (
+      ) : effectiveView === 'calendar' && !isCoach ? (
         <>{renderCalendar()}</>
-      ) : activeView === 'sheet' && !isCoach ? (
+      ) : effectiveView === 'sheet' && !isCoach ? (
         <>{renderSheet()}</>
       ) : (
         <div>
           {(() => { const rec = getRecommendation(); if (!rec) return null; return (
-            <div style={{ background: rec.bg, border: `1px solid ${rec.color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                <div style={{ ...bebas, fontSize: 24, color: rec.color, letterSpacing: 1 }}>{rec.label}</div>
-                <div style={{ ...mono, fontSize: 9, color: rec.color, padding: "2px 8px", border: `1px solid ${rec.color}`, borderRadius: 10, opacity: 0.8 }}>TODAY</div>
+            <div onClick={() => setShowVolumeModal(true)} style={{ background: rec.bg, border: `1px solid ${rec.color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ ...bebas, fontSize: 24, color: rec.color, letterSpacing: 1 }}>{rec.label}</div>
+                  <div style={{ ...mono, fontSize: 9, color: rec.color, padding: "2px 8px", border: `1px solid ${rec.color}`, borderRadius: 10, opacity: 0.8 }}>TODAY</div>
+                </div>
+                <div style={{ ...mono, fontSize: 16, color: rec.color, opacity: 0.6 }}>›</div>
               </div>
-              {rec.reasons.map((r, i) => <div key={i} style={{ fontSize: 12, color: C.muted }}>· {r}</div>)}
+              {subtitle && <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{subtitle}</div>}
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, borderTop: `1px solid ${rec.color}22` }}>
+                <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
+                {fLogs.todayLogged && fLogs.tomorrow
+                  ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                  : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
+                }
+              </div>
             </div>
           ); })()}
           {withMetrics.length === 0 && !showForm && (
@@ -2122,6 +2134,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [athleteTab, setAthleteTab] = useState("plan");
   const [showSleepPrompt, setShowSleepPrompt] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showVolumeModal, setShowVolumeModal] = useState(false);
+  const [volumeModalTab, setVolumeModalTab] = useState('log');
+  const [showVolumeInfo, setShowVolumeInfo] = useState(false);
   const [sleepPromptValue, setSleepPromptValue] = useState("");
   const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
 
@@ -2192,7 +2207,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         else { label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)"; }
         // Tomorrow's recommendation — only if today is logged
         const todayStr = new Date().toISOString().slice(0, 10);
-        const todayLogged = logs.some(l => l.date === todayStr);
+        const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && l.strong != null);
         let tomorrow = null;
         if (todayLogged) {
           // For tomorrow, same windows but today's log is already included
@@ -2224,11 +2239,44 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, display: "flex", flexShrink: 0 }}>
-        {[["plan","Plan"], ...(athlete?.id === "bzmmql6" ? [["fatigue","Volume"]] : [])].map(([k,l]) => (
+        {[["plan","Plan"]].map(([k,l]) => (
           <button key={k} onClick={() => setAthleteTab(k)}
             style={{ ...mono, fontSize: 11, padding: "10px 20px", background: "none", border: "none", borderBottom: `2px solid ${athleteTab===k?C.orange:"transparent"}`, color: athleteTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
         ))}
       </div>
+      {/* Volume Element modal */}
+      {showVolumeModal && ReactDOM.createPortal(
+        <div style={{ position: "fixed", inset: 0, zIndex: 9998, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowVolumeModal(false)}>
+          <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 20px 12px" }}>
+              <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>VOLUME ELEMENT</div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <button onClick={() => setShowVolumeInfo(v => !v)} style={{ background: "none", border: `1px solid ${showVolumeInfo ? C.orange : C.border}`, borderRadius: "50%", color: showVolumeInfo ? C.orange : C.muted, fontSize: 13, cursor: "pointer", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", ...mono }}>i</button>
+                <button onClick={() => setShowVolumeModal(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+            </div>
+            {showVolumeInfo && (
+              <div style={{ margin: "0 20px 12px", background: C.gray2, borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>Here is the volume tracker. Once daily, you log a few key stats. In return, I use a simple equation to recommend how much you should train or rest.</div>
+              </div>
+            )}
+            <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+              {[["log","Log"],["chart","Chart"],["calendar","Cal"],["sheet","Sheet"]].map(([k,l]) => (
+                <button key={k} onClick={() => setVolumeModalTab(k)}
+                  style={{ ...mono, fontSize: 11, padding: "10px 16px", background: "none", border: "none", borderBottom: `2px solid ${volumeModalTab===k?C.orange:"transparent"}`, color: volumeModalTab===k?C.orange:C.muted, cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", WebkitOverflowScrolling: "touch" }}>
+              <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Sleep prompt modal */}
       {showSleepPrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -2263,8 +2311,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           // Compute recommendation from progress/fatigue data if available
           const fLogs = fatigueRec;
           if (!fLogs) return (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 11, color: C.muted }}>{dateLabel}</div>
+            <div onClick={() => setShowVolumeModal(true)} style={{ marginBottom: 16, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", cursor: "pointer" }}>
+              <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 6 }}>{dateLabel}</div>
+              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
             </div>
           );
           const { label, color, bg } = fLogs;
