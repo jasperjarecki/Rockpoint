@@ -1525,7 +1525,7 @@ function FatigueLog({ athlete, isCoach = false }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [chartView, setChartView] = useState(false);
+  const [activeView, setActiveView] = useState('log');
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: today, summary: "", sleep: "", load: "", strong: "", tweaks: "" });
   const [editingId, setEditingId] = useState(null);
@@ -1632,6 +1632,64 @@ function FatigueLog({ athlete, isCoach = false }) {
     return { label, color, bg, reasons };
   };
 
+  const renderCalendar = () => {
+    if (!logs.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 24, textAlign: "center" }}>No entries yet.</div>;
+
+    // Group logs by year-month
+    const byMonth = {};
+    logs.forEach(log => {
+      const ym = log.date.slice(0, 7);
+      if (!byMonth[ym]) byMonth[ym] = {};
+      byMonth[ym][log.date] = log;
+    });
+    const months = Object.keys(byMonth).sort().reverse();
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {months.map(ym => {
+          const [y, m] = ym.split("-").map(Number);
+          const monthName = new Date(y, m-1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+          const firstDay = new Date(y, m-1, 1).getDay();
+          const daysInMonth = new Date(y, m, 0).getDate();
+          const cells = [];
+          // empty cells before first day
+          for (let i = 0; i < firstDay; i++) cells.push(null);
+          for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+          return (
+            <div key={ym}>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>{monthName}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                {["S","M","T","W","T","F","S"].map((d,i) => (
+                  <div key={i} style={{ ...mono, fontSize: 9, color: C.muted, textAlign: "center", paddingBottom: 4 }}>{d}</div>
+                ))}
+                {cells.map((d, i) => {
+                  if (!d) return <div key={i} />;
+                  const dateStr = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+                  const log = byMonth[ym][dateStr];
+                  const isToday = dateStr === today;
+                  let icon = null, bg = "transparent", border = "transparent";
+                  if (log) {
+                    const load = log.load ?? 0;
+                    if (load === 0) { icon = "🛌"; bg = "rgba(255,255,255,0.04)"; }
+                    else { icon = "🚂"; bg = "rgba(61,158,122,0.12)"; }
+                  }
+                  if (isToday) border = C.orange;
+                  return (
+                    <div key={i} style={{ aspectRatio: "1", borderRadius: 6, background: bg, border: `1px solid ${border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                      <div style={{ ...mono, fontSize: 9, color: isToday ? C.orange : log ? C.white : C.muted }}>{d}</div>
+                      {icon && <div style={{ fontSize: 11, lineHeight: 1 }}>{icon}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderChart = () => {
     // logs is newest-first; reverse to chronological, take last 30
     const recent = [...withMetrics].reverse().slice(0, 30);
@@ -1715,10 +1773,12 @@ function FatigueLog({ athlete, isCoach = false }) {
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>VOLUME TRACKING</div>
         <div style={{ display: "flex", gap: 8 }}>
           {!isCoach && (
-            <button onMouseDown={e => { e.preventDefault(); setChartView(v => !v); }}
-              style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${chartView ? C.orange : C.border}`, background: chartView ? "rgba(61,158,122,0.1)" : "none", color: chartView ? C.orange : C.muted, cursor: "pointer" }}>
-              {chartView ? "Log" : "Chart"}
-            </button>
+            <div style={{ display: "flex", background: C.gray2, borderRadius: 6, padding: 2, gap: 2 }}>
+              {[["log","Log"],["chart","Chart"],["calendar","Cal"]].map(([v,l]) => (
+                <button key={v} onMouseDown={e => { e.preventDefault(); setActiveView(v); }}
+                  style={{ ...mono, fontSize: 10, padding: "5px 10px", borderRadius: 4, border: "none", background: activeView===v ? C.gray : "transparent", color: activeView===v ? C.orange : C.muted, cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
           )}
           {!isCoach && !showForm && (
             <>
@@ -1748,8 +1808,8 @@ function FatigueLog({ athlete, isCoach = false }) {
                   const label = dt === today ? "Today" : dt === (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })() ? "Yesterday" : "2 days ago";
                   const alreadyLogged = logs.some(l => l.date === dt && l.id !== editingId);
                   return (
-                    <button key={dt} onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, date: dt })); }}
-                      style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 5, border: `1px solid ${form.date === dt ? C.orange : C.border}`, background: form.date === dt ? "rgba(61,158,122,0.1)" : C.gray2, color: form.date === dt ? C.orange : alreadyLogged ? C.muted : C.white, cursor: "pointer" }}>
+                    <button key={dt} onMouseDown={e => { e.preventDefault(); if (!alreadyLogged) setForm(f => ({ ...f, date: dt })); }}
+                      style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 5, border: `1px solid ${form.date === dt ? C.orange : C.border}`, background: form.date === dt ? "rgba(61,158,122,0.1)" : C.gray2, color: form.date === dt ? C.orange : alreadyLogged ? "#555" : C.white, cursor: alreadyLogged ? "not-allowed" : "pointer", opacity: alreadyLogged ? 0.5 : 1 }}>
                       {label}{alreadyLogged ? " ✓" : ""}
                     </button>
                   );
@@ -1799,8 +1859,10 @@ function FatigueLog({ athlete, isCoach = false }) {
 
       {loading ? (
         <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>
-      ) : chartView && !isCoach ? (
+      ) : activeView === 'chart' && !isCoach ? (
         <>{renderChart()}</>
+      ) : activeView === 'calendar' && !isCoach ? (
+        <>{renderCalendar()}</>
       ) : (
         <div>
           {(() => { const rec = getRecommendation(); if (!rec) return null; return (
