@@ -1527,7 +1527,7 @@ function TimerModal({ onClose }) {
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
 
 // ─── Fatigue Log ─────────────────────────────────────────────────────────────
-function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog = null }) {
+function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog = null, onSaved = null }) {
   const today = localDateStr();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1585,6 +1585,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
         setLogs(prev => [result.data, ...prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
       }
       setShowForm(false);
+      if (onSaved) onSaved();
     } catch(e) {
       alert("Save failed: " + e.message);
     } finally {
@@ -1802,7 +1803,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   return (
     <div style={{ paddingTop: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>VOLUME TRACKING</div>
+        <div />
         <div style={{ display: "flex", gap: 8 }}>
           {!isCoach && !forcedView && (
             <div style={{ display: "flex", background: C.gray2, borderRadius: 6, padding: 2, gap: 2 }}>
@@ -1847,6 +1848,8 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
                   const yesterday = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}-${String(d1.getDate()).padStart(2,'0')}`;
                   const label = dt === today ? "Today" : dt === yesterday ? "Yesterday" : "2 days ago";
                   const alreadyLogged = logs.some(l => l.date === dt && l.id !== editingId);
+                  // When editing an existing entry, skip the date picker for that date (it's already selected)
+                  if (editingId && dt === form.date) return null;
                   return (
                     <button key={dt} onMouseDown={e => { e.preventDefault(); if (!alreadyLogged) setForm(f => ({ ...f, date: dt })); }}
                       style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 5, border: `1px solid ${form.date === dt ? C.orange : C.border}`, background: form.date === dt ? "rgba(61,158,122,0.1)" : C.gray2, color: form.date === dt ? C.orange : alreadyLogged ? "#555" : C.white, cursor: alreadyLogged ? "not-allowed" : "pointer", opacity: alreadyLogged ? 0.5 : 1 }}>
@@ -2175,7 +2178,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", WebkitOverflowScrolling: "touch" }}>
-              <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} autoOpenLog={partialDayLog} />
+              <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} autoOpenLog={partialDayLog} onSaved={() => setPartialDayLog(null)} />
             </div>
           </div>
         </div>,
