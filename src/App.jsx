@@ -1768,6 +1768,9 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
           )}
         </div>
         {log.summary && <div style={{ fontSize: 13, color: C.white, marginBottom: 8 }}>{log.summary}</div>}
+        {isToday && log.sleep != null && (log.load == null || log.strong == null) && (
+          <div style={{ ...mono, fontSize: 11, color: C.orange, marginBottom: 8 }}>You logged your sleep already — tap edit to log the rest.</div>
+        )}
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
           {[["SLEEP", (log.sleep ?? "—") + (log.sleep != null ? "h" : ""), sleepColor(log.sleep)], ["LOAD", log.load ?? "—", loadColor(log.load)], ["STRONG", log.strong ?? "—", strongColor(log.strong)]].map(([lbl, val, col]) => (
             <div key={lbl}>
@@ -1833,8 +1836,16 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
             <div>
               <Lbl text="Date" />
               <div style={{ display: "flex", gap: 8 }}>
-                {[today, (() => { const d = new Date(); d.setDate(d.getDate()-1); return localDateStr(); })(), (() => { const d = new Date(); d.setDate(d.getDate()-2); const d2 = new Date(); d2.setDate(d2.getDate()-2); return `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`; })()].map(dt => {
-                  const label = dt === today ? "Today" : dt === (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })() ? "Yesterday" : "2 days ago";
+                {(() => {
+                  const d1 = new Date(); d1.setDate(d1.getDate()-1);
+                  const d2 = new Date(); d2.setDate(d2.getDate()-2);
+                  const yesterday = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}-${String(d1.getDate()).padStart(2,'0')}`;
+                  const twoDaysAgo = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
+                  return [today, yesterday, twoDaysAgo];
+                })().map(dt => {
+                  const d1 = new Date(); d1.setDate(d1.getDate()-1);
+                  const yesterday = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}-${String(d1.getDate()).padStart(2,'0')}`;
+                  const label = dt === today ? "Today" : dt === yesterday ? "Yesterday" : "2 days ago";
                   const alreadyLogged = logs.some(l => l.date === dt && l.id !== editingId);
                   return (
                     <button key={dt} onMouseDown={e => { e.preventDefault(); if (!alreadyLogged) setForm(f => ({ ...f, date: dt })); }}
@@ -2045,8 +2056,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     const sleepPromptAthletes = ["bzmmql6", "8ygufmv"];
     if (!sleepPromptAthletes.includes(athlete.id)) return;
     sb.from("fatigue_logs").select("id,sleep").eq("athlete_id", athlete.id).eq("date", todayStr).order("created_at", { ascending: false }).limit(1)
-      .then(({ data: rows }) => {
+      .then(({ data: rows, error }) => {
+        if (error) { console.warn("[sleepPrompt] query error:", error); return; }
         const data = rows?.[0];
+        console.log("[sleepPrompt] today entry:", JSON.stringify(data));
         if (!data || data.sleep == null) setShowSleepPrompt(true);
       });
   }, [athlete?.id]);
@@ -2227,9 +2240,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                     : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
                   }
                 </div>
-                {partialDayLog && (
-                  <div style={{ ...mono, fontSize: 11, color: C.orange, marginBottom: 6 }}>You logged your sleep already, tap here to log the rest.</div>
-                )}
+
                 <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
               </div>
             </div>
