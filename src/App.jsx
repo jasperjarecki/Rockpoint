@@ -3,6 +3,12 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import ReactDOM from "react-dom";
 
+// Local date helper — avoids UTC timezone causing wrong date late at night
+function localDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 const SUPABASE_URL = "https://mhpjmofctkxxjbjjcvwt.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ocGptb2ZjdGt4eGpiampjdnd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MDgyNTAsImV4cCI6MjA4ODQ4NDI1MH0.p4eZQcd0lUlE2D0J8-arRDJqOSEV4TNMmg6vTlSwLvU";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { realtime: { enabled: false }, global: { fetch: fetch.bind(globalThis) } });
@@ -1522,7 +1528,7 @@ function TimerModal({ onClose }) {
 
 // ─── Fatigue Log ─────────────────────────────────────────────────────────────
 function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1564,7 +1570,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
       const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: (form.strong !== null && form.strong !== "") ? parseInt(form.strong) : null, tweaks: form.tweaks };
       const result = editingId
         ? await sb.from("fatigue_logs").update(payload).eq("id", editingId).select().single()
-        : await sb.from("fatigue_logs").insert(payload).select().single();
+        : await sb.from("fatigue_logs").upsert(payload, { onConflict: "athlete_id,date" }).select().single();
       if (result.error) throw result.error;
       if (result.data) {
         setLogs(prev => [result.data, ...prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
@@ -1818,7 +1824,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
             <div>
               <Lbl text="Date" />
               <div style={{ display: "flex", gap: 8 }}>
-                {[today, (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })(), (() => { const d = new Date(); d.setDate(d.getDate()-2); return d.toISOString().slice(0,10); })()].map(dt => {
+                {[today, (() => { const d = new Date(); d.setDate(d.getDate()-1); return localDateStr(); })(), (() => { const d = new Date(); d.setDate(d.getDate()-2); const d2 = new Date(); d2.setDate(d2.getDate()-2); return `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`; })()].map(dt => {
                   const label = dt === today ? "Today" : dt === (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })() ? "Yesterday" : "2 days ago";
                   const alreadyLogged = logs.some(l => l.date === dt && l.id !== editingId);
                   return (
@@ -2015,6 +2021,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showSleepPrompt, setShowSleepPrompt] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showVolumeModal, setShowVolumeModal] = useState(false);
+  const [partialDayLog, setPartialDayLog] = useState(null);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
   const [showAthleteInfo, setShowAthleteInfo] = useState(false);
@@ -2024,7 +2031,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   // Show sleep prompt if today's sleep not yet logged
   useEffect(() => {
     if (!athlete?.id) return;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateStr();
     // Only show sleep prompt for test users (Jasper + Patrick)
     const sleepPromptAthletes = ["bzmmql6", "8ygufmv"];
     if (!sleepPromptAthletes.includes(athlete.id)) return;
@@ -2039,7 +2046,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     const val = parseFloat(sleepPromptValue);
     if (isNaN(val) || val <= 0) return;
     setSleepPromptSaving(true);
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateStr();
     // Use limit(1) instead of maybeSingle() so duplicates don't cause an error
     const { data: rows } = await sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).order("created_at", { ascending: false }).limit(1);
     const existing = rows?.[0];
@@ -2091,7 +2098,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         else if (redCount === 1 || yellowCount >= 1) { label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)"; }
         else { label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)"; }
         // Tomorrow's recommendation — only if today is logged
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = localDateStr();
         const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && l.strong != null);
         let tomorrow = null;
         if (todayLogged) {
@@ -2111,6 +2118,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         }
 
         setFatigueRec({ label, color, bg, tomorrow, todayLogged });
+        // Check for partially logged today (sleep but no load/strong)
+        const todayEntry = logs.find(l => l.date === todayStr);
+        if (todayEntry && todayEntry.sleep != null && (todayEntry.load == null || todayEntry.strong == null)) {
+          setPartialDayLog(todayEntry);
+        }
       });
   }, [athlete?.id]);
 
@@ -2204,6 +2216,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                     : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
                   }
                 </div>
+                {partialDayLog && (
+                  <div style={{ ...mono, fontSize: 11, color: C.orange, marginBottom: 6 }}>You logged your sleep already, tap here to log the rest.</div>
+                )}
                 <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
               </div>
             </div>
@@ -2227,7 +2242,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 <button onClick={() => setShowCalendar(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1 }}>✕</button>
               </div>
               {(() => {
-          const todayStr = new Date().toISOString().slice(0, 10);
+          const todayStr = localDateStr();
           const byMonth = {};
           fatigueLogs.forEach(log => {
             const ym = log.date.slice(0, 7);
@@ -3118,7 +3133,7 @@ export default function App() {
       }
       setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
       // Daily backup on app load — runs once per day, uses 'daily' type so edit backups can't overwrite it
-      const todayKey = new Date().toISOString().slice(0, 10);
+      const todayKey = localDateStr();
       if (localStorage.getItem('lastDailyBackup') !== todayKey) {
         Object.entries(pln).forEach(([aid, plan]) => {
           if (plan?.weeks?.length > 0) dbBackupPlan(aid, plan, 'daily');
