@@ -2058,12 +2058,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // Only show sleep prompt for test users (Jasper + Patrick)
     const sleepPromptAthletes = ["bzmmql6", "8ygufmv"];
     if (!sleepPromptAthletes.includes(athlete.id)) return;
-    sb.from("fatigue_logs").select("id,sleep").eq("athlete_id", athlete.id).eq("date", todayStr).order("created_at", { ascending: false }).limit(1)
+    // Ask the DB directly whether ANY row for today has a non-null sleep value.
+    // This is robust to duplicate rows for the same athlete+date — without this
+    // filter, the prompt could fire on a different device if the most-recently-
+    // created row happened to have sleep=null even though another row for the
+    // same day already had sleep logged.
+    sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).not("sleep", "is", null).limit(1)
       .then(({ data: rows, error }) => {
         if (error) { console.warn("[sleepPrompt] query error:", error); return; }
-        const data = rows?.[0];
-        console.log("[sleepPrompt] today entry:", JSON.stringify(data));
-        if (!data || data.sleep == null) setShowSleepPrompt(true);
+        console.log("[sleepPrompt] rows with sleep set today:", rows?.length || 0);
+        if (!rows || rows.length === 0) setShowSleepPrompt(true);
       });
   }, [athlete?.id]);
 
