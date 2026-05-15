@@ -1527,7 +1527,7 @@ function TimerModal({ onClose }) {
 // ── ATHLETE VIEW ──────────────────────────────────────────────────────────────
 
 // ─── Fatigue Log ─────────────────────────────────────────────────────────────
-function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
+function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog = null }) {
   const today = localDateStr();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1539,6 +1539,15 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null }) {
   const [editingId, setEditingId] = useState(null);
 
   const todayLog = logs.find(l => l.date === today);
+
+  // Auto-open form pre-filled if there's a partial log (sleep only)
+  useEffect(() => {
+    if (autoOpenLog && !showForm) {
+      setForm({ date: autoOpenLog.date, summary: autoOpenLog.summary || "", sleep: autoOpenLog.sleep ?? "", load: autoOpenLog.load ?? null, strong: autoOpenLog.strong ?? "", tweaks: autoOpenLog.tweaks || "" });
+      setEditingId(autoOpenLog.id);
+      setShowForm(true);
+    }
+  }, [autoOpenLog]);
 
   useEffect(() => {
     if (!athlete?.id) return;
@@ -2070,6 +2079,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       .then(({ data }) => {
         const logs = data || [];
         setFatigueLogs(logs);
+        // Always check for partial day regardless of log count
+        const todayStrCheck = localDateStr();
+        const todayEntryCheck = logs.find(l => l.date === todayStrCheck);
+        if (todayEntryCheck && todayEntryCheck.sleep != null && (todayEntryCheck.load == null || todayEntryCheck.strong == null)) {
+          setPartialDayLog(todayEntryCheck);
+        }
         if (logs.length < 3) return;
         const recent7 = logs.slice(0, 7);
         const last3 = logs.slice(0, 3);
@@ -2118,11 +2133,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         }
 
         setFatigueRec({ label, color, bg, tomorrow, todayLogged });
-        // Check for partially logged today (sleep but no load/strong)
-        const todayEntry = logs.find(l => l.date === todayStr);
-        if (todayEntry && todayEntry.sleep != null && (todayEntry.load == null || todayEntry.strong == null)) {
-          setPartialDayLog(todayEntry);
-        }
+
       });
   }, [athlete?.id]);
 
@@ -2138,7 +2149,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {/* Volume Element modal */}
       {showVolumeModal && ReactDOM.createPortal(
         <div style={{ position: "fixed", inset: 0, zIndex: 9998, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowVolumeModal(false)}>
-          <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 480, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 680, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
             </div>
@@ -2151,7 +2162,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", WebkitOverflowScrolling: "touch" }}>
-              <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} />
+              <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} autoOpenLog={partialDayLog} />
             </div>
           </div>
         </div>,
