@@ -2050,6 +2050,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
     setSleepPromptSaving(false);
     setShowSleepPrompt(false);
+
   };
 
   // Compute recommendation for banner using fatigue logs stored in state
@@ -2234,7 +2235,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             byMonth[ym][log.date] = log;
           });
           const minMonth = athlete?.id === "bzmmql6" ? "2026-04" : "0000-00";
-          const months = Object.keys(byMonth).filter(m => m >= minMonth).sort().reverse();
+          const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
           return (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
