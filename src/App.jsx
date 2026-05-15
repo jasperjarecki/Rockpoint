@@ -1593,7 +1593,7 @@ if (result.data) {
 setLogs(prev => [result.data, …prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
 }
 setShowForm(false);
-if (onSaved) onSaved();
+if (onSaved) onSaved(result.data);
 } catch(e) {
 alert(“Save failed: “ + e.message);
 } finally {
@@ -2103,31 +2103,42 @@ await sb.from(“fatigue_logs”).insert({ athlete_id: athlete.id, date: todaySt
 }
 setSleepPromptSaving(false);
 setShowSleepPrompt(false);
-refreshFatigue();
+await recomputeFatigue();
 };
 
 // Compute recommendation for banner using fatigue logs stored in state
 const [fatigueRec, setFatigueRec] = useState(null);
 const [fatigueLogs, setFatigueLogs] = useState([]);
-// Bumped whenever a fatigue log is saved (sleep prompt or full log) so the
-// banner re-fetches and the Train/Train Light/Rest recommendation updates
-// without requiring an app refresh.
-const [fatigueRefreshKey, setFatigueRefreshKey] = useState(0);
-const refreshFatigue = useCallback(() => setFatigueRefreshKey(k => k + 1), []);
-useEffect(() => {
+
+// Fetch + recompute the banner. Called on mount AND directly from save
+// callbacks — no dep-array indirection, so it doesn’t depend on React’s
+// re-render cycle to fire. Accepts an optional `seedRow` (the row that was
+// just saved) which is merged into the fetched logs to defend against
+// any read-after-write replica lag from Supabase.
+const recomputeFatigue = useCallback(async (seedRow = null) => {
 if (!athlete?.id) return;
-sb.from(“fatigue_logs”).select(”*”).eq(“athlete_id”, athlete.id)
-.order(“date”, { ascending: false }).limit(90)
-.then(({ data }) => {
-const logs = data || [];
+console.log(”[recomputeFatigue] fetching…”, seedRow ? “with seed” : “”);
+const { data, error } = await sb.from(“fatigue_logs”).select(”*”).eq(“athlete_id”, athlete.id)
+.order(“date”, { ascending: false }).limit(90);
+if (error) { console.warn(”[recomputeFatigue] fetch error:”, error); return; }
+let logs = data || [];
+if (seedRow) {
+// Merge the just-saved row in case the fetch came back without it yet.
+logs = [seedRow, …logs.filter(l => l.id !== seedRow.id)].sort((a, b) => b.date.localeCompare(a.date));
+}
 setFatigueLogs(logs);
-// Always check for partial day regardless of log count
+
+```
 const todayStrCheck = localDateStr();
 const todayEntryCheck = logs.find(l => l.date === todayStrCheck);
 if (todayEntryCheck && todayEntryCheck.sleep != null && (todayEntryCheck.load == null || todayEntryCheck.strong == null)) {
-setPartialDayLog(todayEntryCheck);
+  setPartialDayLog(todayEntryCheck);
+} else {
+  // Clear partialDayLog if today's row is now complete (or missing entirely)
+  setPartialDayLog(null);
 }
-if (logs.length < 3) return;
+if (logs.length < 3) { setFatigueRec(null); return; }
+
 const recent7 = logs.slice(0, 7);
 const last3 = logs.slice(0, 3);
 const last4 = logs.slice(0, 4);
@@ -2150,37 +2161,35 @@ const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
 const lastNightSleep = logs[0]?.sleep ?? null;
 const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
 let label, color, bg;
-if (sleptUnder6) { label = “Rest”; color = “#c0392b”; bg = “rgba(192,57,43,0.08)”; }
-else if (redCount >= 2 || lowStrong) { label = “Rest”; color = “#c0392b”; bg = “rgba(192,57,43,0.08)”; }
-else if (redCount === 1 || yellowCount >= 1) { label = “Train Light”; color = C.orange; bg = “rgba(224,122,58,0.08)”; }
-else { label = “Train”; color = “#3d9e7a”; bg = “rgba(61,158,122,0.08)”; }
-// Tomorrow’s recommendation — only if today is logged
+if (sleptUnder6) { label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)"; }
+else if (redCount >= 2 || lowStrong) { label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)"; }
+else if (redCount === 1 || yellowCount >= 1) { label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)"; }
+else { label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)"; }
+
 const todayStr = localDateStr();
 const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && l.strong != null);
 let tomorrow = null;
 if (todayLogged) {
-// For tomorrow, same windows but today’s log is already included
-const tomorrowRedCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-const tomorrowYellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
-// Shift: today counts as “yesterday” for tomorrow
-const tomorrowLast3Loads = [last3Loads[0], last3Loads[0], last3Loads[1]]; // today repeated as most recent
-const tomorrowTwoDaysOn = tomorrowLast3Loads.filter(l => l >= 2).length >= 2;
-const tomorrowRedCount2 = [tomorrowTwoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-const tomorrowYellowCount2 = [borderlineLoad, borderlineStrong].filter(Boolean).length;
-let tLabel, tColor;
-if (tomorrowRedCount2 >= 2 || lowStrong) { tLabel = “Rest”; tColor = “#c0392b”; }
-else if (tomorrowRedCount2 === 1 || tomorrowYellowCount2 >= 1) { tLabel = “Train Light”; tColor = C.orange; }
-else { tLabel = “Train”; tColor = “#3d9e7a”; }
-tomorrow = { label: tLabel, color: tColor };
+  const tomorrowLast3Loads = [last3Loads[0], last3Loads[0], last3Loads[1]];
+  const tomorrowTwoDaysOn = tomorrowLast3Loads.filter(l => l >= 2).length >= 2;
+  const tomorrowRedCount2 = [tomorrowTwoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+  const tomorrowYellowCount2 = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+  let tLabel, tColor;
+  if (tomorrowRedCount2 >= 2 || lowStrong) { tLabel = "Rest"; tColor = "#c0392b"; }
+  else if (tomorrowRedCount2 === 1 || tomorrowYellowCount2 >= 1) { tLabel = "Train Light"; tColor = C.orange; }
+  else { tLabel = "Train"; tColor = "#3d9e7a"; }
+  tomorrow = { label: tLabel, color: tColor };
 }
 
-```
-    setFatigueRec({ label, color, bg, tomorrow, todayLogged });
-
-  });
+console.log("[recomputeFatigue] new rec:", label, "todayLogged:", todayLogged);
+setFatigueRec({ label, color, bg, tomorrow, todayLogged });
 ```
 
-}, [athlete?.id, fatigueRefreshKey]);
+}, [athlete?.id]);
+
+useEffect(() => {
+recomputeFatigue();
+}, [recomputeFatigue]);
 
 return (
 <div style={{ minHeight: “100vh”, background: C.black, display: “flex”, flexDirection: “column” }}>
@@ -2207,7 +2216,7 @@ return (
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", WebkitOverflowScrolling: "touch" }}>
-          <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} autoOpenLog={partialDayLog} onSaved={() => { setPartialDayLog(null); refreshFatigue(); }} />
+          <FatigueLog athlete={athlete} isCoach={false} forcedView={volumeModalTab} autoOpenLog={partialDayLog} onSaved={(savedRow) => { setPartialDayLog(null); recomputeFatigue(savedRow); }} />
         </div>
       </div>
     </div>,
