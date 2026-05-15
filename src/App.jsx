@@ -1926,22 +1926,21 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const publishedIndices = plan?.published || [];
 
   const currentWeekIdx = (() => {
-    if (!plan?.blockStart || publishedIndices.length === 0) return publishedIndices[0] ?? null;
+    if (publishedIndices.length === 0) return null;
+    // Coach override (0-indexed week number integer) takes precedence over
+    // date-based computation. Coach UI stores this as an int; we ignore any
+    // legacy non-numeric values and fall through to the date logic.
+    if (plan?.currentWeekOverride != null && typeof plan.currentWeekOverride === 'number') {
+      const ov = plan.currentWeekOverride;
+      return publishedIndices.reduce((best, idx) => Math.abs(idx - ov) < Math.abs(best - ov) ? idx : best, publishedIndices[0]);
+    }
+    if (!plan?.blockStart) return publishedIndices[0];
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd);
     const now = new Date(); now.setHours(0,0,0,0);
     if (now < start) return publishedIndices[0];
-    let weekNum = Math.floor((now - start) / (7*24*60*60*1000));
-    // If override is set (stored as a date string), compute current week relative to that anchor
-    if (plan?.currentWeekOverride != null && typeof plan.currentWeekOverride === 'string' && plan.currentWeekOverride.includes('-')) {
-      const [oy, om, od] = plan.currentWeekOverride.split("-").map(Number);
-      const overrideStart = new Date(oy, om - 1, od);
-      const overrideIdx = Math.round((overrideStart - start) / (7*24*60*60*1000));
-      const weeksSinceOverride = Math.floor((now - overrideStart) / (7*24*60*60*1000));
-      weekNum = Math.min(Math.max(0, overrideIdx + weeksSinceOverride), (plan.weeks?.length ?? 1) - 1);
-    }
-    const closest = publishedIndices.reduce((best, idx) => Math.abs(idx - weekNum) < Math.abs(best - weekNum) ? idx : best, publishedIndices[0]);
-    return closest;
+    const weekNum = Math.floor((now - start) / (7*24*60*60*1000));
+    return publishedIndices.reduce((best, idx) => Math.abs(idx - weekNum) < Math.abs(best - weekNum) ? idx : best, publishedIndices[0]);
   })();
 
   const [_activeWeekIdx, _setActiveWeekIdx] = useState(currentWeekIdx ?? publishedIndices[0] ?? 0);
