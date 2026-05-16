@@ -2132,52 +2132,58 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       // Clear partialDayLog if today's row is now complete (or missing entirely)
       setPartialDayLog(null);
     }
-    if (logs.length < 3) { setFatigueRec(null); return; }
-
-    const recent7 = logs.slice(0, 7);
-    const last3 = logs.slice(0, 3);
-    const last4 = logs.slice(0, 4);
-    const avgSleep = recent7.reduce((s,l) => s+(l.sleep||0),0)/recent7.length;
-    const weekLoad = recent7.reduce((s,l) => s+(l.load||0),0);
-    const strongLogs = last3.filter(l => l.strong != null);
-    const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
-    const last3Loads = last3.map(l => l.load ?? 0);
-    const last4Strong = last4.map(l => l.strong);
-    const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
-    const fourStrongDays = last4.length === 4 && last4Strong.every(s => s === 2);
-    const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
-    const lowSleep = avgSleep < 6.5;
-    const lowStrong = avgStrong !== null && avgStrong < 0.75;
-    const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
-    const highLoad = loadRatio > 1.3;
-    const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
-    const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-    const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
-    const lastNightSleep = logs[0]?.sleep ?? null;
-    const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
-    let label, color, bg;
-    if (sleptUnder6) { label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)"; }
-    else if (redCount >= 2 || lowStrong) { label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)"; }
-    else if (redCount === 1 || yellowCount >= 1) { label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)"; }
-    else { label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)"; }
-
     const todayStr = localDateStr();
-    const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && (l.strong != null || l.strong_na === true));
-    let tomorrow = null;
-    if (todayLogged) {
-      const tomorrowLast3Loads = [last3Loads[0], last3Loads[0], last3Loads[1]];
-      const tomorrowTwoDaysOn = tomorrowLast3Loads.filter(l => l >= 2).length >= 2;
-      const tomorrowRedCount2 = [tomorrowTwoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-      const tomorrowYellowCount2 = [borderlineLoad, borderlineStrong].filter(Boolean).length;
-      let tLabel, tColor;
-      if (tomorrowRedCount2 >= 2 || lowStrong) { tLabel = "Rest"; tColor = "#c0392b"; }
-      else if (tomorrowRedCount2 === 1 || tomorrowYellowCount2 >= 1) { tLabel = "Train Light"; tColor = C.orange; }
-      else { tLabel = "Train"; tColor = "#3d9e7a"; }
-      tomorrow = { label: tLabel, color: tColor };
-    }
 
-    console.log("[recomputeFatigue] new rec:", label, "todayLogged:", todayLogged);
-    setFatigueRec({ label, color, bg, tomorrow, todayLogged });
+    // ── Helper: build a recommendation label from a window of recent logs ──
+    // `windowLogs` should be ordered most-recent first. The "previous day"
+    // (windowLogs[0]) drives the load=4 rest trigger.
+    const computeRec = (windowLogs) => {
+      if (windowLogs.length < 3) return null;
+      // Load=4 is a hard override: the most recent day in the window had a
+      // crushing session, so the next day (the day this rec is for) is rest.
+      if ((windowLogs[0]?.load ?? 0) === 4) {
+        return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      }
+      const recent7 = windowLogs.slice(0, 7);
+      const last3 = windowLogs.slice(0, 3);
+      const last4 = windowLogs.slice(0, 4);
+      const avgSleep = recent7.reduce((s,l) => s+(l.sleep||0),0)/recent7.length;
+      const weekLoad = recent7.reduce((s,l) => s+(l.load||0),0);
+      const strongLogs = last3.filter(l => l.strong != null);
+      const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
+      const last3Loads = last3.map(l => l.load ?? 0);
+      const last4Strong = last4.map(l => l.strong);
+      const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
+      const fourStrongDays = last4.length === 4 && last4Strong.every(s => s === 2);
+      const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
+      const lowSleep = avgSleep < 6.5;
+      const lowStrong = avgStrong !== null && avgStrong < 0.75;
+      const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
+      const highLoad = loadRatio > 1.3;
+      const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
+      const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+      const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+      const lastNightSleep = windowLogs[0]?.sleep ?? null;
+      const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
+      if (sleptUnder6)                          return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      if (redCount >= 2 || lowStrong)           return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      if (redCount === 1 || yellowCount >= 1)   return { label: "Train Light", color: C.orange,  bg: "rgba(224,122,58,0.08)" };
+      return { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)" };
+    };
+
+    // Today's rec uses PAST data only — today's own log is excluded so that
+    // logging today doesn't retroactively change the recommendation for today.
+    const pastLogs = logs.filter(l => l.date < todayStr);
+    const todayRec = computeRec(pastLogs);
+    if (!todayRec) { setFatigueRec(null); return; }
+
+    // Tomorrow's rec uses the full logs (which includes today).
+    const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && (l.strong != null || l.strong_na === true));
+    const tomorrowRec = todayLogged ? computeRec(logs) : null;
+    const tomorrow = tomorrowRec ? { label: tomorrowRec.label, color: tomorrowRec.color } : null;
+
+    console.log("[recomputeFatigue] today:", todayRec.label, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged);
+    setFatigueRec({ ...todayRec, tomorrow, todayLogged });
   }, [athlete?.id]);
 
   useEffect(() => {
