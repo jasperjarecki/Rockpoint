@@ -1535,15 +1535,26 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   const [activeView, setActiveView] = useState('log');
   const effectiveView = forcedView || activeView;
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ date: today, summary: "", sleep: "", load: "", strong: "", tweaks: "" });
+  const [form, setForm] = useState({ date: today, summary: "", sleep: "", load: "", strong: "", strong_na: null, tweaks: "" });
   const [editingId, setEditingId] = useState(null);
+
+  // Derive the form's strong-related fields from a loaded log row.
+  // strong_na = true means "user picked N/A explicitly". For legacy rows that
+  // predate the strong_na column, a null strong is treated as N/A (backfilled).
+  const deriveStrong = (log) => {
+    if (log.strong_na === true) return { strong: "", strong_na: true };
+    if (log.strong != null) return { strong: log.strong, strong_na: false };
+    // Legacy fallback: null strong with no explicit strong_na
+    return { strong: "", strong_na: log.strong_na ?? null };
+  };
+
 
   const todayLog = logs.find(l => l.date === today);
 
   // Auto-open form pre-filled if there's a partial log (sleep only)
   useEffect(() => {
     if (autoOpenLog && !showForm) {
-      setForm({ date: autoOpenLog.date, summary: autoOpenLog.summary || "", sleep: autoOpenLog.sleep ?? "", load: autoOpenLog.load ?? null, strong: autoOpenLog.strong ?? "", tweaks: autoOpenLog.tweaks || "" });
+      setForm({ date: autoOpenLog.date, summary: autoOpenLog.summary || "", sleep: autoOpenLog.sleep ?? "", load: autoOpenLog.load ?? null, ...deriveStrong(autoOpenLog), tweaks: autoOpenLog.tweaks || "" });
       setEditingId(autoOpenLog.id);
       setShowForm(true);
     }
@@ -1559,10 +1570,10 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
 
   const openForm = (log = null) => {
     if (log) {
-      setForm({ date: log.date, summary: log.summary || "", sleep: log.sleep ?? "", load: log.load ?? "", strong: log.strong ?? "", tweaks: log.tweaks || "" });
+      setForm({ date: log.date, summary: log.summary || "", sleep: log.sleep ?? "", load: log.load ?? "", ...deriveStrong(log), tweaks: log.tweaks || "" });
       setEditingId(log.id);
     } else {
-      setForm({ date: today, summary: "", sleep: "", load: null, strong: "", tweaks: "" });
+      setForm({ date: today, summary: "", sleep: "", load: null, strong: "", strong_na: null, tweaks: "" });
       setEditingId(null);
     }
     setShowForm(true);
@@ -1574,9 +1585,12 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     const loadVal = form.load;
     if (isNaN(sleepVal) || sleepVal <= 0) { alert("Please enter a sleep value."); return; }
     if (loadVal === "" || loadVal === null || loadVal === undefined) { alert("Please select a load value."); return; }
+    // Require an explicit pick for Strong — either a 0/1/2 value or N/A.
+    const hasNumericStrong = form.strong !== "" && form.strong !== null && form.strong !== undefined;
+    if (!hasNumericStrong && form.strong_na !== true) { alert("Please pick a Strong value (0, 1, 2) or N/A."); return; }
     setSaving(true);
     try {
-      const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: (form.strong !== null && form.strong !== "") ? parseInt(form.strong) : null, tweaks: form.tweaks };
+      const payload = { athlete_id: athlete.id, date: form.date, summary: form.summary, sleep: parseFloat(form.sleep), load: parseInt(form.load), strong: hasNumericStrong ? parseInt(form.strong) : null, strong_na: form.strong_na === true, tweaks: form.tweaks };
       const result = editingId
         ? await sb.from("fatigue_logs").update(payload).eq("id", editingId).select().single()
         : await sb.from("fatigue_logs").upsert(payload, { onConflict: "athlete_id,date" }).select().single();
@@ -1878,9 +1892,9 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
             <div>
               <Lbl text="Strong?" />
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                {[0,1,2].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v }))} />)}
-                <button onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, strong: null })); }}
-                  style={{ ...mono, fontSize: 12, padding: "0 14px", height: 52, borderRadius: 8, border: `1px solid ${form.strong === null || form.strong === "" ? C.white : C.border}`, background: (form.strong === null || form.strong === "") ? "rgba(255,255,255,0.08)" : "transparent", color: (form.strong === null || form.strong === "") ? C.white : C.muted, cursor: "pointer" }}>N/A</button>
+                {[0,1,2].map(v => <ScaleBtn key={v} val={v} current={form.strong} color={strongColor(v)} onPick={v => setForm(f => ({ ...f, strong: v, strong_na: false }))} />)}
+                <button onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, strong: "", strong_na: true })); }}
+                  style={{ ...mono, fontSize: 12, padding: "0 14px", height: 52, borderRadius: 8, border: `1px solid ${form.strong_na === true ? C.white : C.border}`, background: form.strong_na === true ? "rgba(255,255,255,0.08)" : "transparent", color: form.strong_na === true ? C.white : C.muted, cursor: "pointer" }}>N/A</button>
               </div>
               <Hint text="0 = felt bad  ·  1 = standard day  ·  2 = felt great  ·  N/A = rest day" />
             </div>
@@ -2112,7 +2126,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
     const todayStrCheck = localDateStr();
     const todayEntryCheck = logs.find(l => l.date === todayStrCheck);
-    if (todayEntryCheck && todayEntryCheck.sleep != null && (todayEntryCheck.load == null || todayEntryCheck.strong == null)) {
+    if (todayEntryCheck && todayEntryCheck.sleep != null && (todayEntryCheck.load == null || (todayEntryCheck.strong == null && todayEntryCheck.strong_na !== true))) {
       setPartialDayLog(todayEntryCheck);
     } else {
       // Clear partialDayLog if today's row is now complete (or missing entirely)
@@ -2148,7 +2162,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     else { label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)"; }
 
     const todayStr = localDateStr();
-    const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && l.strong != null);
+    const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && (l.strong != null || l.strong_na === true));
     let tomorrow = null;
     if (todayLogged) {
       const tomorrowLast3Loads = [last3Loads[0], last3Loads[0], last3Loads[1]];
