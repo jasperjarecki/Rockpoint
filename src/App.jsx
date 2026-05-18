@@ -115,6 +115,7 @@ updateGlobalStyles();
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const TEMPLATE_CREATOR_ID = "__template_creator__";
+const VOLUME_TIERS_PAGE_ID = "__volume_tiers__";
 
 function parseYouTubeTimestamp(url) {
   if (!url) return 0;
@@ -168,8 +169,25 @@ function migratePlan(plan) {
 }
 
 // ── SUPABASE HELPERS ──────────────────────────────────────────────────────────
+// Volume tiers scale the weekly load allowance per unit sleep. med_high = 1.0
+// preserves the original behavior (load ratio threshold of 1.0 / 1.3). Higher
+// tiers raise the ceiling; lower tiers lower it. The tier id is persisted on
+// the athlete row as the text column `volume_tier`.
+const VOLUME_TIERS = [
+  { id: "low",       label: "Low",       multiplier: 0.5   },
+  { id: "med_low",   label: "Med-Low",   multiplier: 0.875 },
+  { id: "med_high",  label: "Med-High",  multiplier: 1.0   },
+  { id: "high",      label: "High",      multiplier: 1.25  },
+  { id: "very_high", label: "Very High", multiplier: 1.5   },
+];
+const DEFAULT_VOLUME_TIER = "med_high";
+const getVolumeMultiplier = (athlete) => {
+  const tier = VOLUME_TIERS.find(t => t.id === (athlete?.volume_tier || DEFAULT_VOLUME_TIER));
+  return tier ? tier.multiplier : 1.0;
+};
+
 async function dbGetAthletes() { const { data } = await sb.from("athletes").select("*"); return data || []; }
-async function dbUpsertAthlete(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id || null }); }
+async function dbUpsertAthlete(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id || null, volume_tier: a.volume_tier || DEFAULT_VOLUME_TIER }); }
 async function dbDeleteAthlete(id) { await sb.from("athletes").delete().eq("id", id); }
 async function dbGetPlans() {
   const { data } = await sb.from("plans").select("*");
@@ -239,7 +257,7 @@ async function dbGetTemplates(coachId) {
 async function dbSaveTemplate(t) { await sb.from("templates").upsert({ id: t.id, coach_id: t.coachId || null, name: t.name, type: t.type, data: t.data }); }
 async function dbDeleteTemplate(id) { await sb.from("templates").delete().eq("id", id); }
 async function dbGetAthletesByCoach(coachId) { const { data } = await sb.from("athletes").select("*").eq("coach_id", coachId); return data || []; }
-async function dbUpsertAthleteWithCoach(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id }); }
+async function dbUpsertAthleteWithCoach(a) { await sb.from("athletes").upsert({ id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id, volume_tier: a.volume_tier || DEFAULT_VOLUME_TIER }); }
 async function dbUploadBlockImage(athleteId, file) {
   const ext = file.name.split(".").pop();
   const path = `${athleteId}/block-image.${ext}`;
@@ -2134,6 +2152,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
     const todayStr = localDateStr();
 
+    // Per-athlete volume tier multiplier. Higher = bigger weekly load allowance.
+    // Applied to the denominator of loadRatio so it lifts the load ceiling
+    // proportionally. Default 1.0 preserves the historical behavior.
+    const volumeCoeff = getVolumeMultiplier(athlete);
+
     // ── Helper: build a recommendation label from a window of recent logs ──
     // `windowLogs` should be ordered most-recent first. The "previous day"
     // (windowLogs[0]) drives the load=4 rest trigger.
@@ -2155,7 +2178,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const last4Strong = last4.map(l => l.strong);
       const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
       const fourStrongDays = last4.length === 4 && last4Strong.every(s => s === 2);
-      const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
+      // Volume coefficient scales the effective sleep "budget" — higher
+      // coefficient means the athlete can accumulate more load per hour of
+      // sleep before tripping the ratio threshold.
+      const loadRatio = avgSleep > 0 ? weekLoad / (avgSleep * volumeCoeff) : 99;
       const lowSleep = avgSleep < 6.5;
       const lowStrong = avgStrong !== null && avgStrong < 0.75;
       const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
@@ -2182,9 +2208,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     const tomorrowRec = todayLogged ? computeRec(logs) : null;
     const tomorrow = tomorrowRec ? { label: tomorrowRec.label, color: tomorrowRec.color } : null;
 
-    console.log("[recomputeFatigue] today:", todayRec.label, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged);
+    console.log("[recomputeFatigue] today:", todayRec.label, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
     setFatigueRec({ ...todayRec, tomorrow, todayLogged });
-  }, [athlete?.id]);
+  }, [athlete?.id, athlete?.volume_tier]);
 
   useEffect(() => {
     recomputeFatigue();
@@ -2730,7 +2756,88 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
 }
 
 // ── COACH DASHBOARD ───────────────────────────────────────────────────────────
-function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
+function VolumeTiersPage({ athletes, onUpdateAthlete }) {
+  // Sort: by name. Stable, predictable order so coaches can find athletes.
+  const sorted = [...athletes].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  // Track per-row "just saved" pulse so the coach gets visual confirmation
+  // without a toast or modal. Map of athlete id -> timestamp set on save.
+  const [justSaved, setJustSaved] = useState({});
+  const pickTier = async (athlete, tierId) => {
+    if ((athlete.volume_tier || DEFAULT_VOLUME_TIER) === tierId) return;
+    await onUpdateAthlete({ ...athlete, volume_tier: tierId });
+    setJustSaved(prev => ({ ...prev, [athlete.id]: Date.now() }));
+    setTimeout(() => setJustSaved(prev => {
+      const next = { ...prev }; delete next[athlete.id]; return next;
+    }), 1400);
+  };
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px", width: "100%" }}>
+      <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 6 }}>Volume Tiers</div>
+      <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 28, lineHeight: 1.6 }}>
+        Set each athlete's weekly training capacity. The tier scales how much load they can accumulate per unit of sleep before the fatigue model flags rest. Changes save automatically.
+      </div>
+
+      {/* Tier legend */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28, padding: "12px 14px", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+        {VOLUME_TIERS.map(t => (
+          <div key={t.id} style={{ ...mono, fontSize: 10, color: C.muted }}>
+            <span style={{ color: C.white, fontWeight: 600 }}>{t.label}</span> {t.multiplier}×
+          </div>
+        ))}
+      </div>
+
+      {sorted.length === 0 && (
+        <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: "40px 0" }}>
+          No athletes yet.
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sorted.map(a => {
+          const currentTier = a.volume_tier || DEFAULT_VOLUME_TIER;
+          const saved = !!justSaved[a.id];
+          return (
+            <div key={a.id} style={{ background: C.gray, border: `1px solid ${saved ? "#3d9e7a" : C.border}`, borderRadius: 8, padding: "14px 16px", transition: "border-color 0.3s" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 160 }}>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: C.white, marginBottom: 3 }}>{a.name}</div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge type={a.type} />
+                    {a.level && <span style={{ ...mono, fontSize: 10, color: C.muted }}>{a.level}</span>}
+                    {saved && <span style={{ ...mono, fontSize: 10, color: "#3d9e7a" }}>✓ saved</span>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {VOLUME_TIERS.map(t => {
+                    const isActive = t.id === currentTier;
+                    return (
+                      <button key={t.id} onClick={() => pickTier(a, t.id)}
+                        style={{
+                          ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 6,
+                          border: `1px solid ${isActive ? C.orange : C.border}`,
+                          background: isActive ? "rgba(224,122,58,0.12)" : "transparent",
+                          color: isActive ? C.orange : C.muted,
+                          cursor: "pointer",
+                          fontWeight: isActive ? 600 : 400,
+                          minWidth: 64,
+                        }}>
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
@@ -2765,8 +2872,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const canRedo = !!(selectedId && (planHistory[selectedId]?.future?.length));
   const [showAdd, setShowAdd] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "" });
+  const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "", volume_tier: DEFAULT_VOLUME_TIER });
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editingAthlete, setEditingAthlete] = useState(null);
   const [showPasswords, setShowPasswords] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
@@ -2783,7 +2891,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
 
   const selected = selectedId === TEMPLATE_CREATOR_ID
     ? { id: TEMPLATE_CREATOR_ID, name: "Template Creator", type: "Adult Recreational", level: "" }
-    : athletes.find(a => a.id === selectedId);
+    : selectedId === VOLUME_TIERS_PAGE_ID
+      ? { id: VOLUME_TIERS_PAGE_ID, name: "Volume Tiers" }
+      : athletes.find(a => a.id === selectedId);
   const btnS = (active) => ({ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, padding: "6px 10px", borderRadius: 4, border: `1px solid ${active?C.orange:C.border}`, background: active?"rgba(61,158,122,0.1)":"none", color: active?C.orange:C.muted, cursor: "pointer" });
 
   const openBackups = async () => {
@@ -2857,17 +2967,27 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   <div style={{ ...mono, fontSize: 9, color: C.muted }}>scratch pad → save as ★</div>
                 </button>
               </div>
+              {/* Volume Tiers — fixed entry */}
+              <div style={{ marginBottom: 6 }}>
+                <button onClick={() => setSelectedId(VOLUME_TIERS_PAGE_ID)} style={{ width: "100%", textAlign: "left", background: selectedId===VOLUME_TIERS_PAGE_ID?"rgba(224,122,58,0.10)":"none", border: `1px solid ${selectedId===VOLUME_TIERS_PAGE_ID?C.orange:"rgba(224,122,58,0.3)"}`, borderRadius: 6, padding: "9px 12px", cursor: "pointer" }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.orange, marginBottom: 2 }}>Volume Tiers</div>
+                  <div style={{ ...mono, fontSize: 9, color: C.muted }}>set athlete training capacity</div>
+                </button>
+              </div>
               <div style={{ borderBottom: `1px solid ${C.border}`, marginBottom: 6 }} />
               {athletes.map(a => (
                 <div key={a.id} style={{ position: "relative", marginBottom: 2 }}
-                  onMouseEnter={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="1"; }}
-                  onMouseLeave={e => { const b=e.currentTarget.querySelector(".del"); if(b) b.style.opacity="0"; }}>
-                  <button onClick={() => setSelectedId(a.id)} style={{ width: "100%", textAlign: "left", background: selectedId===a.id?C.gray2:"none", border: `1px solid ${selectedId===a.id?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 32px 10px 12px", cursor: "pointer" }}>
+                  onMouseEnter={e => { const b=e.currentTarget.querySelector(".athlete-actions"); if(b) b.style.opacity="1"; }}
+                  onMouseLeave={e => { const b=e.currentTarget.querySelector(".athlete-actions"); if(b) b.style.opacity="0"; }}>
+                  <button onClick={() => setSelectedId(a.id)} style={{ width: "100%", textAlign: "left", background: selectedId===a.id?C.gray2:"none", border: `1px solid ${selectedId===a.id?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 52px 10px 12px", cursor: "pointer" }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 4 }}>{a.name}</div>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 9, color: C.muted }}>{a.level}</span></div>
                     {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
                   </button>
-                  <button className="del" onClick={() => setConfirmDelete(a.id)} style={{ position: "absolute", top: 8, right: 4, opacity: 0, background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 5px", transition: "opacity 0.15s" }}>✕</button>
+                  <div className="athlete-actions" style={{ position: "absolute", top: 8, right: 4, opacity: 0, display: "flex", gap: 2, transition: "opacity 0.15s" }}>
+                    <button title="Edit athlete" onClick={() => setEditingAthlete(a)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, padding: "2px 5px" }}>✎</button>
+                    <button title="Remove athlete" onClick={() => setConfirmDelete(a.id)} style={{ background: "none", border: "none", color: "#a05555", cursor: "pointer", fontSize: 13, padding: "2px 5px" }}>✕</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2878,6 +2998,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                 title="Template Creator"
                 style={{ width: "100%", height: 32, background: selectedId===TEMPLATE_CREATOR_ID?"rgba(91,127,166,0.15)":"none", border: "none", borderLeft: `2px solid ${selectedId===TEMPLATE_CREATOR_ID?C.purple:"transparent"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: selectedId===TEMPLATE_CREATOR_ID?C.purple:C.muted, fontSize: 10 }}>
                 ★
+              </button>
+              <button onClick={() => { setSelectedId(VOLUME_TIERS_PAGE_ID); setSidebarOpen(true); }}
+                title="Volume Tiers"
+                style={{ width: "100%", height: 32, background: selectedId===VOLUME_TIERS_PAGE_ID?"rgba(224,122,58,0.15)":"none", border: "none", borderLeft: `2px solid ${selectedId===VOLUME_TIERS_PAGE_ID?C.orange:"transparent"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: selectedId===VOLUME_TIERS_PAGE_ID?C.orange:C.muted, fontSize: 10 }}>
+                ⚖
               </button>
               {athletes.map(a => (
                 <button key={a.id} onClick={() => { setSelectedId(a.id); setSidebarOpen(true); }}
@@ -2896,6 +3021,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <div style={{ fontSize: 40, opacity: 0.25 }}>🧗</div>
               <p style={{ ...mono, fontSize: 12 }}>Select an athlete</p>
             </div>
+          ) : selectedId === VOLUME_TIERS_PAGE_ID ? (
+            <VolumeTiersPage athletes={athletes} onUpdateAthlete={onUpdateAthlete} />
           ) : mode === "coach" ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
               <CoachPlanEditor
@@ -2959,6 +3086,37 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </div>
       </div>
 
+      {editingAthlete && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 380, maxWidth: "100%", padding: 28 }}>
+            <div style={{ ...bebas, fontSize: 22, marginBottom: 18 }}>Edit Athlete</div>
+            {[{label:"Name",key:"name"},{label:"Level",key:"level"}].map(f => (
+              <div key={f.key} style={{ marginBottom: 14 }}>
+                <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>{f.label}</div>
+                <input value={editingAthlete[f.key] || ""} onChange={e => setEditingAthlete(p=>({...p,[f.key]:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
+              </div>
+            ))}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
+              <select value={editingAthlete.type || "Youth Comp"} onChange={e => setEditingAthlete(p=>({...p,type:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+                {["Youth Comp","Adult Performance","Adult Recreational"].map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Volume Tier</div>
+              <select value={editingAthlete.volume_tier || DEFAULT_VOLUME_TIER} onChange={e => setEditingAthlete(p=>({...p,volume_tier:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+                {VOLUME_TIERS.map(t => <option key={t.id} value={t.id}>{t.label} ({t.multiplier}×)</option>)}
+              </select>
+              <div style={{ ...mono, fontSize: 9, color: C.muted, marginTop: 4 }}>Scales weekly load allowance per unit sleep.</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setEditingAthlete(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
+              <button onClick={() => { if(!editingAthlete.name.trim()) return; onUpdateAthlete(editingAthlete); setEditingAthlete(null); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAdd && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 380, maxWidth: "100%", padding: 28 }}>
@@ -2969,15 +3127,22 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                 <input value={newAthlete[f.key]} onChange={e => setNewAthlete(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
               </div>
             ))}
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 14 }}>
               <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
               <select value={newAthlete.type} onChange={e => setNewAthlete(p=>({...p,type:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                 {["Youth Comp","Adult Performance","Adult Recreational"].map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Volume Tier</div>
+              <select value={newAthlete.volume_tier || DEFAULT_VOLUME_TIER} onChange={e => setNewAthlete(p=>({...p,volume_tier:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+                {VOLUME_TIERS.map(t => <option key={t.id} value={t.id}>{t.label} ({t.multiplier}×)</option>)}
+              </select>
+              <div style={{ ...mono, fontSize: 9, color: C.muted, marginTop: 4 }}>Scales weekly load allowance per unit sleep. Med-High is the default.</div>
+            </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowAdd(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete, coach_id: coachId || 'admin'}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:""}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
+              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete, volume_tier: newAthlete.volume_tier || DEFAULT_VOLUME_TIER, coach_id: coachId || 'admin'}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:"",volume_tier:DEFAULT_VOLUME_TIER}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
             </div>
           </div>
         </div>
@@ -3353,6 +3518,11 @@ export default function App() {
     setAthletes(prev => prev.filter(a => a.id !== id));
   }, []);
 
+  const updateAthlete = useCallback(async (a) => {
+    await dbUpsertAthlete(a);
+    setAthletes(prev => prev.map(x => x.id === a.id ? { ...x, ...a } : x));
+  }, []);
+
   // load templates once session is known
   React.useEffect(() => {
     if (!session || session.role !== "coach") return;
@@ -3402,6 +3572,7 @@ export default function App() {
     onOverflowChange={updateOverflow}
     onEditExercise={editExercise}
     onAddAthlete={addAthlete}
+    onUpdateAthlete={updateAthlete}
     onDeleteAthlete={deleteAthlete}
     onAddCoach={addCoach}
     onDeleteCoach={deleteCoach}
