@@ -2803,8 +2803,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // 7 actual calendar days regardless of logging compliance.
     const computeRec = (windowLogs) => {
       if (windowLogs.length < 3) return null;
-      // Load=4 the day before this rec applies → hard Rest.
-      if ((windowLogs[0]?.load ?? 0) === 4) {
+      // Load=3 or 4 the day before this rec applies → hard Rest. Either
+      // intensity is a hard session and warrants a full recovery day.
+      if ((windowLogs[0]?.load ?? 0) >= 3) {
         return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
       }
       // Three consecutive load=1 days → hard Rest. Looks at the most recent
