@@ -3403,6 +3403,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingAthlete, setEditingAthlete] = useState(null);
   const isMobile = useIsMobile();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
@@ -3456,25 +3457,54 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.black }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
-        <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
-        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-          {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
-          <button onClick={undo} disabled={!canUndo} title="Undo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.muted : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩</button>
-          <button onClick={redo} disabled={!canRedo} title="Redo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canRedo ? C.muted : C.gray3, cursor: canRedo ? "pointer" : "default" }}>↪</button>
-          <button onClick={openPasswords} style={btnS(false)}>🔑</button>
-          {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
-          {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
-          <button onClick={openTemplates} style={btnS(false)}>Templates</button>
-          <div style={{ width: 1, height: 20, background: C.border }} />
-          <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
-          <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
-          {selectedId === "bzmmql6" && <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>}
-          <div style={{ width: 1, height: 20, background: C.border }} />
-          <button onClick={onToggleDark} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }} title="Toggle dark mode">{darkMode ? "☀︎" : "☾"}</button>
-          <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>↩</button>
+      {/* Header — mobile collapses overflow buttons under a hamburger */}
+      {isMobile ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", height: 52, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
+            <div style={{ ...bebas, fontSize: 14, letterSpacing: 1.5, flexShrink: 0, color: C.white, whiteSpace: "nowrap" }}>RP <span style={{ color: C.orange }}>COACHING</span></div>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e", marginRight: 4 }}>✓</span>}
+              <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
+              <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
+              {selectedId === "bzmmql6" && <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>}
+              <button onClick={() => setMobileMenuOpen(v => !v)} title="Menu"
+                style={{ ...mono, fontSize: 16, padding: "6px 10px", borderRadius: 4, border: `1px solid ${mobileMenuOpen ? C.orange : C.border}`, background: mobileMenuOpen ? "rgba(224,122,58,0.08)" : "none", color: mobileMenuOpen ? C.orange : C.muted, cursor: "pointer", lineHeight: 1 }}>≡</button>
+            </div>
+          </div>
+          {mobileMenuOpen && (
+            <div style={{ borderBottom: `1px solid ${C.border}`, background: C.gray2, padding: "10px 12px", display: "flex", flexWrap: "wrap", gap: 6, flexShrink: 0 }}>
+              <button onClick={() => { undo(); }} disabled={!canUndo} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.white : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩ Undo</button>
+              <button onClick={() => { redo(); }} disabled={!canRedo} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: canRedo ? C.white : C.gray3, cursor: canRedo ? "pointer" : "default" }}>↪ Redo</button>
+              <button onClick={() => { openPasswords(); setMobileMenuOpen(false); }} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.white, cursor: "pointer" }}>🔑 Passwords</button>
+              {selectedId && <button onClick={() => { openBackups(); setMobileMenuOpen(false); }} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.white, cursor: "pointer" }}>↩ Backup</button>}
+              {isAdmin && <button onClick={() => { setShowCoaches(true); setMobileMenuOpen(false); }} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.white, cursor: "pointer" }}>Coaches</button>}
+              <button onClick={() => { openTemplates(); setMobileMenuOpen(false); }} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.white, cursor: "pointer" }}>Templates</button>
+              <button onClick={onToggleDark} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.white, cursor: "pointer" }}>{darkMode ? "☀︎ Light" : "☾ Dark"}</button>
+              <button onClick={onLogout} style={{ ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: "#a05555", cursor: "pointer" }}>Log out</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
+          <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+            {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
+            <button onClick={undo} disabled={!canUndo} title="Undo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.muted : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩</button>
+            <button onClick={redo} disabled={!canRedo} title="Redo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canRedo ? C.muted : C.gray3, cursor: canRedo ? "pointer" : "default" }}>↪</button>
+            <button onClick={openPasswords} style={btnS(false)}>🔑</button>
+            {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
+            {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
+            <button onClick={openTemplates} style={btnS(false)}>Templates</button>
+            <div style={{ width: 1, height: 20, background: C.border }} />
+            <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
+            <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
+            {selectedId === "bzmmql6" && <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>}
+            <div style={{ width: 1, height: 20, background: C.border }} />
+            <button onClick={onToggleDark} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }} title="Toggle dark mode">{darkMode ? "☀︎" : "☾"}</button>
+            <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>↩</button>
+          </div>
         </div>
-      </div>
+      )}
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
