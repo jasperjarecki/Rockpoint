@@ -2608,6 +2608,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showAthleteInfo, setShowAthleteInfo] = useState(false);
   const [sleepPromptValue, setSleepPromptValue] = useState("");
   const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
+  // Catch-up prompt: appears once per session when 3+ consecutive recent
+  // calendar days are unlogged. catchupDays is an array of 7 entries
+  // (yesterday going back 7 days), most-recent first, each shaped:
+  //   { date, logged: bool, load: 0|1|2|null, editable: bool, existing: row|null }
+  const [catchupDays, setCatchupDays] = useState(null);
+  const [catchupSaving, setCatchupSaving] = useState(false);
+  const [catchupDismissed, setCatchupDismissed] = useState(false);
 
   // Show sleep prompt if today's sleep not yet logged
   useEffect(() => {
@@ -2628,6 +2635,93 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         if (!rows || rows.length === 0) setShowSleepPrompt(true);
       });
   }, [athlete?.id]);
+
+  // Catch-up prompt detection. Fires once per session (until dismissed or
+  // submitted) if the athlete has 3+ consecutive recent unlogged days.
+  useEffect(() => {
+    if (!athlete?.id) return;
+    if (catchupDismissed) return;
+    if (catchupDays) return; // already shown
+    const todayStr = localDateStr();
+    sb.from("fatigue_logs").select("date,load,sleep,strong,strong_na").eq("athlete_id", athlete.id)
+      .gte("date", (() => {
+        const [y, m, d] = todayStr.split("-").map(Number);
+        const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - 14);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      })())
+      .then(({ data, error }) => {
+        if (error) { console.warn("[catchup] query error:", error); return; }
+        const logged = new Set((data || []).map(r => r.date));
+        const byDate = {};
+        (data || []).forEach(r => { byDate[r.date] = r; });
+        // Walk back from yesterday, looking for a consecutive unlogged streak
+        // ending at or near today (within the last 3 days).
+        const [ty, tm, td] = todayStr.split("-").map(Number);
+        const dt = new Date(ty, tm - 1, td);
+        dt.setDate(dt.getDate() - 1); // start at yesterday
+        let streak = 0;
+        for (let i = 0; i < 7; i++) {
+          const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+          if (!logged.has(ds)) streak++;
+          else break;
+          dt.setDate(dt.getDate() - 1);
+        }
+        console.log("[catchup] consecutive unlogged streak ending at/near today:", streak);
+        if (streak < 3) return;
+        // Build the 7-day calendar (yesterday going back 7 days, most-recent first)
+        const cal = [];
+        const dt2 = new Date(ty, tm - 1, td);
+        dt2.setDate(dt2.getDate() - 1);
+        for (let i = 0; i < 7; i++) {
+          const ds = `${dt2.getFullYear()}-${String(dt2.getMonth() + 1).padStart(2, "0")}-${String(dt2.getDate()).padStart(2, "0")}`;
+          const existing = byDate[ds] || null;
+          cal.push({
+            date: ds,
+            logged: !!existing,
+            // tappable when unlogged; load starts at 0 (Rest) for unlogged days
+            load: existing ? (existing.load ?? 0) : 0,
+            editable: !existing,
+            existing,
+          });
+          dt2.setDate(dt2.getDate() - 1);
+        }
+        setCatchupDays(cal);
+      });
+  }, [athlete?.id, catchupDismissed, catchupDays]);
+
+  const cycleCatchupDay = (idx) => {
+    setCatchupDays(prev => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const cur = next[idx];
+      if (!cur.editable) return prev;
+      // Cycle Rest (0) → Train (2) → Light (1) → Rest (0)
+      const cycle = { 0: 2, 2: 1, 1: 0 };
+      next[idx] = { ...cur, load: cycle[cur.load] ?? 0 };
+      return next;
+    });
+  };
+
+  const submitCatchup = async () => {
+    if (!catchupDays) return;
+    setCatchupSaving(true);
+    const rows = catchupDays
+      .filter(d => d.editable && d.load !== 0)
+      .map(d => ({ athlete_id: athlete.id, date: d.date, sleep: 7, load: d.load, strong: null, strong_na: true }));
+    if (rows.length > 0) {
+      const { error } = await sb.from("fatigue_logs").upsert(rows, { onConflict: "athlete_id,date" });
+      if (error) console.warn("[catchup] upsert error:", error);
+    }
+    setCatchupSaving(false);
+    setCatchupDays(null);
+    setCatchupDismissed(true);
+    await recomputeFatigue();
+  };
+
+  const dismissCatchup = () => {
+    setCatchupDays(null);
+    setCatchupDismissed(true);
+  };
 
   const submitSleepPrompt = async () => {
     const val = parseFloat(sleepPromptValue);
@@ -2680,18 +2774,43 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     const todayStr = localDateStr();
 
     // Per-athlete volume tier multiplier. Higher = bigger weekly load allowance.
-    // Applied to the denominator of loadRatio so it lifts the load ceiling
-    // proportionally. Default 1.0 preserves the historical behavior.
     const volumeCoeff = getVolumeMultiplier(athlete);
 
-    // ── Helper: build a recommendation label from a window of recent logs ──
-    // `windowLogs` should be ordered most-recent first. The "previous day"
-    // (windowLogs[0]) drives the load=4 rest trigger.
+    // ── buildCalendarWindow ────────────────────────────────────────────────
+    // Returns an array of `days` entries ending at `anchorDate` (inclusive),
+    // most-recent first. Real logs are used where present; missing days are
+    // filled with synthetic rest (sleep=7, load=0, strong=null, strong_na=true).
+    // The synthetic flag is _synthetic so downstream code can tell them apart.
+    const buildCalendarWindow = (allLogs, anchorDate, days) => {
+      const byDate = {};
+      allLogs.forEach(l => { byDate[l.date] = l; });
+      const out = [];
+      const [ay, am, ad] = anchorDate.split("-").map(Number);
+      const anchor = new Date(ay, am - 1, ad);
+      for (let i = 0; i < days; i++) {
+        const d = new Date(anchor);
+        d.setDate(d.getDate() - i);
+        const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        if (byDate[ds]) out.push(byDate[ds]);
+        else out.push({ date: ds, sleep: 7, load: 0, strong: null, strong_na: true, _synthetic: true });
+      }
+      return out;
+    };
+
+    // ── computeRec ─────────────────────────────────────────────────────────
+    // Takes a calendar-aligned window (most-recent first). All math runs on
+    // this; synthetic rest days fill unlogged gaps so the windowing is always
+    // 7 actual calendar days regardless of logging compliance.
     const computeRec = (windowLogs) => {
       if (windowLogs.length < 3) return null;
-      // Load=4 is a hard override: the most recent day in the window had a
-      // crushing session, so the next day (the day this rec is for) is rest.
+      // Load=4 the day before this rec applies → hard Rest.
       if ((windowLogs[0]?.load ?? 0) === 4) {
+        return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      }
+      // Three consecutive load=1 days → hard Rest. Looks at the most recent
+      // 3 calendar days in the window (which now includes synthetic rest).
+      const last3Loads = windowLogs.slice(0, 3).map(l => l.load ?? 0);
+      if (last3Loads.length === 3 && last3Loads.every(l => l === 1)) {
         return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
       }
       const recent7 = windowLogs.slice(0, 7);
@@ -2699,19 +2818,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const last4 = windowLogs.slice(0, 4);
       const avgSleep = recent7.reduce((s,l) => s+(l.sleep||0),0)/recent7.length;
       const weekLoad = recent7.reduce((s,l) => s+(l.load||0),0);
+      // Strong sample-size guard: only consider strong signals when there
+      // are 2+ numeric ratings in the last 3 calendar days. A single rating
+      // isn't statistically meaningful enough to push the rec around.
       const strongLogs = last3.filter(l => l.strong != null);
-      const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
-      const last3Loads = last3.map(l => l.load ?? 0);
+      const hasEnoughStrong = strongLogs.length >= 2;
+      const avgStrong = hasEnoughStrong ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
       const last4Strong = last4.map(l => l.strong);
       const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
       const fourStrongDays = last4.length === 4 && last4Strong.every(s => s === 2);
-      // Volume coefficient scales the effective sleep "budget" — higher
-      // coefficient means the athlete can accumulate more load per hour of
-      // sleep before tripping the ratio threshold.
       const loadRatio = avgSleep > 0 ? weekLoad / (avgSleep * volumeCoeff) : 99;
       const lowSleep = avgSleep < 6.5;
-      const lowStrong = avgStrong !== null && avgStrong < 0.75;
-      const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
+      // lowStrong now fires at avg ≤ 1.0 (was < 0.75). Two 1s in a row → Rest.
+      const lowStrong = avgStrong !== null && avgStrong <= 1.0;
+      const borderlineStrong = avgStrong !== null && avgStrong > 1.0 && avgStrong < 1.5;
       const highLoad = loadRatio > 1.3;
       const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
       const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
@@ -2724,16 +2844,57 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       return { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)" };
     };
 
-    // Today's rec uses PAST data only — today's own log is excluded so that
-    // logging today doesn't retroactively change the recommendation for today.
-    const pastLogs = logs.filter(l => l.date < todayStr);
-    const todayRec = computeRec(pastLogs);
+    // Today's rec is computed against the 7 calendar days ENDING YESTERDAY.
+    // (Today is excluded so logging today doesn't shift today's rec.)
+    const yesterday = (() => {
+      const [y, m, d] = todayStr.split("-").map(Number);
+      const dt = new Date(y, m - 1, d);
+      dt.setDate(dt.getDate() - 1);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    })();
+    const todayWindow = buildCalendarWindow(logs, yesterday, 7);
+    const todayRec = computeRec(todayWindow);
     if (!todayRec) { setFatigueRec(null); return; }
 
-    // Tomorrow's rec uses the full logs (which includes today).
+    // Tomorrow's rec is computed against 7 calendar days ENDING TODAY.
+    // Normally only meaningful once today is fully logged — but the forecast
+    // intervention below can override this to show "Rest" even when today
+    // isn't logged yet.
     const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && (l.strong != null || l.strong_na === true));
-    const tomorrowRec = todayLogged ? computeRec(logs) : null;
-    const tomorrow = tomorrowRec ? { label: tomorrowRec.label, color: tomorrowRec.color } : null;
+    const tomorrowWindow = buildCalendarWindow(logs, todayStr, 7);
+    const tomorrowRec = todayLogged ? computeRec(tomorrowWindow) : null;
+    let tomorrow = tomorrowRec ? { label: tomorrowRec.label, color: tomorrowRec.color } : null;
+
+    // ── Train Light loop forecast ──────────────────────────────────────────
+    // If today's rec is Train Light and the model predicts the next two
+    // days would ALSO be Train Light (assuming the athlete trains light on
+    // each), force tomorrow's recommendation to Rest. This breaks the loop
+    // before the athlete settles into a mediocrity rut.
+    if (todayRec.label === "Train Light") {
+      // Step 1: simulate tomorrow's rec, assuming today was light (load=1, sleep=7, strong_na).
+      const simToday = { date: todayStr, sleep: 7, load: 1, strong: null, strong_na: true, _simulated: true };
+      const todayExisting = logs.find(l => l.date === todayStr);
+      const logsWithSimToday = todayExisting ? logs : [simToday, ...logs];
+      const simTomorrowWindow = buildCalendarWindow(logsWithSimToday, todayStr, 7);
+      const simTomorrowRec = computeRec(simTomorrowWindow);
+
+      if (simTomorrowRec && simTomorrowRec.label === "Train Light") {
+        // Step 2: simulate the day-after-tomorrow rec, assuming tomorrow is also light.
+        const [ty, tm, td] = todayStr.split("-").map(Number);
+        const dt = new Date(ty, tm - 1, td); dt.setDate(dt.getDate() + 1);
+        const tomorrowStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        const simTomorrow = { date: tomorrowStr, sleep: 7, load: 1, strong: null, strong_na: true, _simulated: true };
+        const logsWithBothSim = [simTomorrow, ...logsWithSimToday];
+        const simDayAfterWindow = buildCalendarWindow(logsWithBothSim, tomorrowStr, 7);
+        const simDayAfterRec = computeRec(simDayAfterWindow);
+
+        if (simDayAfterRec && simDayAfterRec.label === "Train Light") {
+          // Three Train Light recs forecast. Override tomorrow to Rest.
+          tomorrow = { label: "Rest", color: "#c0392b", forecast: true };
+          console.log("[recomputeFatigue] forecast intervention: overriding tomorrow → Rest to break Train Light loop");
+        }
+      }
+    }
 
     console.log("[recomputeFatigue] today:", todayRec.label, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
     setFatigueRec({ ...todayRec, tomorrow, todayLogged });
@@ -2776,6 +2937,61 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       )}
 
       {/* Sleep prompt modal */}
+      {catchupDays && !showSleepPrompt && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, width: "100%", maxWidth: 420 }}>
+            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>Welcome back 👋</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
+              You haven't logged in a few days. We're counting them as rest. If you trained, tap a day to mark it.
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Last 7 days</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 16 }}>
+              {[...catchupDays].reverse().map((d, ri) => {
+                // ri is reversed index — we render oldest → newest left to right
+                const realIdx = catchupDays.length - 1 - ri;
+                const [yy, mm, dd] = d.date.split("-").map(Number);
+                const dayOfWeek = new Date(yy, mm - 1, dd).toLocaleDateString("en-US", { weekday: "short" });
+                const icon = d.load === 0 ? "🛌" : d.load === 1 ? "🚂" : "🚂";
+                const sublabel = d.load === 1 ? "Light" : "";
+                const isGrayed = !d.editable;
+                return (
+                  <button key={d.date}
+                    onClick={() => cycleCatchupDay(realIdx)}
+                    disabled={isGrayed}
+                    style={{
+                      aspectRatio: "1",
+                      borderRadius: 8,
+                      background: isGrayed ? "rgba(255,255,255,0.04)" : d.load === 0 ? C.gray2 : "rgba(61,158,122,0.15)",
+                      border: `1px solid ${isGrayed ? C.border : d.load === 0 ? C.border : "#3d9e7a"}`,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1,
+                      cursor: isGrayed ? "default" : "pointer",
+                      opacity: isGrayed ? 0.45 : 1,
+                      padding: 2,
+                    }}>
+                    <div style={{ ...mono, fontSize: 8, color: C.muted }}>{dayOfWeek}</div>
+                    <div style={{ fontSize: 16, lineHeight: 1 }}>{icon}</div>
+                    {sublabel && <div style={{ ...mono, fontSize: 7, color: C.orange, lineHeight: 1 }}>{sublabel}</div>}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              Tap to cycle: 🛌 Rest → 🚂 Train → 🚂 Light. Grayed-out days are already logged.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={dismissCatchup}
+                style={{ flex: 1, ...mono, fontSize: 11, padding: "12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+                Skip
+              </button>
+              <button onClick={submitCatchup} disabled={catchupSaving}
+                style={{ flex: 2, ...mono, fontSize: 11, padding: "12px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: catchupSaving ? "default" : "pointer" }}>
+                {catchupSaving ? "Saving..." : "Log"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSleepPrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 340 }}>
@@ -2828,8 +3044,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               <div style={{ borderTop: `1px solid ${color}22`, paddingTop: 10, marginTop: label === "Train Light" ? 0 : 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
-                  {fLogs.todayLogged && fLogs.tomorrow
-                    ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                  {fLogs.tomorrow
+                    ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>
+                        {fLogs.tomorrow.label}
+                        {fLogs.tomorrow.forecast && <span style={{ ...mono, fontSize: 9, color: C.muted, marginLeft: 6, fontWeight: 400 }}>(loop break)</span>}
+                      </div>
                     : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
                   }
                 </div>
