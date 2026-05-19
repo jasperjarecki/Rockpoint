@@ -2615,6 +2615,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [catchupDays, setCatchupDays] = useState(null);
   const [catchupSaving, setCatchupSaving] = useState(false);
   const [catchupDismissed, setCatchupDismissed] = useState(false);
+  // "cold_start" when the athlete has zero fatigue_logs rows ever;
+  // "regular" when they have a 3+ day unlogged streak ending near today.
+  const [catchupKind, setCatchupKind] = useState(null);
 
   // Show sleep prompt if today's sleep not yet logged
   useEffect(() => {
@@ -2643,49 +2646,70 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (catchupDismissed) return;
     if (catchupDays) return; // already shown
     const todayStr = localDateStr();
-    sb.from("fatigue_logs").select("date,load,sleep,strong,strong_na").eq("athlete_id", athlete.id)
-      .gte("date", (() => {
-        const [y, m, d] = todayStr.split("-").map(Number);
-        const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - 14);
-        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-      })())
-      .then(({ data, error }) => {
-        if (error) { console.warn("[catchup] query error:", error); return; }
-        const logged = new Set((data || []).map(r => r.date));
-        const byDate = {};
-        (data || []).forEach(r => { byDate[r.date] = r; });
-        // Walk back from yesterday, looking for a consecutive unlogged streak
-        // ending at or near today (within the last 3 days).
-        const [ty, tm, td] = todayStr.split("-").map(Number);
-        const dt = new Date(ty, tm - 1, td);
-        dt.setDate(dt.getDate() - 1); // start at yesterday
-        let streak = 0;
-        for (let i = 0; i < 7; i++) {
-          const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-          if (!logged.has(ds)) streak++;
-          else break;
+    // First: check if athlete has ANY fatigue_logs rows ever. If not, this is
+    // a cold-start athlete and the prompt fires with first-time copy.
+    sb.from("fatigue_logs").select("id", { count: "exact", head: true }).eq("athlete_id", athlete.id)
+      .then(({ count, error }) => {
+        if (error) { console.warn("[catchup] count error:", error); return; }
+        const isColdStart = (count ?? 0) === 0;
+        if (isColdStart) {
+          console.log("[catchup] cold-start athlete: building first-time prompt");
+          // Build the 7-day calendar with all days tappable, none logged.
+          const [ty, tm, td] = todayStr.split("-").map(Number);
+          const dt = new Date(ty, tm - 1, td);
           dt.setDate(dt.getDate() - 1);
+          const cal = [];
+          for (let i = 0; i < 7; i++) {
+            const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+            cal.push({ date: ds, logged: false, load: 0, editable: true, existing: null });
+            dt.setDate(dt.getDate() - 1);
+          }
+          setCatchupKind("cold_start");
+          setCatchupDays(cal);
+          return;
         }
-        console.log("[catchup] consecutive unlogged streak ending at/near today:", streak);
-        if (streak < 3) return;
-        // Build the 7-day calendar (yesterday going back 7 days, most-recent first)
-        const cal = [];
-        const dt2 = new Date(ty, tm - 1, td);
-        dt2.setDate(dt2.getDate() - 1);
-        for (let i = 0; i < 7; i++) {
-          const ds = `${dt2.getFullYear()}-${String(dt2.getMonth() + 1).padStart(2, "0")}-${String(dt2.getDate()).padStart(2, "0")}`;
-          const existing = byDate[ds] || null;
-          cal.push({
-            date: ds,
-            logged: !!existing,
-            // tappable when unlogged; load starts at 0 (Rest) for unlogged days
-            load: existing ? (existing.load ?? 0) : 0,
-            editable: !existing,
-            existing,
+        // Otherwise: regular catch-up flow. Fetch recent rows to detect streak.
+        sb.from("fatigue_logs").select("date,load,sleep,strong,strong_na").eq("athlete_id", athlete.id)
+          .gte("date", (() => {
+            const [y, m, d] = todayStr.split("-").map(Number);
+            const dt2 = new Date(y, m - 1, d); dt2.setDate(dt2.getDate() - 14);
+            return `${dt2.getFullYear()}-${String(dt2.getMonth() + 1).padStart(2, "0")}-${String(dt2.getDate()).padStart(2, "0")}`;
+          })())
+          .then(({ data, error: e2 }) => {
+            if (e2) { console.warn("[catchup] query error:", e2); return; }
+            const logged = new Set((data || []).map(r => r.date));
+            const byDate = {};
+            (data || []).forEach(r => { byDate[r.date] = r; });
+            const [ty, tm, td] = todayStr.split("-").map(Number);
+            const dt = new Date(ty, tm - 1, td);
+            dt.setDate(dt.getDate() - 1); // start at yesterday
+            let streak = 0;
+            for (let i = 0; i < 7; i++) {
+              const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+              if (!logged.has(ds)) streak++;
+              else break;
+              dt.setDate(dt.getDate() - 1);
+            }
+            console.log("[catchup] consecutive unlogged streak ending at/near today:", streak);
+            if (streak < 3) return;
+            const cal = [];
+            const dt2 = new Date(ty, tm - 1, td);
+            dt2.setDate(dt2.getDate() - 1);
+            for (let i = 0; i < 7; i++) {
+              const ds = `${dt2.getFullYear()}-${String(dt2.getMonth() + 1).padStart(2, "0")}-${String(dt2.getDate()).padStart(2, "0")}`;
+              const existing = byDate[ds] || null;
+              cal.push({
+                date: ds,
+                logged: !!existing,
+                load: existing ? (existing.load ?? 0) : 0,
+                editable: !existing,
+                existing,
+              });
+              dt2.setDate(dt2.getDate() - 1);
+            }
+            setCatchupKind("regular");
+            setCatchupDays(cal);
           });
-          dt2.setDate(dt2.getDate() - 1);
-        }
-        setCatchupDays(cal);
       });
   }, [athlete?.id, catchupDismissed, catchupDays]);
 
@@ -2714,12 +2738,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
     setCatchupSaving(false);
     setCatchupDays(null);
+    setCatchupKind(null);
     setCatchupDismissed(true);
     await recomputeFatigue();
   };
 
   const dismissCatchup = () => {
     setCatchupDays(null);
+    setCatchupKind(null);
     setCatchupDismissed(true);
   };
 
@@ -2941,9 +2967,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {catchupDays && !showSleepPrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, width: "100%", maxWidth: 420 }}>
-            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>Welcome back 👋</div>
+            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>
+              {catchupKind === "cold_start" ? "Welcome 👋" : "Welcome back 👋"}
+            </div>
             <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
-              You haven't logged in a few days. We're counting them as rest. If you trained, tap a day to mark it.
+              {catchupKind === "cold_start"
+                ? "Let's get your last week logged so we can start making recommendations. Tap a day if you trained, or leave it as rest. Don't worry about it being perfect."
+                : "You haven't logged in a few days. Tap a day to indicate rest, training, or light training."}
             </div>
             <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Last 7 days</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 16 }}>
