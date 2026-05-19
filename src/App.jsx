@@ -3461,7 +3461,13 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
       {isMobile ? (
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", height: 52, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
-            <div style={{ ...bebas, fontSize: 14, letterSpacing: 1.5, flexShrink: 0, color: C.white, whiteSpace: "nowrap" }}>RP <span style={{ color: C.orange }}>COACHING</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              {selectedId && (
+                <button onClick={() => setSelectedId(null)} title="Back to athletes"
+                  style={{ ...mono, fontSize: 16, padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.white, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>‹</button>
+              )}
+              <div style={{ ...bebas, fontSize: 14, letterSpacing: 1.5, flexShrink: 0, color: C.white, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>RP <span style={{ color: C.orange }}>COACHING</span></div>
+            </div>
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e", marginRight: 4 }}>✓</span>}
               <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
@@ -3508,7 +3514,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <div style={{ width: sidebarOpen ? 200 : 36, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, transition: "width 0.2s ease", overflow: "hidden" }}>
+        {/* Sidebar:
+              Desktop: always visible, width toggles between 200 (open) and 36 (collapsed).
+              Mobile: visible ONLY when nothing is selected, and takes the full viewport. */}
+        {(!isMobile || !selectedId) && (
+        <div style={{ width: isMobile ? "100%" : (sidebarOpen ? 200 : 36), borderRight: isMobile ? "none" : `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, transition: isMobile ? "none" : "width 0.2s ease", overflow: "hidden" }}>
           <div style={{ padding: "12px 8px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: sidebarOpen ? 200 : 36 }}>
             {sidebarOpen && <span style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: C.muted, whiteSpace: "nowrap" }}>Athletes</span>}
             <div style={{ display: "flex", gap: 4, marginLeft: sidebarOpen ? 0 : "auto", marginRight: sidebarOpen ? 0 : "auto" }}>
@@ -3550,7 +3560,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               ))}
             </div>
           )}
-          {!sidebarOpen && (
+          {!sidebarOpen && !isMobile && (
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
               <button onClick={() => { setSelectedId(TEMPLATE_CREATOR_ID); setSidebarOpen(true); }}
                 title="Template Creator"
@@ -3572,7 +3582,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             </div>
           )}
         </div>
+        )}
 
+        {(!isMobile || selectedId) && (
         <div style={{ flex: 1, overflowY: "auto" }}>
           {!selected ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: C.muted }}>
@@ -3653,6 +3665,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               darkMode={darkMode} onToggleDark={onToggleDark} />
           )}
         </div>
+        )}
       </div>
 
       {editingAthlete && (
