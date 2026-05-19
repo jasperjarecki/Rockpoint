@@ -888,6 +888,266 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
 }
 
 // ── COACH PLAN EDITOR ─────────────────────────────────────────────────────────
+// Detect mobile viewports. The breakpoint of 640px keeps tablets on the
+// desktop editor; only narrow phone-class viewports trigger the mobile UI.
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const onResize = () => setMobile(window.innerWidth < 640);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return mobile;
+}
+
+// Mobile plan editor — drill-down through Weeks -> Days -> Exercises.
+// Pass 1: structural skeleton. Reuses ExerciseCard and the existing publish
+// modal logic in CoachPlanEditor. To avoid duplicating that logic, this
+// component does its own thing for navigation but proxies plan mutations
+// through onPlanChange, the same callback the desktop editor uses.
+function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
+  // view: "weeks" | "days" | "day"
+  // When view==="days", weekIdx is set. When view==="day", weekIdx + dayIdx are set.
+  const [view, setView] = useState("weeks");
+  const [weekIdx, setWeekIdx] = useState(0);
+  const [dayIdx, setDayIdx] = useState(0);
+
+  // Publish-sheet visibility (mobile-shaped sheet)
+  const [showPublish, setShowPublish] = useState(false);
+  const [publishDraft, setPublishDraft] = useState([]);
+
+  const weeks = plan?.weeks || [];
+  const published = plan?.published || [];
+
+  // ── Plan mutations (mirror the desktop editor) ─────────────────────────
+  const updateWeek = (i, days) => {
+    const w = weeks.map((wk, j) => j === i ? { ...wk, days } : wk);
+    onPlanChange({ ...plan, weeks: w });
+  };
+  const addWeek = () => {
+    const newWeek = { label: `Week ${weeks.length + 1}`, days: [{ label: "Day 1", exercises: [] }] };
+    onPlanChange({ ...plan, weeks: [...weeks, newWeek] });
+  };
+  const deleteWeek = (i) => {
+    if (!window.confirm(`Delete ${weeks[i].label}? All days and exercises in this week will be removed.`)) return;
+    onPlanChange({ ...plan, weeks: weeks.filter((_, j) => j !== i), published: published.filter(p => p !== i).map(p => p > i ? p - 1 : p) });
+    if (weekIdx >= i && weekIdx > 0) setWeekIdx(weekIdx - 1);
+    setView("weeks");
+  };
+  const addDay = (wi) => {
+    const wk = weeks[wi];
+    const newDays = [...wk.days, { label: `Day ${wk.days.length + 1}`, exercises: [] }];
+    updateWeek(wi, newDays);
+  };
+  const deleteDay = (wi, di) => {
+    if (!window.confirm(`Delete ${weeks[wi].days[di].label}? All exercises in this day will be removed.`)) return;
+    const newDays = weeks[wi].days.filter((_, j) => j !== di);
+    updateWeek(wi, newDays);
+    setView("days");
+  };
+  const updateDay = (wi, di, day) => {
+    const newDays = weeks[wi].days.map((d, j) => j === di ? day : d);
+    updateWeek(wi, newDays);
+  };
+  const addExercise = (wi, di) => {
+    const day = weeks[wi].days[di];
+    const newEx = { id: uid(), text: "New exercise", sets: "", category: "Strength", notes: "" };
+    updateDay(wi, di, { ...day, exercises: [...day.exercises, newEx] });
+  };
+  const updateExercise = (wi, di, ei, patch) => {
+    const day = weeks[wi].days[di];
+    const newExs = day.exercises.map((e, j) => j === ei ? { ...e, ...patch } : e);
+    updateDay(wi, di, { ...day, exercises: newExs });
+  };
+  const deleteExercise = (wi, di, ei) => {
+    const day = weeks[wi].days[di];
+    updateDay(wi, di, { ...day, exercises: day.exercises.filter((_, j) => j !== ei) });
+  };
+
+  // ── Publish ────────────────────────────────────────────────────────────
+  const openPublish = () => { setPublishDraft([...published]); setShowPublish(true); };
+  const togglePublishWeek = (i) => {
+    setPublishDraft(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort((a, b) => a - b));
+  };
+  const confirmPublish = () => { onPublish(publishDraft); setShowPublish(false); };
+
+  // ── Header chrome ──────────────────────────────────────────────────────
+  const Header = ({ title, onBack, right = null }) => (
+    <div style={{ position: "sticky", top: 0, zIndex: 10, background: C.black, borderBottom: `1px solid ${C.border}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+      {onBack ? (
+        <button onClick={onBack} style={{ ...mono, fontSize: 14, padding: "8px 10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, cursor: "pointer" }}>‹</button>
+      ) : <div style={{ width: 34 }} />}
+      <div style={{ flex: 1, ...bebas, fontSize: 18, letterSpacing: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+      {right}
+    </div>
+  );
+
+  // ── Render: weeks ──────────────────────────────────────────────────────
+  if (view === "weeks") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.black, color: C.white }}>
+        <Header title={athlete.name} right={athlete.id !== TEMPLATE_CREATOR_ID && (
+          <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "8px 12px", background: C.orange, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer" }}>Publish ↗</button>
+        )} />
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
+          <div style={{ marginBottom: 14, ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>{weeks.length} Week{weeks.length !== 1 ? "s" : ""}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {weeks.map((wk, wi) => (
+              <button key={wi} onClick={() => { setWeekIdx(wi); setView("days"); }}
+                style={{ width: "100%", textAlign: "left", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: C.white, marginBottom: 4 }}>{wk.label}</div>
+                  <div style={{ display: "flex", gap: 10, ...mono, fontSize: 10, color: C.muted }}>
+                    <span>{wk.days.length} day{wk.days.length !== 1 ? "s" : ""}</span>
+                    {published.includes(wi) && <span style={{ color: "#2aaa5e" }}>● live</span>}
+                  </div>
+                </div>
+                <span style={{ ...mono, fontSize: 18, color: C.muted }}>›</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={addWeek} style={{ width: "100%", marginTop: 12, ...mono, fontSize: 12, padding: "14px", background: "none", border: `1px dashed ${C.border}`, borderRadius: 8, color: C.muted, cursor: "pointer" }}>+ Add Week</button>
+        </div>
+
+        {showPublish && (
+          <div onClick={() => setShowPublish(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 500, display: "flex", alignItems: "flex-end" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: "100%", background: C.gray2, borderTop: `1px solid ${C.border}`, borderRadius: "12px 12px 0 0", padding: "20px 16px", maxHeight: "80vh", overflowY: "auto" }}>
+              <div style={{ ...bebas, fontSize: 20, marginBottom: 6 }}>Publish Weeks</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 14 }}>Select which weeks the athlete can see.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+                {weeks.map((wk, i) => {
+                  const isOn = publishDraft.includes(i);
+                  return (
+                    <button key={i} onClick={() => togglePublishWeek(i)} style={{ width: "100%", textAlign: "left", background: isOn ? "rgba(61,158,122,0.08)" : C.gray, border: `1px solid ${isOn ? "#3d9e7a" : C.border}`, borderRadius: 6, padding: "12px 14px", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 14 }}>{wk.label}</span>
+                      <span style={{ ...mono, fontSize: 12, color: isOn ? "#3d9e7a" : C.muted }}>{isOn ? "✓" : "○"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setShowPublish(false)} style={{ flex: 1, ...mono, fontSize: 12, padding: "12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, cursor: "pointer" }}>Cancel</button>
+                <button onClick={confirmPublish} style={{ flex: 2, ...mono, fontSize: 12, padding: "12px", background: C.orange, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer" }}>Publish {publishDraft.length}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Render: days within selected week ──────────────────────────────────
+  if (view === "days") {
+    const wk = weeks[weekIdx];
+    if (!wk) { setView("weeks"); return null; }
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.black, color: C.white }}>
+        <Header title={wk.label} onBack={() => setView("weeks")}
+          right={<button onClick={() => deleteWeek(weekIdx)} title="Delete week" style={{ ...mono, fontSize: 14, padding: "8px 10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: "#a05555", cursor: "pointer" }}>✕</button>} />
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
+          {published.includes(weekIdx) && <div style={{ ...mono, fontSize: 10, color: "#2aaa5e", marginBottom: 12 }}>● live to athlete</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {wk.days.map((day, di) => {
+              const preview = day.exercises.slice(0, 2).map(e => e.text).join(", ");
+              return (
+                <button key={di} onClick={() => { setDayIdx(di); setView("day"); }}
+                  style={{ width: "100%", textAlign: "left", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: C.white, marginBottom: 4 }}>{day.label}</div>
+                    <div style={{ display: "flex", gap: 10, ...mono, fontSize: 10, color: C.muted, alignItems: "center" }}>
+                      <span>{day.exercises.length} ex</span>
+                      {preview && <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{preview}</span>}
+                    </div>
+                  </div>
+                  <span style={{ ...mono, fontSize: 18, color: C.muted }}>›</span>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => addDay(weekIdx)} style={{ width: "100%", marginTop: 12, ...mono, fontSize: 12, padding: "14px", background: "none", border: `1px dashed ${C.border}`, borderRadius: 8, color: C.muted, cursor: "pointer" }}>+ Add Day</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: a single day ────────────────────────────────────────────────
+  if (view === "day") {
+    const wk = weeks[weekIdx];
+    const day = wk?.days[dayIdx];
+    if (!day) { setView("days"); return null; }
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.black, color: C.white }}>
+        <Header title={`${wk.label} · ${day.label}`} onBack={() => setView("days")}
+          right={<button onClick={() => deleteDay(weekIdx, dayIdx)} title="Delete day" style={{ ...mono, fontSize: 14, padding: "8px 10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: "#a05555", cursor: "pointer" }}>✕</button>} />
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px 80px" }}>
+          {/* Day label editable */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Day Label</div>
+            <input value={day.label} onChange={e => updateDay(weekIdx, dayIdx, { ...day, label: e.target.value })}
+              style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
+          </div>
+
+          {/* Exercise list */}
+          {day.exercises.length === 0 ? (
+            <div style={{ ...mono, fontSize: 11, color: C.muted, textAlign: "center", padding: "30px 0" }}>
+              No exercises yet. Tap + Add Exercise below.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {day.exercises.map((ex, ei) => (
+                <div key={ex.id || ei} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Exercise {ei + 1}</div>
+                    <button onClick={() => { if (window.confirm("Delete this exercise?")) deleteExercise(weekIdx, dayIdx, ei); }}
+                      style={{ ...mono, fontSize: 11, padding: "4px 8px", background: "none", border: "none", color: "#a05555", cursor: "pointer" }}>✕</button>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>EXERCISE</div>
+                    <input value={ex.text || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { text: e.target.value })}
+                      placeholder="Exercise name"
+                      style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>SETS / REPS</div>
+                    <input value={ex.sets || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { sets: e.target.value })}
+                      placeholder="e.g. 3x8 @ 70%"
+                      style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.orange, fontSize: 13, outline: "none", ...mono }} />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>CATEGORY</div>
+                    <select value={ex.category || "Strength"} onChange={e => updateExercise(weekIdx, dayIdx, ei, { category: e.target.value })}
+                      style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+                      {["Strength","Power","Endurance","Climbing","Mobility","Conditioning","Warmup","Cooldown","Other"].map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>NOTES</div>
+                    <textarea value={ex.notes || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { notes: e.target.value })}
+                      placeholder="Optional. Markdown OK."
+                      rows={3}
+                      style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pinned bottom Add Exercise button */}
+        <div style={{ position: "sticky", bottom: 0, padding: "10px 12px", background: C.black, borderTop: `1px solid ${C.border}` }}>
+          <button onClick={() => addExercise(weekIdx, dayIdx)}
+            style={{ width: "100%", ...mono, fontSize: 13, padding: "14px", background: C.orange, border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 500 }}>
+            + Add Exercise
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [], onSaveTemplate, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
   const [_activeWeek, _setActiveWeek] = useState(0);
   const activeWeek = sharedWeekIdx !== undefined ? sharedWeekIdx : _activeWeek;
@@ -2875,6 +3135,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "", volume_tier: DEFAULT_VOLUME_TIER });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingAthlete, setEditingAthlete] = useState(null);
+  const isMobile = useIsMobile();
   const [showPasswords, setShowPasswords] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
@@ -3025,16 +3286,27 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             <VolumeTiersPage athletes={athletes} onUpdateAthlete={onUpdateAthlete} />
           ) : mode === "coach" ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
-              <CoachPlanEditor
-                athlete={selected}
-                plan={plans[selected.id]}
-                onPlanChange={(p) => { pushHistory(selected.id, plans[selected.id]); onPlanChange(selected.id, p); }}
-                onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
-                templates={templates}
-                onSaveTemplate={onSaveTemplate}
-                sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
-                sharedDay={sharedDay} setSharedDay={setSharedDay}
-              />
+              {isMobile && selected.id !== TEMPLATE_CREATOR_ID ? (
+                <MobileCoachPlanEditor
+                  athlete={selected}
+                  plan={plans[selected.id]}
+                  onPlanChange={(p) => { pushHistory(selected.id, plans[selected.id]); onPlanChange(selected.id, p); }}
+                  onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
+                  sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
+                  sharedDay={sharedDay} setSharedDay={setSharedDay}
+                />
+              ) : (
+                <CoachPlanEditor
+                  athlete={selected}
+                  plan={plans[selected.id]}
+                  onPlanChange={(p) => { pushHistory(selected.id, plans[selected.id]); onPlanChange(selected.id, p); }}
+                  onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
+                  templates={templates}
+                  onSaveTemplate={onSaveTemplate}
+                  sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
+                  sharedDay={sharedDay} setSharedDay={setSharedDay}
+                />
+              )}
               {/* Skip day panel */}
               {(() => {
                 const overflow = (progress[selected.id] || {}).overflow || [];
