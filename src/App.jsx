@@ -2621,7 +2621,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (!athlete?.id) return;
     const todayStr = localDateStr();
     // Only show sleep prompt for test users (Jasper + Patrick)
-    const sleepPromptAthletes = ["bzmmql6", "8ygufmv"];
+    const sleepPromptAthletes = ["bzmmql6", "8ygufmv", "test001"];
     if (!sleepPromptAthletes.includes(athlete.id)) return;
     // Ask the DB directly whether ANY row for today has a non-null sleep value.
     // This is robust to duplicate rows for the same athlete+date — without this
