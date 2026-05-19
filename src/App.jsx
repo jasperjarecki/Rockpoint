@@ -2641,10 +2641,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
   // Catch-up prompt detection. Fires once per session (until dismissed or
   // submitted) if the athlete has 3+ consecutive recent unlogged days.
+  // Currently gated to the same test users as the sleep prompt.
   useEffect(() => {
     if (!athlete?.id) return;
     if (catchupDismissed) return;
     if (catchupDays) return; // already shown
+    const catchupAthletes = ["bzmmql6", "8ygufmv", "test001"];
+    if (!catchupAthletes.includes(athlete.id)) return;
     const todayStr = localDateStr();
     // First: check if athlete has ANY fatigue_logs rows ever. If not, this is
     // a cold-start athlete and the prompt fires with first-time copy.
