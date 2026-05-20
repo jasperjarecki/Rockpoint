@@ -2228,21 +2228,27 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     const avgSleep = recent7.reduce((s, l) => s + (l.sleep || 0), 0) / recent7.length;
     const weekLoad = recent7.reduce((s, l) => s + (l.load || 0), 0);
     const last3 = withMetrics.slice(0, 3);
+    // Strong window: last 3 calendar days. 2+ rating minimum.
     const strongLogs = last3.filter(l => l.strong != null);
-    const avgStrong = strongLogs.length > 0 ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
+    const hasEnoughStrong = strongLogs.length >= 2;
+    const avgStrong = hasEnoughStrong ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
     const last3Loads = last3.map(l => l.load ?? 0);
-    const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
-    // 4 consecutive strong=2 days signals connective tissue stress risk
-    const last4 = withMetrics.slice(0, 4);
-    const fourStrongDays = last4.length === 4 && last4.every(l => l.strong === 2);
+    const last2Loads = withMetrics.slice(0, 2).map(l => l.load ?? 0);
+    // Adjacent load=2+ days → Rest (hard override)
+    const adjacentHardDays = last2Loads.length === 2 && last2Loads[0] >= 2 && last2Loads[1] >= 2;
+    // fourStrongDays: 4 most-recent numeric strong ratings all = 2. Rest
+    // days don't break the streak. Bounded to within recent7.
+    const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
+    const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
     const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
     const lowSleep = avgSleep < 6.5;
-    const lowStrong = avgStrong !== null && avgStrong < 0.75;
-    const borderlineStrong = avgStrong !== null && avgStrong >= 0.75 && avgStrong < 1.25;
+    // strong=0 = weak, strong=1 = standard, strong=2 = notably good. So
+    // "below normal" means avg < 1.0.
+    const lowStrong = avgStrong !== null && avgStrong < 1.0;
     const highLoad = loadRatio > 1.3;
     const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
-    const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-    const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+    const redCount = [fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+    const yellowCount = [borderlineLoad].filter(Boolean).length;
     const lastNightSleep = withMetrics[0]?.sleep ?? null;
     const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
 
@@ -2250,30 +2256,29 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     if (sleptUnder6) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = ["Last night's sleep was under 6 hours — no training today."];
+    } else if (adjacentHardDays) {
+      label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
+      reasons = ["Two hard sessions back to back — full recovery needed."];
     } else if (redCount >= 2 || lowStrong) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = [
-        twoDaysOn && "Two hard sessions back to back",
         fourStrongDays && "4 consecutive peak days — connective tissue needs rest",
         highLoad && ("Weekly load is high (" + weekLoad + " vs " + avgSleep.toFixed(1) + "h avg sleep)"),
         lowSleep && ("Sleep avg is low (" + avgSleep.toFixed(1) + "h)"),
-        lowStrong && "Consistently feeling off",
+        lowStrong && "Consistently feeling below normal",
       ].filter(Boolean);
-    } else if (!sleptUnder6 && (redCount === 1 || yellowCount >= 1)) {
+    } else if (redCount === 1 || yellowCount >= 1) {
       label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)";
       reasons = [
-        twoDaysOn && "Two hard days recently — keep it easy",
-
         borderlineLoad && ("Load is building (" + weekLoad + " this week)"),
         lowSleep && ("Sleep avg below ideal (" + avgSleep.toFixed(1) + "h)"),
-        borderlineStrong && "Feeling a bit flat lately",
       ].filter(Boolean);
     } else {
       label = "Train"; color = "#3d9e7a"; bg = "rgba(61,158,122,0.08)";
       reasons = [
         "Sleep avg " + avgSleep.toFixed(1) + "h",
         "Weekly load " + weekLoad,
-        avgStrong !== null ? ("Feeling " + (avgStrong >= 1.5 ? "great" : "good")) : null,
+        avgStrong !== null ? ("Feeling " + (avgStrong >= 1.5 ? "notably good" : "normal")) : null,
       ].filter(Boolean);
     }
     return { label, color, bg, reasons };
@@ -2896,6 +2901,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       if ((windowLogs[0]?.load ?? 0) >= 3) {
         return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
       }
+      // Two adjacent days (yesterday and the day before) both load >= 2
+      // → hard Rest. Back-to-back hard sessions earn a full recovery day.
+      // Note: a rest day in between (e.g. [2, 0, 2]) does NOT trigger this.
+      const last2Loads = windowLogs.slice(0, 2).map(l => l.load ?? 0);
+      if (last2Loads.length === 2 && last2Loads[0] >= 2 && last2Loads[1] >= 2) {
+        return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      }
       // Three consecutive load=1 days → hard Rest. Looks at the most recent
       // 3 calendar days in the window (which now includes synthetic rest).
       const last3Loads = windowLogs.slice(0, 3).map(l => l.load ?? 0);
@@ -2910,21 +2922,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       // Strong sample-size guard: only consider strong signals when there
       // are 2+ numeric ratings in the last 3 calendar days. A single rating
       // isn't statistically meaningful enough to push the rec around.
+      // Semantic note: strong=0 = felt weak, strong=1 = standard/normal,
+      // strong=2 = notably good. So "below normal" means avg < 1.0.
       const strongLogs = last3.filter(l => l.strong != null);
       const hasEnoughStrong = strongLogs.length >= 2;
       const avgStrong = hasEnoughStrong ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
-      const last4Strong = last4.map(l => l.strong);
-      const twoDaysOn = last3Loads.filter(l => l >= 2).length >= 2;
-      const fourStrongDays = last4.length === 4 && last4Strong.every(s => s === 2);
+      // fourStrongDays: the athlete's 4 most-recent numeric strong ratings
+      // are all 2. Rest days (which have strong=null/na) don't break the
+      // streak — we filter to just the ratings. Bounded to within recent7
+      // so this can't trigger from ancient history.
+      const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
+      const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
       const loadRatio = avgSleep > 0 ? weekLoad / (avgSleep * volumeCoeff) : 99;
       const lowSleep = avgSleep < 6.5;
-      // lowStrong now fires at avg ≤ 1.0 (was < 0.75). Two 1s in a row → Rest.
-      const lowStrong = avgStrong !== null && avgStrong <= 1.0;
-      const borderlineStrong = avgStrong !== null && avgStrong > 1.0 && avgStrong < 1.5;
+      // lowStrong fires when the athlete has felt consistently below normal.
+      const lowStrong = avgStrong !== null && avgStrong < 1.0;
       const highLoad = loadRatio > 1.3;
       const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
-      const redCount = [twoDaysOn, fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-      const yellowCount = [borderlineLoad, borderlineStrong].filter(Boolean).length;
+      const redCount = [fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
+      const yellowCount = [borderlineLoad].filter(Boolean).length;
       const lastNightSleep = windowLogs[0]?.sleep ?? null;
       const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
       if (sleptUnder6)                          return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
@@ -2978,15 +2994,34 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         const simDayAfterRec = computeRec(simDayAfterWindow);
 
         if (simDayAfterRec && simDayAfterRec.label === "Train Light") {
-          // Three Train Light recs forecast. Override tomorrow to Rest.
-          tomorrow = { label: "Rest", color: "#c0392b", forecast: true };
-          console.log("[recomputeFatigue] forecast intervention: overriding tomorrow → Rest to break Train Light loop");
+          // Three Train Light recs forecast: today's rec stays Train Light
+          // but is relabeled to "Train Light or Rest" so the athlete knows
+          // taking rest today is a valid alternative. Tomorrow is overridden
+          // to Rest to plan the recovery.
+          todayRec.label = "Train Light or Rest";
+          tomorrow = { label: "Rest", color: "#c0392b" };
+          console.log("[recomputeFatigue] forecast intervention: relabeling today → Train Light or Rest, tomorrow → Rest");
         }
       }
     }
 
-    console.log("[recomputeFatigue] today:", todayRec.label, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
-    setFatigueRec({ ...todayRec, tomorrow, todayLogged });
+    // If today is fully logged, swap today's banner from a recommendation
+    // to a past-tense status reflecting what the athlete actually did.
+    // Neutral white color — informational, not prescriptive.
+    let displayLabel = todayRec.label;
+    let displayColor = todayRec.color;
+    let displayBg = todayRec.bg;
+    if (todayLogged) {
+      const todayLog = logs.find(l => l.date === todayStr);
+      const l = todayLog?.load ?? 0;
+      const pastTense = l === 0 ? "Rested" : l === 1 ? "Trained Light" : "Trained";
+      displayLabel = pastTense;
+      displayColor = C.white;
+      displayBg = C.gray;
+    }
+
+    console.log("[recomputeFatigue] today:", todayRec.label, "display:", displayLabel, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
+    setFatigueRec({ label: displayLabel, color: displayColor, bg: displayBg, tomorrow, todayLogged });
   }, [athlete?.id, athlete?.volume_tier]);
 
   useEffect(() => {
@@ -3120,28 +3155,26 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
           );
           const { label, color, bg } = fLogs;
-          const subtitle = label === "Train Light" ? "Pick just 2 exercises to complete, not a full day." : null;
+          const isLightLabel = label === "Train Light" || label === "Train Light or Rest";
+          const subtitle = isLightLabel ? "Pick just 2 exercises to complete, not a full day." : null;
           return (
             <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
               {/* Title row: date + recommendation */}
               <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1, marginBottom: 4 }}>
                 {dateLabel}: {label}
               </div>
-              {/* Subtitle for Train Light */}
-              {label === "Train Light" && (
+              {/* Subtitle for Train Light variants */}
+              {isLightLabel && (
                 <div style={{ fontSize: 13, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
                   "Train Light" means pick two exercises to complete, rather than a whole day of training. You can finish the day another time.
                 </div>
               )}
               {/* Divider */}
-              <div style={{ borderTop: `1px solid ${color}22`, paddingTop: 10, marginTop: label === "Train Light" ? 0 : 10 }}>
+              <div style={{ borderTop: `1px solid ${color}22`, paddingTop: 10, marginTop: isLightLabel ? 0 : 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
                   {fLogs.tomorrow
-                    ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>
-                        {fLogs.tomorrow.label}
-                        {fLogs.tomorrow.forecast && <span style={{ ...mono, fontSize: 9, color: C.muted, marginLeft: 6, fontWeight: 400 }}>(loop break)</span>}
-                      </div>
+                    ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
                     : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
                   }
                 </div>
