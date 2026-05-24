@@ -279,7 +279,7 @@ async function dbDeleteBlockImage(url) {
 function Badge({ type }) {
   const map = { "Youth Comp": { bg: "rgba(91,127,166,0.1)", color: "#4a7aab" }, "Adult Performance": { bg: "rgba(61,158,122,0.15)", color: C.orange }, "Adult Recreational": { bg: "rgba(194,130,50,0.12)", color: "#a06818" } };
   const s = map[type] || map["Adult Recreational"];
-  return <span style={{ ...mono, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", padding: "2px 7px", borderRadius: 3, background: s.bg, color: s.color }}>{type}</span>;
+  return <span style={{ ...mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", padding: "2px 7px", borderRadius: 3, background: s.bg, color: s.color }}>{type}</span>;
 }
 
 function WeekBadge({ plan }) {
@@ -470,18 +470,18 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                 <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.white, textDecoration: checked ? "line-through" : "none", lineHeight: 1.4 }}>{ex.text}</div>
                 {videoMeta && !editing && (
-                  <button onClick={() => videoMeta.type === 'embed' ? setShowVideo(true) : window.open(videoMeta.url, '_blank')} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid #c0392b`, background: "rgba(192,57,43,0.08)", color: "#c0392b", cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 0.5 }}>▶ Demo</button>
+                  <button onClick={() => videoMeta.type === 'embed' ? setShowVideo(true) : window.open(videoMeta.url, '_blank')} style={{ ...mono, fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid #c0392b`, background: "rgba(192,57,43,0.08)", color: "#c0392b", cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 0.5 }}>▶ Demo</button>
                 )}
                 {ex.imageUrl && !videoMeta && !editing && (
-                  <button onClick={() => setShowVideo(true)} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", whiteSpace: "nowrap" }}>📷</button>
+                  <button onClick={() => setShowVideo(true)} style={{ ...mono, fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", whiteSpace: "nowrap" }}>📷</button>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
                 {ex.sets && <span style={{ fontFamily:"'Space Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
-                {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
-                {sourceDayLabel && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
-                {alsoOnLabels && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {alsoOnLabels}</span>}
+                {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 10, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
+                {sourceDayLabel && <span style={{ ...mono, fontSize: 10, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
+                {alsoOnLabels && <span style={{ ...mono, fontSize: 10, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>also on {alsoOnLabels}</span>}
               </div>
               {ex.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{renderMarkdown(ex.notes, C.muted)}</div>}
               {ex.imageUrl && !editing && (
@@ -502,7 +502,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
               {/* Options */}
               {hasOptions && (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Choose one</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Choose one</div>
                   {ex.options.map((opt, i) => {
                     const isSelected = selectedOption === i;
                     return (
@@ -575,7 +575,7 @@ function ExercisePicker({ onAdd, onClose }) {
   const [sets, setSets] = useState(""); const [coachNotes, setCoachNotes] = useState(""); const [selected, setSelected] = useState(null);
   const [customName, setCustomName] = useState(""); const [customCat, setCustomCat] = useState(ALL_CATEGORIES[0]); const [customSets, setCustomSets] = useState(""); const [customNotes, setCustomNotes] = useState("");
   const inp = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" };
-  const lbl = { ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 };
+  const lbl = { ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 };
   const filtered = ALL_CATEGORIES.filter(cat => !search || cat.toLowerCase().includes(search.toLowerCase()) || LIBRARY[cat].some(e => e.toLowerCase().includes(search.toLowerCase())));
 
   return (
@@ -707,17 +707,17 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
             ) : (
               <button onClick={() => setActiveDay(i)} style={{ padding: "10px 8px 6px", borderRadius: 7, border: `1px solid ${i===activeDay?C.orange:C.border}`, background: i===activeDay?"rgba(61,158,122,0.1)":C.gray, color: i===activeDay?C.orange:C.white, cursor: "pointer", textAlign: "center" }}>
                 <div style={{ ...bebas, fontSize: 13 }}>{d.label}</div>
-                <div style={{ ...mono, fontSize: 9, color: C.muted, marginTop: 1 }}>{d.exercises.length} ex</div>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 1 }}>{d.exercises.length} ex</div>
               </button>
             )}
             {i===activeDay && editingLabel!==i && (
               <div style={{ display: "flex", justifyContent: "center", gap: 3, marginTop: 3, flexWrap: "wrap" }}>
-                <button onClick={() => moveDay(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
-                <button onClick={() => moveDay(i, 1)} disabled={i===days.length-1} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===days.length-1?"#ccc":C.muted, cursor: i===days.length-1?"default":"pointer" }}>→</button>
-                <button onClick={() => { setDraftLabel(d.label); setEditingLabel(i); }} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
-                <button onClick={() => onCopyDay(d)} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>⎘</button>
-                {onSaveTemplate && <button onClick={() => onSaveTemplate("day", d, d.label)} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.orange, cursor: "pointer" }} title="Save as template">★</button>}
-                {days.length > 1 && <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); removeDay(i); }} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer" }}>✕</button>}
+                <button onClick={() => moveDay(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
+                <button onClick={() => moveDay(i, 1)} disabled={i===days.length-1} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===days.length-1?"#ccc":C.muted, cursor: i===days.length-1?"default":"pointer" }}>→</button>
+                <button onClick={() => { setDraftLabel(d.label); setEditingLabel(i); }} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
+                <button onClick={() => onCopyDay(d)} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>⎘</button>
+                {onSaveTemplate && <button onClick={() => onSaveTemplate("day", d, d.label)} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.orange, cursor: "pointer" }} title="Save as template">★</button>}
+                {days.length > 1 && <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); removeDay(i); }} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer" }}>✕</button>}
               </div>
             )}
           </div>
@@ -753,7 +753,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                 <div key={ex.id + "_shared"} style={{ background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 8, padding: "10px 14px" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3, display: "inline-block", marginBottom: 4 }}>from {days[ex._sourceDay]?.label}</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3, display: "inline-block", marginBottom: 4 }}>from {days[ex._sourceDay]?.label}</div>
                       <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{ex.text}</div>
                       {ex.sets && <div style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</div>}
                       <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</div>
@@ -798,7 +798,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                       {!ALL_CATEGORIES.includes(ex.category) && ex.category && <option value="__custom__">{ex.category}</option>}
                       <option value="__custom__">+ Custom...</option>
                     </select>
-                    <span style={{ ...mono, fontSize: 9, color: C.muted, opacity: 0.5 }}>▾</span>
+                    <span style={{ ...mono, fontSize: 10, color: C.muted, opacity: 0.5 }}>▾</span>
                     {!ALL_CATEGORIES.includes(ex.category) && (
                       <input value={ex.category} onChange={e => updateEx(ex.id, "category", e.target.value)} placeholder="Type category..."
                         style={{ ...mono, fontSize: 10, color: C.muted, background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, outline: "none", padding: "1px 0", width: 120 }} />
@@ -813,12 +813,12 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   </div>
                   {ex.videoUrl && getVideoMeta(ex.videoUrl) && (() => {
                     const t = parseYouTubeTimestamp(ex.videoUrl);
-                    return <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 4 }}>✓ Demo video set{t > 0 ? ` · starts at ${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}` : ""}</div>;
+                    return <div style={{ ...mono, fontSize: 10, color: C.orange, marginTop: 4 }}>✓ Demo video set{t > 0 ? ` · starts at ${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}` : ""}</div>;
                   })()}
                   {/* Options editor */}
                   {options.length > 0 && (
                     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Options (athlete picks one)</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Options (athlete picks one)</div>
                       {options.map((opt, oi) => (
                         <div key={oi} style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px" }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
@@ -843,7 +843,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                   )}
                   {/* Shared days picker */}
                   <div style={{ marginTop: 10 }}>
-                    <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Athlete can choose a different day to complete this exercise:</div>
+                    <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Athlete can choose a different day to complete this exercise:</div>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {days.map((d, di) => {
                         if (di === activeDay) return null;
@@ -856,12 +856,12 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
                             const cur = (fresh || ex).sharedDays || [];
                             const nowOn = cur.includes(di);
                             updateEx(ex.id, "sharedDays", nowOn ? cur.filter(x => x !== di) : [...cur, di]);
-                          }} style={{ ...mono, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid ${isOn ? C.purple : C.border}`, background: isOn ? "rgba(91,127,166,0.12)" : "transparent", color: isOn ? C.purple : C.muted, cursor: "pointer" }}>
+                          }} style={{ ...mono, fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${isOn ? C.purple : C.border}`, background: isOn ? "rgba(91,127,166,0.12)" : "transparent", color: isOn ? C.purple : C.muted, cursor: "pointer" }}>
                             {d.label}
                           </button>
                         );
                       })}
-                      {days.length <= 1 && <span style={{ ...mono, fontSize: 9, color: C.muted }}>Add more days first</span>}
+                      {days.length <= 1 && <span style={{ ...mono, fontSize: 10, color: C.muted }}>Add more days first</span>}
                     </div>
                   </div>
                 </div>
@@ -1096,30 +1096,30 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
               <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>START</div>
+                    <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>START</div>
                     <input type="date" value={plan?.blockStart || ""} onChange={e => updateBlock({ blockStart: e.target.value })}
                       style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px", color: C.white, fontSize: 12, outline: "none", colorScheme: "dark", ...mono }} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>END</div>
+                    <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>END</div>
                     <input type="date" value={plan?.blockEnd || ""} onChange={e => updateBlock({ blockEnd: e.target.value })}
                       style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px", color: C.white, fontSize: 12, outline: "none", colorScheme: "dark", ...mono }} />
                   </div>
                 </div>
                 <div>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>BLOCK NOTES (visible to coach only)</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK NOTES (visible to coach only)</div>
                   <textarea value={plan?.blockNotes || ""} onChange={e => updateBlock({ blockNotes: e.target.value })}
                     placeholder="Coaching notes for this block. Markdown OK." rows={3}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
                 </div>
                 <div>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>BLOCK UPDATE (visible to athlete)</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK UPDATE (visible to athlete)</div>
                   <textarea value={plan?.blockUpdate || ""} onChange={e => updateBlock({ blockUpdate: e.target.value })}
                     placeholder="Message for the athlete. Markdown OK." rows={3}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
                 </div>
                 <div>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>BLOCK IMAGE</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK IMAGE</div>
                   {plan?.blockImage && (
                     <div style={{ marginBottom: 8 }}>
                       <img src={plan.blockImage} alt="Block" style={{ width: "100%", borderRadius: 6, maxHeight: 200, objectFit: "cover" }} />
@@ -1249,7 +1249,7 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
           {/* Day label editable (hidden in reorder mode for focus) */}
           {!reorderMode && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Day Label</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Day Label</div>
               <input value={day.label} onChange={e => updateDay(weekIdx, dayIdx, { ...day, label: e.target.value })}
                 style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
             </div>
@@ -1282,31 +1282,31 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                 return (
                   <div key={ex.id || ei} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Exercise {ei + 1}</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Exercise {ei + 1}</div>
                       <button onClick={() => deleteExerciseWithUndo(weekIdx, dayIdx, ei)}
                         style={{ ...mono, fontSize: 14, padding: "4px 8px", background: "none", border: "none", color: "#a05555", cursor: "pointer", lineHeight: 1 }}>🗑</button>
                     </div>
                     <div style={{ marginBottom: 8 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>EXERCISE</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>EXERCISE</div>
                       <input value={ex.text || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { text: e.target.value })}
                         placeholder="Exercise name"
                         style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
                     </div>
                     <div style={{ marginBottom: 8 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>SETS / REPS</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>SETS / REPS</div>
                       <input value={ex.sets || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { sets: e.target.value })}
                         placeholder="e.g. 3x8 @ 70%"
                         style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.orange, fontSize: 13, outline: "none", ...mono }} />
                     </div>
                     <div style={{ marginBottom: 8 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>CATEGORY</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>CATEGORY</div>
                       <select value={ALL_CATEGORIES.includes(ex.category) ? ex.category : "Other"} onChange={e => updateExercise(weekIdx, dayIdx, ei, { category: e.target.value })}
                         style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                         {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div style={{ marginBottom: 8 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>NOTES</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>NOTES</div>
                       <textarea value={ex.notes || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { notes: e.target.value })}
                         placeholder="Optional. Markdown OK."
                         rows={3}
@@ -1321,20 +1321,20 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                     {moreOpen && (
                       <div style={{ marginTop: 10, padding: "12px", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, display: "flex", flexDirection: "column", gap: 10 }}>
                         <div>
-                          <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>VIDEO URL</div>
+                          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>VIDEO URL</div>
                           <input value={ex.videoUrl || ""} onChange={e => updateExercise(weekIdx, dayIdx, ei, { videoUrl: e.target.value })}
                             placeholder="YouTube, Google Drive, etc."
                             style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 12, outline: "none", ...mono }} />
                         </div>
                         <div>
-                          <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>ALTERNATION (A/B WEEKS)</div>
+                          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>ALTERNATION (A/B WEEKS)</div>
                           <button onClick={() => updateExercise(weekIdx, dayIdx, ei, { type: ex.type === "alternating" ? undefined : "alternating" })}
                             style={{ width: "100%", ...mono, fontSize: 11, padding: "10px", background: ex.type === "alternating" ? "rgba(91,127,166,0.15)" : "none", border: `1px solid ${ex.type === "alternating" ? "#5b7fa6" : C.border}`, borderRadius: 6, color: ex.type === "alternating" ? "#5b7fa6" : C.muted, cursor: "pointer" }}>
                             {ex.type === "alternating" ? "✓ Alternating" : "Mark as alternating"}
                           </button>
                         </div>
                         <div>
-                          <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>IMAGE</div>
+                          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>IMAGE</div>
                           {ex.imageUrl && (
                             <img src={ex.imageUrl} alt={ex.text} style={{ width: "100%", borderRadius: 6, maxHeight: 200, objectFit: "cover", marginBottom: 8 }} />
                           )}
@@ -1374,26 +1374,26 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
             <div onClick={e => e.stopPropagation()} style={{ width: "100%", background: C.gray2, borderTop: `1px solid ${C.border}`, borderRadius: "12px 12px 0 0", padding: "20px 16px", maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ ...bebas, fontSize: 20, marginBottom: 14 }}>Add Exercise</div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>EXERCISE</div>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>EXERCISE</div>
                 <input value={draftEx.text} onChange={e => setDraftEx(d => ({ ...d, text: e.target.value }))} autoFocus
                   placeholder="Exercise name"
                   style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>SETS / REPS</div>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>SETS / REPS</div>
                 <input value={draftEx.sets} onChange={e => setDraftEx(d => ({ ...d, sets: e.target.value }))}
                   placeholder="e.g. 3x8 @ 70%"
                   style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.orange, fontSize: 13, outline: "none", ...mono }} />
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>CATEGORY</div>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>CATEGORY</div>
                 <select value={ALL_CATEGORIES.includes(draftEx.category) ? draftEx.category : "Other"} onChange={e => setDraftEx(d => ({ ...d, category: e.target.value }))}
                   style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                   {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div style={{ marginBottom: 16 }}>
-                <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>NOTES</div>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>NOTES</div>
                 <textarea value={draftEx.notes} onChange={e => setDraftEx(d => ({ ...d, notes: e.target.value }))}
                   placeholder="Optional. Markdown OK." rows={3}
                   style={{ width: "100%", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
@@ -1551,7 +1551,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
       {showBlockOverview && (
         <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: C.gray }}>
-            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Full Block — {weeks.length} Week{weeks.length !== 1 ? "s" : ""}</div>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Full Block — {weeks.length} Week{weeks.length !== 1 ? "s" : ""}</div>
           </div>
           <div style={{ overflowX: "auto" }}>
             <div style={{ display: "flex", gap: 0, minWidth: weeks.length * 160 }}>
@@ -1571,8 +1571,8 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                           onClick={() => setOverviewExpanded(prev => ({ ...prev, [key]: !prev[key] }))}>
                           <div style={{ ...mono, fontSize: 10, color: C.muted, fontWeight: 500 }}>{day.label}</div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ ...mono, fontSize: 9, color: C.muted }}>{day.exercises.length} ex</span>
-                            <span style={{ ...mono, fontSize: 9, color: C.muted }}>{expanded ? "▲" : "▼"}</span>
+                            <span style={{ ...mono, fontSize: 10, color: C.muted }}>{day.exercises.length} ex</span>
+                            <span style={{ ...mono, fontSize: 10, color: C.muted }}>{expanded ? "▲" : "▼"}</span>
                           </div>
                         </div>
                         <div style={{ padding: expanded ? "4px 0 6px" : 0, overflow: "hidden", maxHeight: expanded ? 999 : 0, transition: "max-height 0.2s" }}>
@@ -1597,26 +1597,26 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
       {/* Block overview */}
       <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-          <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted }}>Block Overview / Read Me</div>
+          <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted }}>Block Overview / Read Me</div>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => { setSavingTemplate({ type: "block", data: { weeks: plan?.weeks || [], blockNotes: plan?.blockNotes || "" } }); setTemplateName(""); }}
-              style={{ ...mono, fontSize: 9, padding: "4px 8px", background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
+              style={{ ...mono, fontSize: 10, padding: "4px 8px", background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
               title="Save this whole block as a template">★ Save block</button>
             {localTemplates.filter(t => t.type === "block").length > 0 && (
               <button onClick={() => setShowBlockTemplates(true)}
-                style={{ ...mono, fontSize: 9, padding: "4px 8px", background: "none", border: `1px dashed ${C.orange}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
+                style={{ ...mono, fontSize: 10, padding: "4px 8px", background: "none", border: `1px dashed ${C.orange}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
                 title="Load a saved block template">★ Load block</button>
             )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 120 }}>
-            <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>START DATE</div>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>START DATE</div>
             <input type="date" value={plan?.blockStart || ""} onChange={e => onPlanChange({ ...plan, blockStart: e.target.value })}
               style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", colorScheme: "light dark", ...mono }} />
           </div>
           <div style={{ flex: 1, minWidth: 120 }}>
-            <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>END DATE</div>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>END DATE</div>
             <input type="date" value={plan?.blockEnd || ""} onChange={e => onPlanChange({ ...plan, blockEnd: e.target.value })}
               style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", colorScheme: "light dark", ...mono }} />
           </div>
@@ -1626,7 +1626,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
           rows={4} />
         {/* Block image */}
         <div style={{ marginTop: 14 }}>
-          <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Block Image</div>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Block Image</div>
           {plan?.blockImageUrl ? (
             <div>
               <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
@@ -1635,7 +1635,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                   style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", borderRadius: 4, cursor: "pointer", padding: "4px 8px", ...mono, fontSize: 10 }}>✕ Remove</button>
               </div>
               <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <span style={{ ...mono, fontSize: 9, color: C.muted, marginRight: 4 }}>FOCUS</span>
+                <span style={{ ...mono, fontSize: 10, color: C.muted, marginRight: 4 }}>FOCUS</span>
                 {["top", "center", "bottom"].map(pos => (
                   <button key={pos} onClick={() => onPlanChange({ ...plan, blockImageFocus: pos })}
                     style={{ ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 4, border: `1px solid ${(plan.blockImageFocus || "center") === pos ? C.orange : C.border}`, background: (plan.blockImageFocus || "center") === pos ? "rgba(61,158,122,0.1)" : "none", color: (plan.blockImageFocus || "center") === pos ? C.orange : C.muted, cursor: "pointer" }}>{pos}</button>
@@ -1659,7 +1659,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
 
       {/* Update */}
       <div style={{ marginBottom: 20, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
-        <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Athlete Update</div>
+        <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Athlete Update</div>
         <RichTextEditor value={plan?.blockUpdate || ""} onChange={v => onPlanChange({ ...plan, blockUpdate: v, blockUpdateAt: new Date().toISOString() })}
           placeholder="Write a quick update for your athlete — schedule changes, block adjustments, etc."
           rows={3} />
@@ -1682,16 +1682,16 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                 <button onClick={() => setActiveWeek(i)} style={{ minWidth: 84, padding: "10px 10px 6px", borderRadius: 8, border: `2px solid ${isActive ? C.orange : isCurrent ? C.purple : C.border}`, background: isActive ? "rgba(61,158,122,0.1)" : C.gray, color: isActive ? C.orange : C.white, cursor: "pointer", textAlign: "center", position: "relative" }}>
                   {isCurrent && <div style={{ position: "absolute", top: -6, right: -4, background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3 }}>NOW</div>}
                   <div style={{ ...bebas, fontSize: 14 }}>{wk.label}</div>
-                  <div style={{ ...mono, fontSize: 9, color: isPub ? "#2aaa5e" : C.muted, marginTop: 2 }}>{isPub ? "● live" : "○ draft"}</div>
+                  <div style={{ ...mono, fontSize: 10, color: isPub ? "#2aaa5e" : C.muted, marginTop: 2 }}>{isPub ? "● live" : "○ draft"}</div>
                 </button>
               )}
               {isActive && editingWeekLabel !== i && (
                 <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "center" }}>
-                  <button onClick={() => moveWeek(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
-                  <button onClick={() => moveWeek(i, 1)} disabled={i===weeks.length-1} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===weeks.length-1?"#ccc":C.muted, cursor: i===weeks.length-1?"default":"pointer" }}>→</button>
-                  <button onClick={() => { setDraftWeekLabel(wk.label); setEditingWeekLabel(i); }} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
-                  <button onClick={() => { setSavingTemplate({ type: "week", data: wk }); setTemplateName(wk.label); }} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.orange, cursor: "pointer" }} title="Save as template">★</button>
-                  {weeks.length > 1 && <button onClick={() => removeWeek(i)} style={{ ...mono, fontSize: 9, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer" }}>✕</button>}
+                  <button onClick={() => moveWeek(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
+                  <button onClick={() => moveWeek(i, 1)} disabled={i===weeks.length-1} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===weeks.length-1?"#ccc":C.muted, cursor: i===weeks.length-1?"default":"pointer" }}>→</button>
+                  <button onClick={() => { setDraftWeekLabel(wk.label); setEditingWeekLabel(i); }} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
+                  <button onClick={() => { setSavingTemplate({ type: "week", data: wk }); setTemplateName(wk.label); }} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.orange, cursor: "pointer" }} title="Save as template">★</button>
+                  {weeks.length > 1 && <button onClick={() => removeWeek(i)} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: "#a05555", cursor: "pointer" }}>✕</button>}
                 </div>
               )}
             </div>
@@ -1709,7 +1709,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         <div style={{ marginBottom: 16, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Volume — {week.label}</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Volume — {week.label}</div>
               <div style={{ display: "flex", gap: 4 }}>
                 {[1,2,3,4,5].map(v => (
                   <button key={v} onClick={() => setWeekVolume(activeWeek, week.volume === v ? null : v)}
@@ -1878,7 +1878,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                     </div>
                     <div style={{ flex: 1 }}>
                       <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{wk.label}</span>
-                      {isCurrent && <span style={{ ...mono, fontSize: 9, color: C.purple, marginLeft: 8 }}>current</span>}
+                      {isCurrent && <span style={{ ...mono, fontSize: 10, color: C.purple, marginLeft: 8 }}>current</span>}
                     </div>
                     <span style={{ ...mono, fontSize: 10, color: C.muted }}>{wk.days.length} days</span>
                   </button>
@@ -2056,7 +2056,7 @@ function TimerModal({ onClose }) {
   const adjBtn = (style) => ({ ...mono, fontSize: 12, width: 26, height: 26, borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style });
   const timeDisplay = (label, val, setVal, active) => (
     <div style={{ flex: 1, textAlign: "center" }}>
-      <div style={{ ...mono, fontSize: 9, color: active ? "#fff" : C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, opacity: active ? 0.8 : 1 }}>{label}</div>
+      <div style={{ ...mono, fontSize: 10, color: active ? "#fff" : C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, opacity: active ? 0.8 : 1 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
         {!isRunning && !isCountdown && <button style={adjBtn({})} onClick={() => setVal(v => Math.max(5, v - (v > 60 ? 30 : 5)))}>−</button>}
         <div style={{ ...bebas, fontSize: (isRunning || isCountdown) && active ? 40 : 22, color: (isRunning || isCountdown) && active ? "#fff" : (isRunning || isCountdown) ? "rgba(255,255,255,0.4)" : C.white, minWidth: 80, textAlign: "center", lineHeight: 1 }}>
@@ -2314,7 +2314,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
               <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>{monthName}</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
                 {["S","M","T","W","T","F","S"].map((d,i) => (
-                  <div key={i} style={{ ...mono, fontSize: 9, color: C.muted, textAlign: "center", paddingBottom: 4 }}>{d}</div>
+                  <div key={i} style={{ ...mono, fontSize: 10, color: C.muted, textAlign: "center", paddingBottom: 4 }}>{d}</div>
                 ))}
                 {cells.map((d, i) => {
                   if (!d) return <div key={i} />;
@@ -2330,7 +2330,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
                   if (isToday) border = C.orange;
                   return (
                     <div key={i} style={{ aspectRatio: "1", borderRadius: 6, background: bg, border: `1px solid ${border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
-                      <div style={{ ...mono, fontSize: 9, color: isToday ? C.orange : log ? C.white : C.muted }}>{d}</div>
+                      <div style={{ ...mono, fontSize: 10, color: isToday ? C.orange : log ? C.white : C.muted }}>{d}</div>
                       {icon && <div style={{ fontSize: 18, lineHeight: 1 }}>{icon}</div>}
                     </div>
                   );
@@ -2352,7 +2352,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         <div style={{ background: "rgba(91,127,166,0.08)", border: `1px solid rgba(91,127,166,0.25)`, borderRadius: 8, padding: "10px 14px" }}>
-          <span style={{ ...mono, fontSize: 9, color: C.purple, textTransform: "uppercase", letterSpacing: 1 }}>Prototype</span>
+          <span style={{ ...mono, fontSize: 10, color: C.purple, textTransform: "uppercase", letterSpacing: 1 }}>Prototype</span>
           <p style={{ ...mono, fontSize: 11, color: C.muted, margin: "4px 0 0" }}>This chart is a work in progress. We're actively developing how to best interpret and present this data.</p>
         </div>
         {[{ key: "sleep", label: "Sleep", max: 10, color: "#5b7fa6" }, { key: "load", label: "Load", max: 4, color: C.orange }, { key: "strong", label: "Strong", max: 3, color: "#3d9e7a" }].map(({ key, label, max, color }) => (
@@ -2388,7 +2388,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
           </div>
           {true && (
             <button onMouseDown={e => { e.preventDefault(); openForm(log); }}
-              style={{ ...mono, fontSize: 9, padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>edit</button>
+              style={{ ...mono, fontSize: 10, padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>edit</button>
           )}
         </div>
         {log.summary && <div style={{ fontSize: 13, color: C.white, marginBottom: 8 }}>{log.summary}</div>}
@@ -2398,13 +2398,13 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
           {[["SLEEP", (log.sleep ?? "—") + (log.sleep != null ? "h" : ""), sleepColor(log.sleep)], ["LOAD", log.load ?? "—", loadColor(log.load)], ["STRONG", log.strong ?? "—", strongColor(log.strong)]].map(([lbl, val, col]) => (
             <div key={lbl}>
-              <div style={{ ...mono, fontSize: 9, color: C.muted }}>{lbl}</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted }}>{lbl}</div>
               <div style={{ ...mono, fontSize: 18, color: col, lineHeight: 1.2 }}>{val}</div>
             </div>
           ))}
           {log.tweaks && (
             <div style={{ flex: 1, minWidth: 100 }}>
-              <div style={{ ...mono, fontSize: 9, color: "#c0392b" }}>TWEAKS</div>
+              <div style={{ ...mono, fontSize: 10, color: "#c0392b" }}>TWEAKS</div>
               <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{log.tweaks}</div>
             </div>
           )}
@@ -3072,7 +3072,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 ? "Let's get your last week logged so we can start making recommendations. Tap a day if you trained, or leave it as rest. Don't worry about it being perfect."
                 : "You haven't logged in a few days. Tap a day to indicate rest, training, or light training."}
             </div>
-            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Last 7 days</div>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Last 7 days</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 16 }}>
               {[...catchupDays].reverse().map((d, ri) => {
                 // ri is reversed index — we render oldest → newest left to right
@@ -3103,7 +3103,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 );
               })}
             </div>
-            <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
               Tap to cycle: 🛌 Rest → 🚂 Train → 🚂 Light. Grayed-out days are already logged.
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -3213,7 +3213,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
           return (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 {months.map(ym => {
                   const [y, m] = ym.split("-").map(Number);
@@ -3228,7 +3228,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>{monthName}</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
                         {["S","M","T","W","T","F","S"].map((d,i) => (
-                          <div key={i} style={{ ...mono, fontSize: 9, color: C.muted, textAlign: "center", paddingBottom: 4 }}>{d}</div>
+                          <div key={i} style={{ ...mono, fontSize: 10, color: C.muted, textAlign: "center", paddingBottom: 4 }}>{d}</div>
                         ))}
                         {cells.map((d, i) => {
                           if (!d) return <div key={i} />;
@@ -3269,14 +3269,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                       <span style={{ fontSize: 14 }}>🚂</span>
                       <div>
                         <div style={{ ...mono, fontSize: 14, color: "#3d9e7a" }}>{trainCount}</div>
-                        <div style={{ ...mono, fontSize: 9, color: C.muted }}>{trainPct}% train · last 30 days</div>
+                        <div style={{ ...mono, fontSize: 10, color: C.muted }}>{trainPct}% train · last 30 days</div>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 14 }}>🛌</span>
                       <div>
                         <div style={{ ...mono, fontSize: 14, color: C.muted }}>{restCount}</div>
-                        <div style={{ ...mono, fontSize: 9, color: C.muted }}>{restPct}% rest</div>
+                        <div style={{ ...mono, fontSize: 10, color: C.muted }}>{restPct}% rest</div>
                       </div>
                     </div>
                   </div>
@@ -3349,7 +3349,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                           const barColor = vol <= 2 ? "rgba(91,127,166,0.7)" : vol === 5 ? "#e07a3a" : C.orange;
                           return (
                             <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end", opacity: isPublished ? 1 : 0.3 }}>
-                              {vol > 0 && <div style={{ ...mono, fontSize: 9, color: isCurrent ? C.purple : C.muted }}>{vol}</div>}
+                              {vol > 0 && <div style={{ ...mono, fontSize: 10, color: isCurrent ? C.purple : C.muted }}>{vol}</div>}
                               <div style={{ width: "100%", height: barH, background: isCurrent ? C.purple : barColor, borderRadius: "3px 3px 0 0", outline: isCurrent ? `2px solid ${C.purple}` : "none", outlineOffset: 2 }} />
                               <div style={{ ...mono, fontSize: 8, color: isCurrent ? C.purple : C.muted, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{wk.label.replace("Week ","W")}</div>
                             </div>
@@ -3378,7 +3378,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               return (
                 <button key={i} onClick={() => { setActiveWeekIdx(i); setActiveDay(0); }} style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 7, border: `1px solid ${isActive ? C.orange : isCurrent ? C.purple : C.border}`, background: isActive ? "rgba(61,158,122,0.1)" : C.gray, color: isActive ? C.orange : C.white, cursor: "pointer" }}>
                   <div style={{ ...bebas, fontSize: 14 }}>{wk?.label}</div>
-                  {isCurrent && <div style={{ ...mono, fontSize: 9, color: C.purple }}>this week</div>}
+                  {isCurrent && <div style={{ ...mono, fontSize: 10, color: C.purple }}>this week</div>}
                 </button>
               );
             })}
@@ -3468,13 +3468,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             return (
               <button key={i} onClick={() => setActiveDay(i)} style={{ flexShrink: 0, minWidth: 80, padding: "10px 12px", borderRadius: 8, border: `1px solid ${isActive ? C.orange : C.border}`, background: isActive ? "rgba(61,158,122,0.1)" : C.gray, color: isActive ? C.orange : C.white, cursor: "pointer", textAlign: "center" }}>
                 <div style={{ ...bebas, fontSize: 15 }}>{d.label}</div>
-                <div style={{ ...mono, fontSize: 9, color: allDone ? "#2aaa5e" : C.muted, marginTop: 2 }}>{allDone ? "✓ done" : `${done}/${total}`}</div>
+                <div style={{ ...mono, fontSize: 10, color: allDone ? "#2aaa5e" : C.muted, marginTop: 2 }}>{allDone ? "✓ done" : `${done}/${total}`}</div>
               </button>
             );
           })}
           <button onClick={() => setActiveDay(OVF)} style={{ flexShrink: 0, minWidth: 80, padding: "10px 12px", borderRadius: 8, border: `1px solid ${isOvf ? "#4a7aab" : overflow.length > 0 ? "rgba(91,127,166,0.5)" : C.border}`, background: isOvf ? "rgba(91,127,166,0.1)" : overflow.length > 0 ? "rgba(91,127,166,0.05)" : C.gray, color: isOvf ? "#4a7aab" : overflow.length > 0 ? "#4a7aab" : C.muted, cursor: "pointer", textAlign: "center" }}>
             <div style={{ ...bebas, fontSize: 15 }}>Skip</div>
-            <div style={{ ...mono, fontSize: 9, color: "inherit", marginTop: 2 }}>{overflow.length > 0 ? overflow.length : "empty"}</div>
+            <div style={{ ...mono, fontSize: 10, color: "inherit", marginTop: 2 }}>{overflow.length > 0 ? overflow.length : "empty"}</div>
           </button>
         </div>
 
@@ -3525,14 +3525,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
         {deferredExs.length > 0 && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Deferred to another day</div>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Deferred to another day</div>
             {deferredExs.map(ex => {
               const ep = getEp(ex);
               const alsoOnLabels = ex.sharedDays?.map(di => days[di]?.label).filter(Boolean).join(", ");
               return (
                 <div key={ex.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.2)`, borderRadius: 8, marginBottom: 4 }}>
                   <div style={{ flex: 1, fontSize: 13, color: C.muted, textDecoration: "line-through" }}>{ex.text}</div>
-                  <span style={{ ...mono, fontSize: 9, color: C.purple }}>→ {alsoOnLabels}</span>
+                  <span style={{ ...mono, fontSize: 10, color: C.purple }}>→ {alsoOnLabels}</span>
                   <button onClick={() => handleNote(ex, ep.note || "", ep.selectedOption, true)}
                     style={{ ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", whiteSpace: "nowrap" }}>Undo</button>
                 </div>
@@ -3865,7 +3865,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         {(!isMobile || !selectedId) && (
         <div style={{ width: isMobile ? "100%" : (sidebarOpen ? 200 : 36), borderRight: isMobile ? "none" : `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, transition: isMobile ? "none" : "width 0.2s ease", overflow: "hidden" }}>
           <div style={{ padding: "12px 8px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: sidebarOpen ? 200 : 36 }}>
-            {sidebarOpen && <span style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: C.muted, whiteSpace: "nowrap" }}>Athletes</span>}
+            {sidebarOpen && <span style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 2, color: C.muted, whiteSpace: "nowrap" }}>Athletes</span>}
             <div style={{ display: "flex", gap: 4, marginLeft: sidebarOpen ? 0 : "auto", marginRight: sidebarOpen ? 0 : "auto" }}>
               {sidebarOpen && <button onClick={() => setShowAdd(true)} style={{ background: C.orange, border: "none", color: "#fff", width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>}
               <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{sidebarOpen ? "«" : "»"}</button>
@@ -3877,14 +3877,14 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <div style={{ marginBottom: 6 }}>
                 <button onClick={() => setSelectedId(TEMPLATE_CREATOR_ID)} style={{ width: "100%", textAlign: "left", background: selectedId===TEMPLATE_CREATOR_ID?"rgba(91,127,166,0.12)":"none", border: `1px solid ${selectedId===TEMPLATE_CREATOR_ID?C.purple:"rgba(91,127,166,0.3)"}`, borderRadius: 6, padding: "9px 12px", cursor: "pointer" }}>
                   <div style={{ fontSize: 12, fontWeight: 500, color: C.purple, marginBottom: 2 }}>Template Creator</div>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted }}>scratch pad → save as ★</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>scratch pad → save as ★</div>
                 </button>
               </div>
               {/* Volume Tiers — fixed entry */}
               <div style={{ marginBottom: 6 }}>
                 <button onClick={() => setSelectedId(VOLUME_TIERS_PAGE_ID)} style={{ width: "100%", textAlign: "left", background: selectedId===VOLUME_TIERS_PAGE_ID?"rgba(224,122,58,0.10)":"none", border: `1px solid ${selectedId===VOLUME_TIERS_PAGE_ID?C.orange:"rgba(224,122,58,0.3)"}`, borderRadius: 6, padding: "9px 12px", cursor: "pointer" }}>
                   <div style={{ fontSize: 12, fontWeight: 500, color: C.orange, marginBottom: 2 }}>Volume Tiers</div>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted }}>set athlete training capacity</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>set athlete training capacity</div>
                 </button>
               </div>
               <div style={{ borderBottom: `1px solid ${C.border}`, marginBottom: 6 }} />
@@ -3894,8 +3894,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   onMouseLeave={e => { const b=e.currentTarget.querySelector(".athlete-actions"); if(b) b.style.opacity="0"; }}>
                   <button onClick={() => setSelectedId(a.id)} style={{ width: "100%", textAlign: "left", background: selectedId===a.id?C.gray2:"none", border: `1px solid ${selectedId===a.id?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 52px 10px 12px", cursor: "pointer" }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 4 }}>{a.name}</div>
-                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 9, color: C.muted }}>{a.level}</span></div>
-                    {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 9, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
+                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{a.level}</span></div>
+                    {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 10, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
                   </button>
                   <div className="athlete-actions" style={{ position: "absolute", top: 8, right: 4, opacity: 0, display: "flex", gap: 2, transition: "opacity 0.15s" }}>
                     <button title="Edit athlete" onClick={() => setEditingAthlete(a)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, padding: "2px 5px" }}>✎</button>
@@ -3968,7 +3968,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                 return (
                   <div style={{ maxWidth: 700, margin: "0 auto", padding: "0 16px 28px", width: "100%" }}>
                     <div style={{ background: "rgba(91,127,166,0.07)", border: `1px solid rgba(91,127,166,0.3)`, borderRadius: 10, padding: "14px 16px" }}>
-                      <div style={{ ...mono, fontSize: 9, color: "#4a7aab", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
+                      <div style={{ ...mono, fontSize: 10, color: "#4a7aab", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
                         Skip Day — {overflow.length} exercise{overflow.length !== 1 ? "s" : ""}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3980,7 +3980,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                                   {ex.sets && <span style={{ ...mono, fontSize: 11, color: C.orange }}>{ex.sets}</span>}
                                   <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
-                                  {ex.fromWeek != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>W{ex.fromWeek + 1} · Day {ex.fromDay + 1}</span>}
+                                  {ex.fromWeek != null && <span style={{ ...mono, fontSize: 10, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>W{ex.fromWeek + 1} · Day {ex.fromDay + 1}</span>}
                                 </div>
                                 {ex.notes && <div style={{ ...mono, fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 4 }}>{ex.notes}</div>}
                               </div>
@@ -4019,22 +4019,22 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             <div style={{ ...bebas, fontSize: 22, marginBottom: 18 }}>Edit Athlete</div>
             {[{label:"Name",key:"name"},{label:"Level",key:"level"}].map(f => (
               <div key={f.key} style={{ marginBottom: 14 }}>
-                <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>{f.label}</div>
+                <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>{f.label}</div>
                 <input value={editingAthlete[f.key] || ""} onChange={e => setEditingAthlete(p=>({...p,[f.key]:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
               </div>
             ))}
             <div style={{ marginBottom: 14 }}>
-              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
+              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
               <select value={editingAthlete.type || "Youth Comp"} onChange={e => setEditingAthlete(p=>({...p,type:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                 {["Youth Comp","Adult Performance","Adult Recreational"].map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: 18 }}>
-              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Volume Tier</div>
+              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Volume Tier</div>
               <select value={editingAthlete.volume_tier || DEFAULT_VOLUME_TIER} onChange={e => setEditingAthlete(p=>({...p,volume_tier:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                 {VOLUME_TIERS.map(t => <option key={t.id} value={t.id}>{t.label} ({t.multiplier}×)</option>)}
               </select>
-              <div style={{ ...mono, fontSize: 9, color: C.muted, marginTop: 4 }}>Scales weekly load allowance per unit sleep.</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 4 }}>Scales weekly load allowance per unit sleep.</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setEditingAthlete(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
@@ -4050,22 +4050,22 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             <div style={{ ...bebas, fontSize: 22, marginBottom: 18 }}>Add Athlete</div>
             {[{label:"Name",key:"name",ph:"Alex Torres"},{label:"Level",key:"level",ph:"V7, 5.12a..."}].map(f => (
               <div key={f.key} style={{ marginBottom: 14 }}>
-                <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>{f.label}</div>
+                <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>{f.label}</div>
                 <input value={newAthlete[f.key]} onChange={e => setNewAthlete(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }} />
               </div>
             ))}
             <div style={{ marginBottom: 14 }}>
-              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
+              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Type</div>
               <select value={newAthlete.type} onChange={e => setNewAthlete(p=>({...p,type:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                 {["Youth Comp","Adult Performance","Adult Recreational"].map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: 18 }}>
-              <div style={{ ...mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Volume Tier</div>
+              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Volume Tier</div>
               <select value={newAthlete.volume_tier || DEFAULT_VOLUME_TIER} onChange={e => setNewAthlete(p=>({...p,volume_tier:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                 {VOLUME_TIERS.map(t => <option key={t.id} value={t.id}>{t.label} ({t.multiplier}×)</option>)}
               </select>
-              <div style={{ ...mono, fontSize: 9, color: C.muted, marginTop: 4 }}>Scales weekly load allowance per unit sleep. Med-High is the default.</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 4 }}>Scales weekly load allowance per unit sleep. Med-High is the default.</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowAdd(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
@@ -4143,7 +4143,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                 if (group.length === 0) return null;
                 return (
                   <div key={type}>
-                    <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, marginTop: 4 }}>{type} templates</div>
+                    <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, marginTop: 4 }}>{type} templates</div>
                     {group.map(t => {
                       let summary;
                       if (t.type === "block") {
@@ -4217,7 +4217,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
 
             {/* Add new coach */}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Add Coach</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Add Coach</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input value={newCoach.name} onChange={e => setNewCoach(c => ({...c, name: e.target.value}))}
                   placeholder="Name" style={{ flex: 1, minWidth: 120, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" }} />
