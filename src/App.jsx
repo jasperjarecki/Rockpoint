@@ -104,7 +104,7 @@ const SEED_PLANS = {
 
 const _fl = document.createElement("link");
 _fl.rel = "stylesheet";
-_fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap";
+_fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap";
 document.head.appendChild(_fl);
 const _gs = document.createElement("style");
 document.head.appendChild(_gs);
@@ -150,7 +150,7 @@ function getVideoMeta(url) {
   try { new URL(url); return { type: 'link', url }; } catch(e) { return null; }
 }
 
-const mono = { fontFamily: "'DM Mono', monospace" };
+const mono = { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 0.5 };
 const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
 
 // ── MIGRATION: old flat plan → weekly plan ────────────────────────────────────
@@ -426,7 +426,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
       <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} rows={rows}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Mono', monospace" }} />
+        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Sans', sans-serif" }} />
     </div>
   );
 }
@@ -477,7 +477,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
-                {ex.sets && <span style={{ fontFamily:"'DM Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
+                {ex.sets && <span style={{ fontFamily:"'Space Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 9, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
                 {sourceDayLabel && <span style={{ ...mono, fontSize: 9, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
