@@ -150,7 +150,7 @@ function getVideoMeta(url) {
   try { new URL(url); return { type: 'link', url }; } catch(e) { return null; }
 }
 
-const mono = { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 0.5 };
+const mono = { fontFamily: "'Space Mono', monospace" };
 const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
 
 // ── MIGRATION: old flat plan → weekly plan ────────────────────────────────────
