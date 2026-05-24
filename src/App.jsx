@@ -1439,7 +1439,19 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
 
   // figure out current week number for coach context
   const currentWeekIdx = (() => {
-    if (plan?.currentWeekOverride != null) return plan.currentWeekOverride;
+    const ov = plan?.currentWeekOverride;
+    if (ov != null) {
+      // New shape: { weekIdx, setOnDate } — self-progresses from anchor.
+      if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
+        const [ay, am, ad] = ov.setOnDate.split("-").map(Number);
+        const anchor = new Date(ay, am - 1, ad);
+        const now = new Date(); now.setHours(0, 0, 0, 0);
+        const weeksSince = Math.max(0, Math.floor((now - anchor) / (7 * 24 * 60 * 60 * 1000)));
+        return Math.min(ov.weekIdx + weeksSince, weeks.length - 1);
+      }
+      // Legacy shape: plain integer. Treat as static.
+      if (typeof ov === "number") return Math.min(ov, weeks.length - 1);
+    }
     if (!plan?.blockStart) return null;
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd);
@@ -1532,12 +1544,12 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
             {showBlockOverview ? "▲ Collapse" : "▼ View All"}
           </button>
           <button onClick={() => {
-            const next = window.prompt(`Set current week (1–${weeks.length}):`, currentWeekIdx != null ? currentWeekIdx + 1 : "");
+            const next = window.prompt(`Set current week (1–${weeks.length}). It will auto-advance from today.`, currentWeekIdx != null ? currentWeekIdx + 1 : "");
             if (next === null) return;
             if (next.trim() === "") { onPlanChange({ ...plan, currentWeekOverride: null }); return; }
             const idx = parseInt(next) - 1;
             if (isNaN(idx) || idx < 0 || idx >= weeks.length) return;
-            onPlanChange({ ...plan, currentWeekOverride: idx });
+            onPlanChange({ ...plan, currentWeekOverride: { weekIdx: idx, setOnDate: localDateStr() } });
           }} style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
             {currentWeekIdx != null ? `Current: Week ${currentWeekIdx + 1}` : "Set current week"}
           </button>
@@ -2550,12 +2562,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
   const currentWeekIdx = (() => {
     if (publishedIndices.length === 0) return null;
-    // Coach override (0-indexed week number integer) takes precedence over
-    // date-based computation. Coach UI stores this as an int; we ignore any
-    // legacy non-numeric values and fall through to the date logic.
-    if (plan?.currentWeekOverride != null && typeof plan.currentWeekOverride === 'number') {
-      const ov = plan.currentWeekOverride;
-      return publishedIndices.reduce((best, idx) => Math.abs(idx - ov) < Math.abs(best - ov) ? idx : best, publishedIndices[0]);
+    // Coach override takes precedence over the date-based computation.
+    // New shape: { weekIdx, setOnDate } — anchor that self-progresses by week.
+    // Legacy shape: plain integer — treated as static.
+    const ov = plan?.currentWeekOverride;
+    const weeksLen = plan?.weeks?.length ?? 1;
+    let overrideWeek = null;
+    if (ov != null) {
+      if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
+        const [ay, am, ad] = ov.setOnDate.split("-").map(Number);
+        const anchor = new Date(ay, am - 1, ad);
+        const now = new Date(); now.setHours(0, 0, 0, 0);
+        const weeksSince = Math.max(0, Math.floor((now - anchor) / (7 * 24 * 60 * 60 * 1000)));
+        overrideWeek = Math.min(ov.weekIdx + weeksSince, weeksLen - 1);
+      } else if (typeof ov === "number") {
+        overrideWeek = Math.min(ov, weeksLen - 1);
+      }
+    }
+    if (overrideWeek != null) {
+      return publishedIndices.reduce((best, idx) => Math.abs(idx - overrideWeek) < Math.abs(best - overrideWeek) ? idx : best, publishedIndices[0]);
     }
     if (!plan?.blockStart) return publishedIndices[0];
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
