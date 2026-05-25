@@ -3692,21 +3692,98 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
 }
 
 // ── COACH DASHBOARD ───────────────────────────────────────────────────────────
+
+// Compute a tier-change suggestion for an athlete based on the last 14 days
+// of strong ratings. Returns null if no suggestion, otherwise:
+//   { direction: "up" | "down", reason: "...", suggestedTierId: "high"|... }
+function computeTierSuggestion(athlete, logs) {
+  const currentTierId = athlete.volume_tier || DEFAULT_VOLUME_TIER;
+  const currentIdx = VOLUME_TIERS.findIndex(t => t.id === currentTierId);
+  if (currentIdx < 0) return null;
+
+  // Split logs into two 7-day windows: last 7 days and days 8-14.
+  const todayStr = localDateStr();
+  const [ty, tm, td] = todayStr.split("-").map(Number);
+  const today = new Date(ty, tm - 1, td);
+  const cutoff7 = new Date(today); cutoff7.setDate(cutoff7.getDate() - 7);
+  const cutoff14 = new Date(today); cutoff14.setDate(cutoff14.getDate() - 14);
+  const toDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const week1 = logs.filter(l => { const d = toDate(l.date); return d > cutoff7 && d <= today; });
+  const week2 = logs.filter(l => { const d = toDate(l.date); return d > cutoff14 && d <= cutoff7; });
+  const ratings1 = week1.filter(l => l.strong != null).map(l => l.strong);
+  const ratings2 = week2.filter(l => l.strong != null).map(l => l.strong);
+
+  // Tier UP rule: both weeks have 2+ ratings AND all are 2.
+  if (currentIdx < VOLUME_TIERS.length - 1
+      && ratings1.length >= 2 && ratings1.every(r => r === 2)
+      && ratings2.length >= 2 && ratings2.every(r => r === 2)) {
+    const count = ratings1.length + ratings2.length;
+    const suggestedTierId = VOLUME_TIERS[currentIdx + 1].id;
+    return {
+      direction: "up",
+      reason: `Felt notably good ${count} times across the last 2 weeks — could likely handle more volume.`,
+      suggestedTierId,
+    };
+  }
+
+  // Tier DOWN rule: both weeks have 2+ ratings AND average < 1.
+  const avg = (arr) => arr.reduce((s, v) => s + v, 0) / arr.length;
+  if (currentIdx > 0
+      && ratings1.length >= 2 && avg(ratings1) < 1
+      && ratings2.length >= 2 && avg(ratings2) < 1) {
+    const suggestedTierId = VOLUME_TIERS[currentIdx - 1].id;
+    return {
+      direction: "down",
+      reason: "Felt below normal across the last 2 weeks — current volume may be too high.",
+      suggestedTierId,
+    };
+  }
+
+  return null;
+}
+
 function VolumeTiersPage({ athletes, onUpdateAthlete }) {
   // Sort: by name. Stable, predictable order so coaches can find athletes.
   const sorted = [...athletes].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-  // Track per-row "just saved" pulse so the coach gets visual confirmation
-  // without a toast or modal. Map of athlete id -> timestamp set on save.
+  // Per-row "just saved" pulse + optimistic local overrides so the UI
+  // updates instantly when a tier is tapped, without waiting for the
+  // network round-trip or relying on parent re-render timing.
   const [justSaved, setJustSaved] = useState({});
+  const [localTiers, setLocalTiers] = useState({}); // athlete.id -> tierId override
   const pickTier = async (athlete, tierId) => {
-    if ((athlete.volume_tier || DEFAULT_VOLUME_TIER) === tierId) return;
-    await onUpdateAthlete({ ...athlete, volume_tier: tierId });
+    const effectiveCurrent = localTiers[athlete.id] || athlete.volume_tier || DEFAULT_VOLUME_TIER;
+    if (effectiveCurrent === tierId) return;
+    // Optimistic: flip the UI right now
+    setLocalTiers(prev => ({ ...prev, [athlete.id]: tierId }));
     setJustSaved(prev => ({ ...prev, [athlete.id]: Date.now() }));
     setTimeout(() => setJustSaved(prev => {
       const next = { ...prev }; delete next[athlete.id]; return next;
     }), 1400);
+    // Fire the save in the background
+    await onUpdateAthlete({ ...athlete, volume_tier: tierId });
   };
+
+  // Fetch the last 14 days of fatigue_logs for all athletes shown on the
+  // page, in one query. Used to compute per-athlete tier suggestions.
+  const [logsByAthlete, setLogsByAthlete] = useState({});
+  useEffect(() => {
+    if (athletes.length === 0) return;
+    const ids = athletes.map(a => a.id);
+    const todayStr = localDateStr();
+    const [ty, tm, td] = todayStr.split("-").map(Number);
+    const dt = new Date(ty, tm - 1, td); dt.setDate(dt.getDate() - 14);
+    const since = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    sb.from("fatigue_logs").select("athlete_id,date,strong,strong_na").in("athlete_id", ids).gte("date", since)
+      .then(({ data, error }) => {
+        if (error) { console.warn("[VolumeTiers] logs fetch error:", error); return; }
+        const byA = {};
+        (data || []).forEach(r => { (byA[r.athlete_id] = byA[r.athlete_id] || []).push(r); });
+        setLogsByAthlete(byA);
+      });
+    // Only refetch when the actual set of athletes changes — not on every
+    // tier update, which would otherwise re-fire this query for nothing.
+  }, [athletes.map(a => a.id).join(",")]);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px", width: "100%" }}>
@@ -3732,12 +3809,16 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {sorted.map(a => {
-          const currentTier = a.volume_tier || DEFAULT_VOLUME_TIER;
+          const currentTier = localTiers[a.id] || a.volume_tier || DEFAULT_VOLUME_TIER;
           const saved = !!justSaved[a.id];
+          // Compute suggestion against the optimistic tier so the pill
+          // disappears immediately after a tap that fulfills it.
+          const suggestion = computeTierSuggestion({ ...a, volume_tier: currentTier }, logsByAthlete[a.id] || []);
+          const suggestedColor = suggestion?.direction === "up" ? "#3d9e7a" : "#c08a3a";
           return (
             <div key={a.id} style={{ background: C.gray, border: `1px solid ${saved ? "#3d9e7a" : C.border}`, borderRadius: 8, padding: "14px 16px", transition: "border-color 0.3s" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                <div style={{ minWidth: 160 }}>
+                <div style={{ minWidth: 160, flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 500, color: C.white, marginBottom: 3 }}>{a.name}</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                     <Badge type={a.type} />
@@ -3748,16 +3829,18 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                   {VOLUME_TIERS.map(t => {
                     const isActive = t.id === currentTier;
+                    const isSuggested = suggestion?.suggestedTierId === t.id && !isActive;
                     return (
                       <button key={t.id} onClick={() => pickTier(a, t.id)}
                         style={{
                           ...mono, fontSize: 11, padding: "8px 12px", borderRadius: 6,
-                          border: `1px solid ${isActive ? C.orange : C.border}`,
-                          background: isActive ? "rgba(224,122,58,0.12)" : "transparent",
-                          color: isActive ? C.orange : C.muted,
+                          border: `1px solid ${isActive ? C.orange : (isSuggested ? suggestedColor : C.border)}`,
+                          background: isActive ? "rgba(224,122,58,0.12)" : (isSuggested ? `${suggestedColor}22` : "transparent"),
+                          color: isActive ? C.orange : (isSuggested ? suggestedColor : C.muted),
                           cursor: "pointer",
                           fontWeight: isActive ? 600 : 400,
                           minWidth: 64,
+                          boxShadow: isSuggested ? `0 0 0 2px ${suggestedColor}33` : "none",
                         }}>
                         {t.label}
                       </button>
@@ -3765,6 +3848,21 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
                   })}
                 </div>
               </div>
+              {suggestion && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <div style={{
+                    ...mono, fontSize: 10, padding: "4px 10px", borderRadius: 12,
+                    background: `${suggestedColor}1f`, color: suggestedColor, fontWeight: 600, whiteSpace: "nowrap",
+                    border: `1px solid ${suggestedColor}55`,
+                  }}>
+                    {suggestion.direction === "up" ? "↑ Consider " : "↓ Consider "}
+                    {VOLUME_TIERS.find(t => t.id === suggestion.suggestedTierId)?.label}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, flex: 1 }}>
+                    {suggestion.reason}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
