@@ -3200,14 +3200,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
             {/* Age */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 6 }}>AGE</div>
+              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>AGE</div>
               <input type="number" min="10" max="90" value={surveyAnswers.age} onChange={e => setSurveyAnswers(p => ({ ...p, age: e.target.value }))}
                 placeholder="34"
                 style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
             </div>
             {/* Peak grade ever */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 6 }}>HIGHEST GRADE EVER</div>
+              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>HIGHEST GRADE EVER</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>V scale</div>
@@ -3227,7 +3227,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
             {/* Peak recent */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 6 }}>HIGHEST GRADE IN LAST 2 MONTHS</div>
+              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>HIGHEST GRADE IN LAST 2 MONTHS</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>V scale</div>
@@ -3247,7 +3247,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
             {/* Typical day */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 3 }}>ON AN AVERAGE DAY, YOU CAN SEND</div>
+              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 3 }}>ON AN AVERAGE DAY, YOU CAN SEND</div>
               <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginBottom: 6, lineHeight: 1.5 }}>Be realistic, there's no one to impress here :)</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
@@ -3268,7 +3268,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
             {/* Frequency */}
             <div style={{ marginBottom: 22 }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 6 }}>HOW MANY TIMES PER WEEK DO YOU TRAIN?</div>
+              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>HOW MANY TIMES PER WEEK DO YOU TRAIN?</div>
               <select value={surveyAnswers.weekly_frequency} onChange={e => setSurveyAnswers(p => ({ ...p, weekly_frequency: e.target.value }))}
                 style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }}>
                 <option value="">Choose...</option>
