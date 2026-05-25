@@ -196,7 +196,8 @@ async function dbUpsertAthlete(a) {
   await sb.from("athletes").upsert({
     id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id || null,
     volume_tier: a.volume_tier || DEFAULT_VOLUME_TIER,
-    mode: a.mode || "full",
+    has_plan: a.has_plan ?? true,
+    has_recoverbuddy: a.has_recoverbuddy ?? false,
     age: a.age ?? null,
     peak_grade_v_ever: a.peak_grade_v_ever ?? null,
     peak_grade_yds_ever: a.peak_grade_yds_ever ?? null,
@@ -280,7 +281,8 @@ async function dbUpsertAthleteWithCoach(a) {
   await sb.from("athletes").upsert({
     id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id,
     volume_tier: a.volume_tier || DEFAULT_VOLUME_TIER,
-    mode: a.mode || "full",
+    has_plan: a.has_plan ?? true,
+    has_recoverbuddy: a.has_recoverbuddy ?? false,
     age: a.age ?? null,
     peak_grade_v_ever: a.peak_grade_v_ever ?? null,
     peak_grade_yds_ever: a.peak_grade_yds_ever ?? null,
@@ -2637,7 +2639,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const week = plan?.weeks?.[activeWeekIdx];
   const days = week?.days || [];
 
-  if ((!plan || publishedIndices.length === 0) && athlete?.mode !== "recoverbuddy") {
+  if ((!plan || publishedIndices.length === 0) && !hasRecoverBuddy) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
         <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -2654,7 +2656,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   }
 
   // RecoverBuddy athletes may have no plan — guard everything downstream.
-  const isRecoverBuddy = athlete?.mode === "recoverbuddy";
+  // Feature flags. has_plan: show training plan section; has_recoverbuddy:
+  // show RecoverBuddy onboarding survey + catch-up + wordmark (when no plan).
+  const hasPlan = athlete?.has_plan !== false;  // default true when undefined
+  const hasRecoverBuddy = !!athlete?.has_recoverbuddy;
+  const isRecoverBuddy = hasRecoverBuddy;  // legacy alias; some downstream refs
+  // The wordmark only swaps to RecoverBuddy when that's the ONLY active feature.
+  const showRecoverBuddyWordmark = hasRecoverBuddy && !hasPlan;
   const progKey = (wIdx, dIdx) => `w${wIdx}_d${dIdx}`;
   const sharedKey = (exId) => `shared_${exId}`;
   const overflow = progress[OVF] || [];
@@ -2746,7 +2754,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   // Survey state — fires once for RecoverBuddy athletes who haven't yet
   // answered the onboarding questions. Detected by checking if any of the
   // survey fields are missing.
-  const needsSurvey = athlete?.mode === "recoverbuddy" && !athlete?.age && !athlete?.weekly_frequency;
+  const needsSurvey = hasRecoverBuddy && !athlete?.age && !athlete?.weekly_frequency;
   const [surveyOpen, setSurveyOpen] = useState(needsSurvey);
   const [surveyAnswers, setSurveyAnswers] = useState({
     age: "",
@@ -2805,9 +2813,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (catchupDismissed) return;
     if (catchupDays) return; // already shown
     if (surveyOpen) return; // wait until survey is dismissed first
-    // RecoverBuddy mode: prompt fires for everyone. Otherwise, gated to test users.
+    // RecoverBuddy users always see the catch-up prompt. Other athletes
+    // are gated to the test allowlist for now.
     const catchupAthletes = ["bzmmql6", "8ygufmv", "test001"];
-    if (athlete?.mode !== "recoverbuddy" && !catchupAthletes.includes(athlete.id)) return;
+    if (!hasRecoverBuddy && !catchupAthletes.includes(athlete.id)) return;
     const todayStr = localDateStr();
     // First: check if athlete has ANY fatigue_logs rows ever. If not, this is
     // a cold-start athlete and the prompt fires with first-time copy.
@@ -3150,7 +3159,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     <div style={{ minHeight: "100vh", background: C.black, display: "flex", flexDirection: "column" }}>
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 2 }}>
-          {athlete?.mode === "recoverbuddy"
+          {showRecoverBuddyWordmark
             ? <>RECOVER<span style={{ color: C.orange }}>BUDDY</span></>
             : <>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></>}
         </div>
@@ -3521,7 +3530,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           document.body
         )}
 
-        {!isRecoverBuddy && <>
+        {hasPlan && plan && publishedIndices.length > 0 && <>
         {/* Athlete name — tappable, opens overview/update modal */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -3990,7 +3999,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
                 <div style={{ minWidth: 160, flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 500, color: C.white, marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
                     {a.name}
-                    {a.mode === "recoverbuddy" && <span style={{ ...mono, fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(224,122,58,0.15)", color: C.orange, letterSpacing: 0.5 }}>RECOVERBUDDY</span>}
+                    {a.has_recoverbuddy && <span style={{ ...mono, fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(224,122,58,0.15)", color: C.orange, letterSpacing: 0.5 }}>RECOVERBUDDY</span>}
                   </div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                     <Badge type={a.type} />
@@ -4087,7 +4096,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const canRedo = !!(selectedId && (planHistory[selectedId]?.future?.length));
   const [showAdd, setShowAdd] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "", volume_tier: DEFAULT_VOLUME_TIER, mode: "full" });
+  const [newAthlete, setNewAthlete] = useState({ name: "", type: "Youth Comp", level: "", volume_tier: DEFAULT_VOLUME_TIER, has_plan: true, has_recoverbuddy: false });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingAthlete, setEditingAthlete] = useState(null);
   const isMobile = useIsMobile();
@@ -4379,15 +4388,25 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               </select>
             </div>
             <div style={{ marginBottom: 18 }}>
-              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Mode</div>
-              <select value={editingAthlete.mode || "full"} onChange={e => setEditingAthlete(p=>({...p,mode:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                <option value="full">Full plan (training plan + volume log)</option>
-                <option value="recoverbuddy">RecoverBuddy (volume log only)</option>
-              </select>
+              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Features</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={editingAthlete.has_plan !== false} onChange={e => setEditingAthlete(p => ({ ...p, has_plan: e.target.checked }))} />
+                <span style={{ fontSize: 13, color: C.white }}>Training plan</span>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: !isAdmin && !editingAthlete.has_recoverbuddy ? "default" : "pointer", opacity: !isAdmin ? 0.6 : 1 }}>
+                <input type="checkbox" checked={!!editingAthlete.has_recoverbuddy} disabled={!isAdmin} onChange={e => setEditingAthlete(p => ({ ...p, has_recoverbuddy: e.target.checked }))} />
+                <span style={{ fontSize: 13, color: C.white }}>RecoverBuddy {!isAdmin && <span style={{ ...mono, fontSize: 9, color: C.muted, marginLeft: 6 }}>(admin only)</span>}</span>
+              </label>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 6 }}>At least one feature must be enabled.</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setEditingAthlete(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => { if(!editingAthlete.name.trim()) return; onUpdateAthlete(editingAthlete); setEditingAthlete(null); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
+              <button onClick={() => {
+                if (!editingAthlete.name.trim()) return;
+                if (editingAthlete.has_plan === false && !editingAthlete.has_recoverbuddy) { alert("Enable at least one feature (Training plan or RecoverBuddy)."); return; }
+                onUpdateAthlete({ ...editingAthlete, has_plan: editingAthlete.has_plan !== false, has_recoverbuddy: !!editingAthlete.has_recoverbuddy });
+                setEditingAthlete(null);
+              }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Save</button>
             </div>
           </div>
         </div>
@@ -4416,16 +4435,28 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               </select>
             </div>
             <div style={{ marginBottom: 18 }}>
-              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 5 }}>Mode</div>
-              <select value={newAthlete.mode || "full"} onChange={e => setNewAthlete(p=>({...p,mode:e.target.value}))} style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "9px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                <option value="full">Full plan (training plan + volume log)</option>
-                <option value="recoverbuddy">RecoverBuddy (volume log only)</option>
-              </select>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 4 }}>RecoverBuddy athletes get an onboarding survey and skip the training plan view.</div>
+              <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted, marginBottom: 8 }}>Features</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={newAthlete.has_plan !== false} onChange={e => setNewAthlete(p => ({ ...p, has_plan: e.target.checked }))} />
+                <span style={{ fontSize: 13, color: C.white }}>Training plan</span>
+              </label>
+              {isAdmin && (
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!newAthlete.has_recoverbuddy} onChange={e => setNewAthlete(p => ({ ...p, has_recoverbuddy: e.target.checked }))} />
+                  <span style={{ fontSize: 13, color: C.white }}>RecoverBuddy</span>
+                </label>
+              )}
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 6 }}>RecoverBuddy adds the onboarding survey and recovery-only mode. At least one feature must be enabled.</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowAdd(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => { if(!newAthlete.name.trim()) return; onAddAthlete({id:uid(),...newAthlete, volume_tier: newAthlete.volume_tier || DEFAULT_VOLUME_TIER, mode: newAthlete.mode || "full", coach_id: coachId || 'admin'}); setShowAdd(false); setNewAthlete({name:"",type:"Youth Comp",level:"",volume_tier:DEFAULT_VOLUME_TIER,mode:"full"}); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
+              <button onClick={() => {
+                if (!newAthlete.name.trim()) return;
+                if (newAthlete.has_plan === false && !newAthlete.has_recoverbuddy) { alert("Enable at least one feature (Training plan or RecoverBuddy)."); return; }
+                onAddAthlete({ id: uid(), ...newAthlete, volume_tier: newAthlete.volume_tier || DEFAULT_VOLUME_TIER, has_plan: newAthlete.has_plan !== false, has_recoverbuddy: !!newAthlete.has_recoverbuddy, coach_id: coachId || 'admin' });
+                setShowAdd(false);
+                setNewAthlete({ name: "", type: "Youth Comp", level: "", volume_tier: DEFAULT_VOLUME_TIER, has_plan: true, has_recoverbuddy: false });
+              }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
             </div>
           </div>
         </div>
