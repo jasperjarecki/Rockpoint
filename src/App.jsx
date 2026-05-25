@@ -3045,8 +3045,29 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       displayBg = C.gray;
     }
 
+    // Dashboard stats — rolling 7-day window ending today (so today's data
+    // is included once it's logged). Uses the same calendar-window logic as
+    // the rec computation so synthetic rest fills unlogged gaps.
+    const dashWindow = buildCalendarWindow(logs, todayStr, 7);
+    const dashSleep = dashWindow.reduce((s, l) => s + (l.sleep || 0), 0) / dashWindow.length;
+    const dashLoad = dashWindow.reduce((s, l) => s + (l.load || 0), 0);
+    const dashStrongRatings = dashWindow.filter(l => l.strong != null).map(l => l.strong);
+    let dashStrongLabel = "—";
+    if (dashStrongRatings.length > 0) {
+      const avg = dashStrongRatings.reduce((s, v) => s + v, 0) / dashStrongRatings.length;
+      if (avg < 1) dashStrongLabel = "Fatigued";
+      else if (avg === 1) dashStrongLabel = "Normal";
+      else if (avg < 2) dashStrongLabel = "Pretty Good";
+      else dashStrongLabel = "Great";
+    }
+    const dashboard = {
+      sleep: dashSleep,
+      load: dashLoad,
+      strongLabel: dashStrongLabel,
+    };
+
     console.log("[recomputeFatigue] today:", todayRec.label, "display:", displayLabel, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
-    setFatigueRec({ label: displayLabel, color: displayColor, bg: displayBg, tomorrow, todayLogged });
+    setFatigueRec({ label: displayLabel, color: displayColor, bg: displayBg, tomorrow, todayLogged, dashboard });
   }, [athlete?.id, athlete?.volume_tier]);
 
   useEffect(() => {
@@ -3204,7 +3225,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   }
                 </div>
 
-                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginBottom: 12 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
+
+                {/* 7-day stat dashboard */}
+                {fLogs.dashboard && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${color}22` }}>
+                    <div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Sleep</div>
+                      <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.sleep.toFixed(1)}h</div>
+                    </div>
+                    <div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Load</div>
+                      <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.load}</div>
+                    </div>
+                    <div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Strength</div>
+                      <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.strongLabel}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
