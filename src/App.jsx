@@ -193,19 +193,15 @@ const getVolumeMultiplier = (athlete) => {
 
 async function dbGetAthletes() { const { data } = await sb.from("athletes").select("*"); return data || []; }
 async function dbUpsertAthlete(a) {
+  // Survey fields (age, grades, frequency) are intentionally NOT included
+  // here — they're only ever written via the athlete-side survey submit.
+  // Coach edits don't touch them, which prevents accidental overwrites
+  // when the coach's local state hasn't yet reflected a recent survey save.
   await sb.from("athletes").upsert({
     id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id || null,
     volume_tier: a.volume_tier || DEFAULT_VOLUME_TIER,
     has_plan: a.has_plan ?? true,
     has_recoverbuddy: a.has_recoverbuddy ?? false,
-    age: a.age ?? null,
-    peak_grade_v_ever: a.peak_grade_v_ever ?? null,
-    peak_grade_yds_ever: a.peak_grade_yds_ever ?? null,
-    peak_grade_v_recent: a.peak_grade_v_recent ?? null,
-    peak_grade_yds_recent: a.peak_grade_yds_recent ?? null,
-    typical_grade_v: a.typical_grade_v ?? null,
-    typical_grade_yds: a.typical_grade_yds ?? null,
-    weekly_frequency: a.weekly_frequency ?? null,
   });
 }
 async function dbDeleteAthlete(id) { await sb.from("athletes").delete().eq("id", id); }
@@ -278,19 +274,12 @@ async function dbSaveTemplate(t) { await sb.from("templates").upsert({ id: t.id,
 async function dbDeleteTemplate(id) { await sb.from("templates").delete().eq("id", id); }
 async function dbGetAthletesByCoach(coachId) { const { data } = await sb.from("athletes").select("*").eq("coach_id", coachId); return data || []; }
 async function dbUpsertAthleteWithCoach(a) {
+  // Survey fields are intentionally NOT included — see dbUpsertAthlete comment.
   await sb.from("athletes").upsert({
     id: a.id, name: a.name, type: a.type, level: a.level, coach_id: a.coach_id,
     volume_tier: a.volume_tier || DEFAULT_VOLUME_TIER,
     has_plan: a.has_plan ?? true,
     has_recoverbuddy: a.has_recoverbuddy ?? false,
-    age: a.age ?? null,
-    peak_grade_v_ever: a.peak_grade_v_ever ?? null,
-    peak_grade_yds_ever: a.peak_grade_yds_ever ?? null,
-    peak_grade_v_recent: a.peak_grade_v_recent ?? null,
-    peak_grade_yds_recent: a.peak_grade_yds_recent ?? null,
-    typical_grade_v: a.typical_grade_v ?? null,
-    typical_grade_yds: a.typical_grade_yds ?? null,
-    weekly_frequency: a.weekly_frequency ?? null,
   });
 }
 async function dbUploadBlockImage(athleteId, file) {
@@ -2779,8 +2768,23 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       typical_grade_yds: surveyAnswers.typical_grade_yds,
       weekly_frequency: parseInt(surveyAnswers.weekly_frequency),
     };
-    const { error } = await sb.from("athletes").update(payload).eq("id", athlete.id);
-    if (error) { console.warn("[survey] save error:", error); alert("Save failed, please try again."); setSurveySaving(false); return; }
+    console.log("[survey] submitting for athlete id:", athlete?.id, "payload:", payload);
+    const { data, error, status, statusText } = await sb.from("athletes")
+      .update(payload).eq("id", athlete.id).select();
+    console.log("[survey] response:", { data, error, status, statusText });
+    if (error) {
+      console.warn("[survey] save error:", error);
+      alert("Save failed: " + (error.message || "unknown error"));
+      setSurveySaving(false);
+      return;
+    }
+    if (!data || data.length === 0) {
+      console.warn("[survey] update returned no rows — athlete id may not match anything in the table");
+      alert("Save returned no matching row. Athlete id: " + athlete?.id);
+      setSurveySaving(false);
+      return;
+    }
+    console.log("[survey] saved successfully:", data);
     setSurveySaving(false);
     setSurveyOpen(false);
   };
