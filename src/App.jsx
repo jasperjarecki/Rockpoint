@@ -2736,6 +2736,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [catchupDays, setCatchupDays] = useState(null);
   const [catchupSaving, setCatchupSaving] = useState(false);
   const [catchupDismissed, setCatchupDismissed] = useState(false);
+  // Athlete-provided average sleep for the past week. Optional. When set,
+  // overrides the 7-hour default on days they commit via Log.
+  const [catchupSleep, setCatchupSleep] = useState("");
   // "cold_start" when the athlete has zero fatigue_logs rows ever;
   // "regular" when they have a 3+ day unlogged streak ending near today.
   const [catchupKind, setCatchupKind] = useState(null);
@@ -2905,9 +2908,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const submitCatchup = async () => {
     if (!catchupDays) return;
     setCatchupSaving(true);
+    const sleepVal = parseFloat(catchupSleep);
+    const sleepHours = (!isNaN(sleepVal) && sleepVal > 0 && sleepVal <= 14) ? sleepVal : 7;
     const rows = catchupDays
       .filter(d => d.editable && d.load !== 0)
-      .map(d => ({ athlete_id: athlete.id, date: d.date, sleep: 7, load: d.load, strong: null, strong_na: true }));
+      .map(d => ({ athlete_id: athlete.id, date: d.date, sleep: sleepHours, load: d.load, strong: null, strong_na: true }));
     if (rows.length > 0) {
       const { error } = await sb.from("fatigue_logs").upsert(rows, { onConflict: "athlete_id,date" });
       if (error) console.warn("[catchup] upsert error:", error);
@@ -3331,6 +3336,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             </div>
             <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
               Tap to cycle: 🛌 Rest → 🚂 Train → 🚂 Light. Grayed-out days are already logged.
+            </div>
+            <div style={{ marginBottom: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 4, lineHeight: 1.4 }}>On average, how many hours of sleep do you get a night?</div>
+              <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginBottom: 8, lineHeight: 1.5 }}>Be realistic, no judgment here.</div>
+              <input type="number" step="0.5" min="0" max="14" value={catchupSleep}
+                onChange={e => setCatchupSleep(e.target.value)}
+                placeholder="e.g. 7.5"
+                style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={dismissCatchup}
