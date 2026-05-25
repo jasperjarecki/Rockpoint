@@ -2495,28 +2495,9 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
           <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             <div>
               <Lbl text="Date" />
-              <div style={{ display: "flex", gap: 8 }}>
-                {(() => {
-                  const d1 = new Date(); d1.setDate(d1.getDate()-1);
-                  const d2 = new Date(); d2.setDate(d2.getDate()-2);
-                  const yesterday = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}-${String(d1.getDate()).padStart(2,'0')}`;
-                  const twoDaysAgo = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
-                  return [today, yesterday, twoDaysAgo];
-                })().map(dt => {
-                  const d1 = new Date(); d1.setDate(d1.getDate()-1);
-                  const yesterday = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}-${String(d1.getDate()).padStart(2,'0')}`;
-                  const label = dt === today ? "Today" : dt === yesterday ? "Yesterday" : "2 days ago";
-                  const alreadyLogged = logs.some(l => l.date === dt && l.id !== editingId);
-                  // When editing an existing entry, skip the date picker for that date (it's already selected)
-                  if (editingId && dt === form.date) return null;
-                  return (
-                    <button key={dt} onMouseDown={e => { e.preventDefault(); if (!alreadyLogged) setForm(f => ({ ...f, date: dt })); }}
-                      style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 5, border: `1px solid ${form.date === dt ? C.orange : C.border}`, background: form.date === dt ? "rgba(61,158,122,0.1)" : C.gray2, color: form.date === dt ? C.orange : alreadyLogged ? "#555" : C.white, cursor: alreadyLogged ? "not-allowed" : "pointer", opacity: alreadyLogged ? 0.5 : 1 }}>
-                      {label}{alreadyLogged ? " ✓" : ""}
-                    </button>
-                  );
-                })}
-              </div>
+              <input type="date" value={form.date} max={today}
+                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                style={{ ...inp, width: "auto", boxSizing: "border-box", colorScheme: "dark" }} />
             </div>
             <div>
               <Lbl text="What did you do today?" />
@@ -2756,6 +2737,21 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     weekly_frequency: "",
   });
   const [surveySaving, setSurveySaving] = useState(false);
+  // Feedback form state (RecoverBuddy only). Permanent on page, no dismiss.
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackJustSent, setFeedbackJustSent] = useState(false);
+  const submitFeedback = async () => {
+    const msg = feedbackText.trim();
+    if (!msg) return;
+    setFeedbackSaving(true);
+    const { error } = await sb.from("feedback").insert({ athlete_id: athlete.id, message: msg });
+    setFeedbackSaving(false);
+    if (error) { console.warn("[feedback] error:", error); alert("Sorry, that didn't go through. Try again?"); return; }
+    setFeedbackText("");
+    setFeedbackJustSent(true);
+    setTimeout(() => setFeedbackJustSent(false), 4000);
+  };
   const submitSurvey = async () => {
     if (!surveyAnswers.age || !surveyAnswers.weekly_frequency) {
       alert("Please fill in age and training frequency."); return;
@@ -3295,13 +3291,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {catchupDays && !showSleepPrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, width: "100%", maxWidth: 420 }}>
-            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>
-              {catchupKind === "cold_start" ? "Welcome 👋" : "Welcome back 👋"}
-            </div>
+            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>Welcome!</div>
             <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
-              {catchupKind === "cold_start"
-                ? "Let's get your last week logged so we can start making recommendations. Tap a day if you trained, or leave it as rest. Don't worry about it being perfect."
-                : "You haven't logged in a few days. Tap a day to indicate rest, training, or light training."}
+              Help us log (approximately) what you did the last 7 days. Doesn't have to be perfect, just do your best.
             </div>
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Last 7 days</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 16 }}>
@@ -3442,6 +3434,18 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
+        {/* Big + Log today button */}
+        <button onClick={() => {
+            const todayStr = localDateStr();
+            const existingToday = fatigueLogs.find(l => l.date === todayStr);
+            // If today is already logged, open form to edit it. Otherwise blank-new.
+            setPartialDayLog(existingToday || { date: todayStr });
+            setShowVolumeModal(true);
+          }}
+          style={{ width: "100%", ...mono, fontSize: 14, padding: "16px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", marginBottom: 16, letterSpacing: 0.5, fontWeight: 500 }}>
+          + Log Today
+        </button>
+
         {/* Consistency calendar modal */}
         {fatigueLogs.length > 0 && (
           <div style={{ marginBottom: 16 }}>
@@ -3450,6 +3454,37 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               📅 Calendar
             </button>
           </div>
+        )}
+
+        {/* RecoverBuddy welcome + feedback (permanent, no dismiss) */}
+        {hasRecoverBuddy && (
+          <>
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
+              <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, marginBottom: 8 }}>
+                Welcome to <span style={{ color: C.orange }}>RecoverBuddy</span> <span style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 0.5 }}>(beta)</span>
+              </div>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+                Log each day and RecoverBuddy will make a recommendation for your training. Based on your sleep, load, and strength logs, RecoverBuddy will say Rest, Train Light, or Train. If you log consistently, RecoverBuddy will get better at making recommendations. Thanks for your help! I hope you like RecoverBuddy.
+              </div>
+            </div>
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6, lineHeight: 1.4 }}>Questions, comments, issues?</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>Write them here, tap submit, and I'll get back to you ASAP.</div>
+              <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
+                placeholder="What's on your mind?"
+                rows={3}
+                style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                {feedbackJustSent
+                  ? <div style={{ ...mono, fontSize: 11, color: "#3d9e7a" }}>✓ Sent — thank you!</div>
+                  : <div />}
+                <button onClick={submitFeedback} disabled={feedbackSaving || !feedbackText.trim()}
+                  style={{ ...mono, fontSize: 11, padding: "10px 18px", borderRadius: 6, border: "none", background: feedbackText.trim() ? C.orange : C.border, color: "#fff", cursor: (feedbackSaving || !feedbackText.trim()) ? "default" : "pointer", fontWeight: 500 }}>
+                  {feedbackSaving ? "Sending..." : "Submit"}
+                </button>
+              </div>
+            </div>
+          </>
         )}
         {showCalendar && fatigueLogs.length > 0 && ReactDOM.createPortal(
           <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" }} onClick={() => setShowCalendar(false)}>
