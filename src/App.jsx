@@ -2276,15 +2276,17 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     // days don't break the streak. Bounded to within recent7.
     const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
     const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
-    const loadRatio = avgSleep > 0 ? weekLoad / avgSleep : 99;
+    // Capacity includes volume tier multiplier (fix: previously this
+    // version divided by avgSleep alone, ignoring the tier).
+    const volumeCoeff = getVolumeMultiplier(athlete);
+    const capacity = avgSleep * volumeCoeff;
+    const overLoadCap = weekLoad >= capacity;
     const lowSleep = avgSleep < 6.5;
     // strong=0 = weak, strong=1 = standard, strong=2 = notably good. So
     // "below normal" means avg < 1.0.
     const lowStrong = avgStrong !== null && avgStrong < 1.0;
-    const highLoad = loadRatio > 1.3;
-    const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
-    const redCount = [fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-    const yellowCount = [borderlineLoad].filter(Boolean).length;
+    const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
+    const yellowCount = 0;
     const lastNightSleep = withMetrics[0]?.sleep ?? null;
     const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
 
@@ -2295,18 +2297,19 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     } else if (adjacentHardDays) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = ["Two hard sessions back to back — full recovery needed."];
+    } else if (overLoadCap) {
+      label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
+      reasons = ["Weekly load (" + weekLoad + ") is at or above your tier allowance (" + capacity.toFixed(1) + "). Rest until it drops."];
     } else if (redCount >= 2 || lowStrong) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = [
         fourStrongDays && "4 consecutive peak days — connective tissue needs rest",
-        highLoad && ("Weekly load is high (" + weekLoad + " vs " + avgSleep.toFixed(1) + "h avg sleep)"),
         lowSleep && ("Sleep avg is low (" + avgSleep.toFixed(1) + "h)"),
         lowStrong && "Consistently feeling below normal",
       ].filter(Boolean);
     } else if (redCount === 1 || yellowCount >= 1) {
       label = "Train Light"; color = C.orange; bg = "rgba(224,122,58,0.08)";
       reasons = [
-        borderlineLoad && ("Load is building (" + weekLoad + " this week)"),
         lowSleep && ("Sleep avg below ideal (" + avgSleep.toFixed(1) + "h)"),
       ].filter(Boolean);
     } else {
@@ -2501,7 +2504,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
             </div>
             <div>
               <Lbl text="What did you do today?" />
-              <input value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} placeholder="As few words as possible, just get it on the page" style={{ ...inp, boxSizing: "border-box" }} />
+              <input value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} placeholder="What did you do today?" style={{ ...inp, boxSizing: "border-box" }} />
             </div>
             <div>
               <Lbl text="Sleep" />
@@ -2906,8 +2909,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     setCatchupSaving(true);
     const sleepVal = parseFloat(catchupSleep);
     const sleepHours = (!isNaN(sleepVal) && sleepVal > 0 && sleepVal <= 14) ? sleepVal : 7;
+    // Commit ALL editable days — including Rest (load=0). Untapped means
+    // "confirmed rest day," not "skip writing a row." Cleaner data model
+    // and prevents the catch-up prompt from re-firing for the same days.
     const rows = catchupDays
-      .filter(d => d.editable && d.load !== 0)
+      .filter(d => d.editable)
       .map(d => ({ athlete_id: athlete.id, date: d.date, sleep: sleepHours, load: d.load, strong: null, strong_na: true }));
     if (rows.length > 0) {
       const { error } = await sb.from("fatigue_logs").upsert(rows, { onConflict: "athlete_id,date" });
@@ -3043,17 +3049,19 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       // so this can't trigger from ancient history.
       const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
       const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
-      const loadRatio = avgSleep > 0 ? weekLoad / (avgSleep * volumeCoeff) : 99;
+      // Capacity = avg sleep * volume tier multiplier. Hitting or exceeding
+      // it puts the athlete in Rest until the rolling 7-day load drops back
+      // below capacity. Hard line. No soft border.
+      const capacity = avgSleep * volumeCoeff;
+      const overLoadCap = weekLoad >= capacity;
       const lowSleep = avgSleep < 6.5;
-      // lowStrong fires when the athlete has felt consistently below normal.
       const lowStrong = avgStrong !== null && avgStrong < 1.0;
-      const highLoad = loadRatio > 1.3;
-      const borderlineLoad = loadRatio > 1.0 && loadRatio <= 1.3;
-      const redCount = [fourStrongDays, highLoad, lowSleep, lowStrong].filter(Boolean).length;
-      const yellowCount = [borderlineLoad].filter(Boolean).length;
+      const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
+      const yellowCount = 0;
       const lastNightSleep = windowLogs[0]?.sleep ?? null;
       const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
       if (sleptUnder6)                          return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      if (overLoadCap)                          return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
       if (redCount >= 2 || lowStrong)           return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
       if (redCount === 1 || yellowCount >= 1)   return { label: "Train Light", color: C.orange,  bg: "rgba(224,122,58,0.08)" };
       return { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)" };
@@ -3179,12 +3187,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 20px 12px" }}>
-              <div>
-                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>VOLUME TRACKING</div>
-                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, maxWidth: 260 }}>Here is the volume tracker. Once daily, you log a few key stats. In return, I use a simple equation to recommend how much you should train or rest.</div>
-              </div>
-              <button onClick={() => setShowVolumeModal(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1, flexShrink: 0, marginLeft: 12 }}>✕</button>
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 20px 12px" }}>
+              <button onClick={() => setShowVolumeModal(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", WebkitOverflowScrolling: "touch" }}>
@@ -3434,17 +3438,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
-        {/* Big + Log today button */}
-        <button onClick={() => {
-            const todayStr = localDateStr();
-            const existingToday = fatigueLogs.find(l => l.date === todayStr);
-            // If today is already logged, open form to edit it. Otherwise blank-new.
-            setPartialDayLog(existingToday || { date: todayStr });
-            setShowVolumeModal(true);
-          }}
-          style={{ width: "100%", ...mono, fontSize: 14, padding: "16px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", marginBottom: 16, letterSpacing: 0.5, fontWeight: 500 }}>
-          + Log Today
-        </button>
+        {/* Big action button — Log Today if not yet logged, otherwise Edit Logs */}
+        {(() => {
+          const isLogged = !!fatigueRec?.todayLogged;
+          return (
+            <button onClick={() => {
+                if (isLogged) {
+                  // Open modal in list view — no autoOpen.
+                  setPartialDayLog(null);
+                } else {
+                  const todayStr = localDateStr();
+                  setPartialDayLog({ date: todayStr });
+                }
+                setShowVolumeModal(true);
+              }}
+              style={{ width: "100%", ...mono, fontSize: 14, padding: "16px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", marginBottom: 16, letterSpacing: 0.5, fontWeight: 500 }}>
+              {isLogged ? "Edit Logs" : "+ Log Today"}
+            </button>
+          );
+        })()}
 
         {/* Consistency calendar modal */}
         {fatigueLogs.length > 0 && (
