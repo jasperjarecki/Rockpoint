@@ -116,6 +116,7 @@ updateGlobalStyles();
 const uid = () => Math.random().toString(36).slice(2, 9);
 const TEMPLATE_CREATOR_ID = "__template_creator__";
 const VOLUME_TIERS_PAGE_ID = "__volume_tiers__";
+const SIMULATOR_PAGE_ID = "__simulator__";
 
 function parseYouTubeTimestamp(url) {
   if (!url) return 0;
@@ -3933,6 +3934,224 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
   );
 }
 
+// ── SIMULATOR ────────────────────────────────────────────────────────────────
+// Coach-only sandbox that runs the same fatigue model logic against editable
+// hypothetical day data. Local-only — no DB writes. Mirrors the athlete banner
+// + dashboard visual style so what the coach sees here matches what the
+// athlete would see in real life.
+function SimulatorPage() {
+  const todayStr = localDateStr();
+  // Build 7-day window ending YESTERDAY (matches today's-rec convention).
+  const makeBlankDays = () => {
+    const days = [];
+    for (let i = 1; i <= 7; i++) {
+      const [y, m, d] = todayStr.split("-").map(Number);
+      const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - i);
+      const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      days.push({ date: ds, sleep: 8, load: 0, strong: null, strong_na: true });
+    }
+    return days;  // index 0 = yesterday, 6 = 7 days ago
+  };
+  // Persist between sessions via localStorage.
+  const STORAGE_KEY = "rp_simulator_v1";
+  const [tier, setTier] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY))?.tier || DEFAULT_VOLUME_TIER; } catch { return DEFAULT_VOLUME_TIER; }
+  });
+  const [days, setDays] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY))?.days || makeBlankDays(); } catch { return makeBlankDays(); }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ tier, days })); } catch {}
+  }, [tier, days]);
+  const reset = () => { setDays(makeBlankDays()); setTier(DEFAULT_VOLUME_TIER); };
+  const updateDay = (idx, patch) => setDays(prev => prev.map((d, i) => i === idx ? { ...d, ...patch } : d));
+
+  // ── Replicates computeRec exactly. Keep in sync. ─────────────────────────
+  const volumeCoeff = (() => {
+    const t = VOLUME_TIERS.find(x => x.id === tier);
+    return t ? t.multiplier : 1.0;
+  })();
+  const computeRec = (windowLogs) => {
+    if (windowLogs.length < 3) return null;
+    const signals = [];
+    if ((windowLogs[0]?.load ?? 0) >= 3) {
+      signals.push("Yesterday load >= 3 (hard override)");
+      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals };
+    }
+    const last2Loads = windowLogs.slice(0, 2).map(l => l.load ?? 0);
+    if (last2Loads.length === 2 && last2Loads[0] >= 2 && last2Loads[1] >= 2) {
+      signals.push("Two adjacent days load >= 2 (hard override)");
+      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals };
+    }
+    const last3Loads = windowLogs.slice(0, 3).map(l => l.load ?? 0);
+    if (last3Loads.length === 3 && last3Loads.every(l => l === 1)) {
+      signals.push("Three consecutive load=1 days (hard override)");
+      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals };
+    }
+    const recent7 = windowLogs.slice(0, 7);
+    const last3 = windowLogs.slice(0, 3);
+    const avgSleep = recent7.reduce((s, l) => s + (l.sleep || 0), 0) / recent7.length;
+    const weekLoad = recent7.reduce((s, l) => s + (l.load || 0), 0);
+    const strongLogs = last3.filter(l => l.strong != null);
+    const hasEnoughStrong = strongLogs.length >= 2;
+    const avgStrong = hasEnoughStrong ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
+    const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
+    const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
+    const capacity = avgSleep * volumeCoeff;
+    const overLoadCap = weekLoad >= capacity;
+    const lowSleep = avgSleep < 6.5;
+    const lowStrong = avgStrong !== null && avgStrong < 1.0;
+    const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
+    const lastNightSleep = windowLogs[0]?.sleep ?? null;
+    const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
+
+    const meta = { avgSleep, weekLoad, capacity, avgStrong, fourStrongDays, lowSleep, lowStrong, overLoadCap, sleptUnder6 };
+    if (sleptUnder6) {
+      signals.push("Last night sleep < 6h (hard override)");
+      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals, meta };
+    }
+    if (overLoadCap) {
+      signals.push(`overLoadCap: weekLoad ${weekLoad} >= capacity ${capacity.toFixed(2)}`);
+      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals, meta };
+    }
+    if (lowStrong) signals.push(`lowStrong: avgStrong ${avgStrong?.toFixed(2)} < 1.0 (fires Rest on its own)`);
+    if (fourStrongDays) signals.push("fourStrongDays: 4 most-recent ratings all = 2 (red)");
+    if (lowSleep) signals.push(`lowSleep: avgSleep ${avgSleep.toFixed(2)} < 6.5 (red)`);
+    if (redCount >= 2 || lowStrong) {
+      signals.push(`${redCount} red signals fire (or lowStrong) → Rest`);
+      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals, meta };
+    }
+    if (redCount === 1) {
+      signals.push(`${redCount} red signal → Train Light`);
+      return { label: "Train Light", color: C.orange, bg: "rgba(224,122,58,0.08)", signals, meta };
+    }
+    signals.push("No signals fired → Train");
+    return { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)", signals, meta };
+  };
+
+  const rec = computeRec(days);
+  const dashSleep = days.reduce((s, l) => s + (l.sleep || 0), 0) / days.length;
+  const dashLoad = days.reduce((s, l) => s + (l.load || 0), 0);
+  const dashStrongRatings = days.filter(l => l.strong != null).map(l => l.strong);
+  let dashStrongLabel = "—";
+  if (dashStrongRatings.length > 0) {
+    const avg = dashStrongRatings.reduce((s, v) => s + v, 0) / dashStrongRatings.length;
+    if (avg < 1) dashStrongLabel = "Fatigued";
+    else if (avg === 1) dashStrongLabel = "Normal";
+    else if (avg < 2) dashStrongLabel = "Pretty Good";
+    else dashStrongLabel = "Great";
+  }
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: "32px 20px", width: "100%" }}>
+      <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 6 }}>Simulator</div>
+      <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 24, lineHeight: 1.6 }}>
+        Test the fatigue model with hypothetical day data. Local-only — nothing here is saved to the database. Edit any day, see the rec and which signals fire.
+      </div>
+
+      {/* Volume tier + Reset */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>Volume Tier</div>
+          <select value={tier} onChange={e => setTier(e.target.value)}
+            style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+            {VOLUME_TIERS.map(t => <option key={t.id} value={t.id}>{t.label} ({t.multiplier}×)</option>)}
+          </select>
+        </div>
+        <button onClick={reset} style={{ ...mono, fontSize: 10, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", marginTop: 16 }}>Reset</button>
+      </div>
+
+      {/* Day inputs — index 0 = yesterday */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 8, letterSpacing: 1 }}>LAST 7 DAYS (newest first)</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {days.map((d, i) => {
+            const label = i === 0 ? "Yesterday" : `${i + 1} days ago`;
+            return (
+              <div key={i} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, minWidth: 90 }}>{label}</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ ...mono, fontSize: 10, color: C.muted }}>SLEEP</span>
+                  <input type="number" step="0.5" min="0" max="14" value={d.sleep}
+                    onChange={e => updateDay(i, { sleep: parseFloat(e.target.value) || 0 })}
+                    style={{ width: 56, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 13, outline: "none" }} />
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ ...mono, fontSize: 10, color: C.muted }}>LOAD</span>
+                  <select value={d.load} onChange={e => updateDay(i, { load: parseInt(e.target.value) })}
+                    style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 13, outline: "none" }}>
+                    {[0, 1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ ...mono, fontSize: 10, color: C.muted }}>STRONG</span>
+                  <select value={d.strong_na ? "na" : String(d.strong)} onChange={e => {
+                      const v = e.target.value;
+                      if (v === "na") updateDay(i, { strong: null, strong_na: true });
+                      else updateDay(i, { strong: parseInt(v), strong_na: false });
+                    }}
+                    style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 13, outline: "none" }}>
+                    <option value="na">N/A</option>
+                    <option value="0">0 (weak)</option>
+                    <option value="1">1 (normal)</option>
+                    <option value="2">2 (great)</option>
+                  </select>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Banner — same visual as athlete view */}
+      {rec && (
+        <div style={{ background: rec.bg, border: `1px solid ${rec.color}55`, borderRadius: 12, padding: "20px 22px", marginBottom: 16 }}>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>RECOMMENDED</div>
+          <div style={{ ...bebas, fontSize: 38, letterSpacing: 1, color: rec.color, marginBottom: 12 }}>{rec.label}</div>
+          {/* Dashboard */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${rec.color}22` }}>
+            <div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>SLEEP</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashSleep.toFixed(1)}h</div>
+            </div>
+            <div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>LOAD</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashLoad}</div>
+            </div>
+            <div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>STRENGTH</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashStrongLabel}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diagnostic readout */}
+      {rec && (
+        <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 1, marginBottom: 8 }}>SIGNALS</div>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+            {rec.signals.length === 0 && <div>(no signal trace)</div>}
+            {rec.signals.map((s, i) => <div key={i}>· {s}</div>)}
+          </div>
+          {rec.meta && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 1, marginBottom: 8 }}>MATH</div>
+              <div style={{ ...mono, fontSize: 11, color: C.white, lineHeight: 1.7 }}>
+                <div>avgSleep = {rec.meta.avgSleep.toFixed(2)}h</div>
+                <div>weekLoad = {rec.meta.weekLoad}</div>
+                <div>capacity = avgSleep × {volumeCoeff.toFixed(3)} = {rec.meta.capacity.toFixed(2)}</div>
+                <div>weekLoad / capacity = {(rec.meta.weekLoad / rec.meta.capacity).toFixed(3)}</div>
+                <div>avgStrong (last 3 days) = {rec.meta.avgStrong !== null ? rec.meta.avgStrong.toFixed(2) : "n/a (need 2+ ratings)"}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── COACH DASHBOARD ───────────────────────────────────────────────────────────
 
 // Compute a tier-change suggestion for an athlete based on the last 14 days
@@ -4183,7 +4402,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
     ? { id: TEMPLATE_CREATOR_ID, name: "Template Creator", type: "Adult Recreational", level: "" }
     : selectedId === VOLUME_TIERS_PAGE_ID
       ? { id: VOLUME_TIERS_PAGE_ID, name: "Volume Tiers" }
-      : athletes.find(a => a.id === selectedId);
+      : selectedId === SIMULATOR_PAGE_ID
+        ? { id: SIMULATOR_PAGE_ID, name: "Simulator" }
+        : athletes.find(a => a.id === selectedId);
   const btnS = (active) => ({ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, padding: "6px 10px", borderRadius: 4, border: `1px solid ${active?C.orange:C.border}`, background: active?"rgba(61,158,122,0.1)":"none", color: active?C.orange:C.muted, cursor: "pointer" });
 
   const openBackups = async () => {
@@ -4303,6 +4524,13 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   <div style={{ ...mono, fontSize: 10, color: C.muted }}>set athlete training capacity</div>
                 </button>
               </div>
+              {/* Simulator — fixed entry */}
+              <div style={{ marginBottom: 6 }}>
+                <button onClick={() => setSelectedId(SIMULATOR_PAGE_ID)} style={{ width: "100%", textAlign: "left", background: selectedId===SIMULATOR_PAGE_ID?"rgba(224,122,58,0.10)":"none", border: `1px solid ${selectedId===SIMULATOR_PAGE_ID?C.orange:"rgba(224,122,58,0.3)"}`, borderRadius: 6, padding: "9px 12px", cursor: "pointer" }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.orange, marginBottom: 2 }}>Simulator</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>test fatigue model with hypothetical data</div>
+                </button>
+              </div>
               <div style={{ borderBottom: `1px solid ${C.border}`, marginBottom: 6 }} />
               {athletes.map(a => (
                 <div key={a.id} style={{ position: "relative", marginBottom: 2 }}
@@ -4354,6 +4582,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             </div>
           ) : selectedId === VOLUME_TIERS_PAGE_ID ? (
             <VolumeTiersPage athletes={athletes} onUpdateAthlete={onUpdateAthlete} />
+          ) : selectedId === SIMULATOR_PAGE_ID ? (
+            <SimulatorPage />
           ) : mode === "coach" ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
               {isMobile && selected.id !== TEMPLATE_CREATOR_ID ? (
