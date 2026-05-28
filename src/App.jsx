@@ -3514,8 +3514,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               </div>
             </div>
             <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
-              <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6, lineHeight: 1.4 }}>Questions, comments, issues?</div>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>Write them here, tap submit, and I'll get back to you ASAP.</div>
+              <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6, lineHeight: 1.4 }}>Do you have thoughts for improving the platform? Additional features? Bugs?</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>Give feedback here and I'll implement it ASAP.</div>
               <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
                 placeholder="What's on your mind?"
                 rows={3}
