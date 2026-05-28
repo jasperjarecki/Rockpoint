@@ -2301,7 +2301,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     } else if (overLoadCap) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = ["Weekly load (" + weekLoad + ") is at or above your tier allowance (" + capacity.toFixed(1) + "). Rest until it drops."];
-    } else if (redCount >= 2 || lowStrong) {
+    } else if (redCount >= 2) {
       label = "Rest"; color = "#c0392b"; bg = "rgba(192,57,43,0.08)";
       reasons = [
         fourStrongDays && "4 consecutive peak days — connective tissue needs rest",
@@ -2458,7 +2458,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   const Lbl = ({ text }) => <div style={{ ...bebas, fontSize: 13, color: C.white, letterSpacing: 1, marginBottom: 8 }}>{text}</div>;
   const ScaleBtn = ({ val, current, color, onPick }) => (
     <button onMouseDown={e => { e.preventDefault(); onPick(val); }}
-      style={{ ...mono, fontSize: 15, width: 52, height: 52, borderRadius: 8, border: `1px solid ${current == val ? color : C.border}`, background: current == val ? color + "22" : "transparent", color: current == val ? color : C.muted, cursor: "pointer", fontWeight: current == val ? 700 : 400, transition: "all 0.1s" }}>
+      style={{ ...mono, fontSize: 15, width: 52, height: 52, borderRadius: 8, border: `1px solid ${current === val ? color : C.border}`, background: current === val ? color + "22" : "transparent", color: current === val ? color : C.muted, cursor: "pointer", fontWeight: current === val ? 700 : 400, transition: "all 0.1s" }}>
       {val}
     </button>
   );
@@ -3013,59 +3013,85 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // 7 actual calendar days regardless of logging compliance.
     const computeRec = (windowLogs) => {
       if (windowLogs.length < 3) return null;
-      // Load=3 or 4 the day before this rec applies → hard Rest. Either
-      // intensity is a hard session and warrants a full recovery day.
-      if ((windowLogs[0]?.load ?? 0) >= 3) {
-        return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      const REST = { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
+      const LIGHT = { label: "Train Light", color: C.orange, bg: "rgba(224,122,58,0.08)" };
+      const LIGHT_OR_REST = { label: "Train Light or Rest", color: C.orange, bg: "rgba(224,122,58,0.08)" };
+      const TRAIN = { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)" };
+
+      // windowLogs[0] is TODAY (synthetic rest until logged) — it contributes
+      // nothing to load while unlogged. "Prior" days (yesterday onward) start
+      // at index 1. Override checks that used to read index 0 now read index 1.
+      const prior = windowLogs.slice(1);   // yesterday, day-before, ...
+
+      // Load >= 3 yesterday → hard Rest.
+      if ((prior[0]?.load ?? 0) >= 3) return REST;
+
+      // Cumulative load >= 4 across consecutive non-rest days walking back
+      // from yesterday → hard Rest. A rest day (load 0) breaks the streak.
+      // Replaces the old "three consecutive load=1" rule. Examples:
+      //   [2,2,...]   -> 4 -> Rest
+      //   [1,1,2,...] -> 4 -> Rest
+      //   [1,1,1,...] -> 3 -> no fire (from this rule)
+      //   [2,0,2,...] -> hits rest at day 2, sum 2 -> no fire
+      let cumLoad = 0;
+      for (let i = 0; i < prior.length; i++) {
+        const ld = prior[i]?.load ?? 0;
+        if (ld === 0) break;          // rest day interrupts the streak
+        cumLoad += ld;
+        if (cumLoad >= 4) break;
       }
-      // Two adjacent days (yesterday and the day before) both load >= 2
-      // → hard Rest. Back-to-back hard sessions earn a full recovery day.
-      // Note: a rest day in between (e.g. [2, 0, 2]) does NOT trigger this.
-      const last2Loads = windowLogs.slice(0, 2).map(l => l.load ?? 0);
-      if (last2Loads.length === 2 && last2Loads[0] >= 2 && last2Loads[1] >= 2) {
-        return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
-      }
-      // Three consecutive load=1 days → hard Rest. Looks at the most recent
-      // 3 calendar days in the window (which now includes synthetic rest).
-      const last3Loads = windowLogs.slice(0, 3).map(l => l.load ?? 0);
-      if (last3Loads.length === 3 && last3Loads.every(l => l === 1)) {
-        return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
-      }
+      const overCumLoad = cumLoad >= 4;
+
       const recent7 = windowLogs.slice(0, 7);
       const last3 = windowLogs.slice(0, 3);
-      const last4 = windowLogs.slice(0, 4);
       const avgSleep = recent7.reduce((s,l) => s+(l.sleep||0),0)/recent7.length;
       const weekLoad = recent7.reduce((s,l) => s+(l.load||0),0);
-      // Strong sample-size guard: only consider strong signals when there
-      // are 2+ numeric ratings in the last 3 calendar days. A single rating
-      // isn't statistically meaningful enough to push the rec around.
-      // Semantic note: strong=0 = felt weak, strong=1 = standard/normal,
-      // strong=2 = notably good. So "below normal" means avg < 1.0.
+
       const strongLogs = last3.filter(l => l.strong != null);
       const hasEnoughStrong = strongLogs.length >= 2;
       const avgStrong = hasEnoughStrong ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
-      // fourStrongDays: the athlete's 4 most-recent numeric strong ratings
-      // are all 2. Rest days (which have strong=null/na) don't break the
-      // streak — we filter to just the ratings. Bounded to within recent7
-      // so this can't trigger from ancient history.
+
+      // Most-recent numeric strong rating (anywhere in the window). If it's 0,
+      // the athlete felt weak on their last real session → Rest.
+      const mostRecentStrong = (() => {
+        const rated = recent7.filter(l => l.strong != null);
+        return rated.length > 0 ? rated[0].strong : null;
+      })();
+      const recentStrongZero = mostRecentStrong === 0;
+
+      // fourStrongDays: 4 most-recent numeric ratings all = 2.
       const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
       const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
-      // Capacity = avg sleep * volume tier multiplier. Hitting or exceeding
-      // it puts the athlete in Rest until the rolling 7-day load drops back
-      // below capacity. Hard line. No soft border.
+
+      // Two most-recent numeric ratings both = 2 (for the sleep-softened path).
+      const twoStrongTwos = recentStrongRatings.length >= 2 && recentStrongRatings[0] === 2 && recentStrongRatings[1] === 2;
+
       const capacity = avgSleep * volumeCoeff;
       const overLoadCap = weekLoad >= capacity;
       const lowSleep = avgSleep < 6.5;
       const lowStrong = avgStrong !== null && avgStrong < 1.0;
       const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
-      const yellowCount = 0;
-      const lastNightSleep = windowLogs[0]?.sleep ?? null;
+
+      const lastNightSleep = prior[0]?.sleep ?? null;       // yesterday's sleep
       const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
-      if (sleptUnder6)                          return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
-      if (overLoadCap)                          return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
-      if (redCount >= 2 || lowStrong)           return { label: "Rest",        color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
-      if (redCount === 1 || yellowCount >= 1)   return { label: "Train Light", color: C.orange,  bg: "rgba(224,122,58,0.08)" };
-      return { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)" };
+
+      // Two adjacent load>=2 days (yesterday + day-before). Normally Rest, but
+      // softened to "Train Light or Rest" when the athlete is well-slept and
+      // has been feeling strong: 7-day avg sleep > 8h AND last night >= 8h AND
+      // the two most-recent strong ratings are both 2.
+      const priorLoads = prior.slice(0, 2).map(l => l.load ?? 0);
+      const twoAdjacentHard = priorLoads.length === 2 && priorLoads[0] >= 2 && priorLoads[1] >= 2;
+      const wellSlept = avgSleep > 8 && (lastNightSleep !== null && lastNightSleep >= 8);
+
+      // ── Decision order ──────────────────────────────────────────────────
+      if (sleptUnder6) return REST;
+      if (recentStrongZero) return REST;                    // felt weak last session
+      if (overCumLoad) return REST;
+      if (twoAdjacentHard) return (wellSlept && twoStrongTwos) ? LIGHT_OR_REST : REST;
+      if (overLoadCap) return REST;
+      if (redCount >= 2) return REST;
+      if (redCount >= 1) return LIGHT;
+      return TRAIN;
     };
 
     // Today's rec is computed against the 7 calendar days ENDING YESTERDAY.
@@ -3076,7 +3102,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       dt.setDate(dt.getDate() - 1);
       return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
     })();
-    const todayWindow = buildCalendarWindow(logs, yesterday, 7);
+    // Window anchors on TODAY (today at index 0, synthetic-rest until logged).
+    // This rolls the same weekday from a week ago off the back of the window.
+    const todayWindow = buildCalendarWindow(logs, todayStr, 7);
     const todayRec = computeRec(todayWindow);
     if (!todayRec) { setFatigueRec(null); return; }
 
@@ -3085,9 +3113,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // intervention below can override this to show "Rest" even when today
     // isn't logged yet.
     const todayLogged = logs.some(l => l.date === todayStr && l.load != null && l.sleep != null && (l.strong != null || l.strong_na === true));
-    const tomorrowWindow = buildCalendarWindow(logs, todayStr, 7);
+    const tomorrowStr = (() => {
+      const [yy, mm, dd] = todayStr.split("-").map(Number);
+      const dt = new Date(yy, mm - 1, dd); dt.setDate(dt.getDate() + 1);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    })();
+    const tomorrowWindow = buildCalendarWindow(logs, tomorrowStr, 7);
     const tomorrowRec = todayLogged ? computeRec(tomorrowWindow) : null;
-    let tomorrow = tomorrowRec ? { label: tomorrowRec.label, color: tomorrowRec.color } : null;
+    let tomorrow = tomorrowRec ? { label: tomorrowRec.label + " (May change based on tonight's sleep)", color: tomorrowRec.color } : null;
 
     // ── Train Light loop forecast ──────────────────────────────────────────
     // If today's rec is Train Light and the model predicts the next two
@@ -3503,7 +3536,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" }} onClick={() => setShowCalendar(false)}>
             <div style={{ background: C.black, flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 480, margin: "0 auto", width: "100%", WebkitOverflowScrolling: "touch" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>CONSISTENCY</div>
+                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>CALENDAR VIEW</div>
                 <button onClick={() => setShowCalendar(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1 }}>✕</button>
               </div>
               {(() => {
@@ -3518,7 +3551,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
           return (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Consistency</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 {months.map(ym => {
                   const [y, m] = ym.split("-").map(Number);
@@ -3974,59 +4006,67 @@ function SimulatorPage() {
   const computeRec = (windowLogs) => {
     if (windowLogs.length < 3) return null;
     const signals = [];
-    if ((windowLogs[0]?.load ?? 0) >= 3) {
-      signals.push("Yesterday load >= 3 (hard override)");
-      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals };
-    }
-    const last2Loads = windowLogs.slice(0, 2).map(l => l.load ?? 0);
-    if (last2Loads.length === 2 && last2Loads[0] >= 2 && last2Loads[1] >= 2) {
-      signals.push("Two adjacent days load >= 2 (hard override)");
-      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals };
-    }
-    const last3Loads = windowLogs.slice(0, 3).map(l => l.load ?? 0);
-    if (last3Loads.length === 3 && last3Loads.every(l => l === 1)) {
-      signals.push("Three consecutive load=1 days (hard override)");
-      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals };
-    }
+    const REST = (s, meta) => ({ label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals: s, meta });
+    const LIGHT = (s, meta) => ({ label: "Train Light", color: C.orange, bg: "rgba(224,122,58,0.08)", signals: s, meta });
+    const LIGHT_OR_REST = (s, meta) => ({ label: "Train Light or Rest", color: C.orange, bg: "rgba(224,122,58,0.08)", signals: s, meta });
+    const TRAIN = (s, meta) => ({ label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)", signals: s, meta });
+
+    // In the simulator, every row the coach enters is a "prior" day (the days[]
+    // array is yesterday-first). The live model has today at index 0; here the
+    // coach is editing the prior days directly, so prior = the full array.
+    const prior = windowLogs;
     const recent7 = windowLogs.slice(0, 7);
-    const last3 = windowLogs.slice(0, 3);
     const avgSleep = recent7.reduce((s, l) => s + (l.sleep || 0), 0) / recent7.length;
     const weekLoad = recent7.reduce((s, l) => s + (l.load || 0), 0);
+    const last3 = windowLogs.slice(0, 3);
     const strongLogs = last3.filter(l => l.strong != null);
-    const hasEnoughStrong = strongLogs.length >= 2;
-    const avgStrong = hasEnoughStrong ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
-    const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
+    const avgStrong = strongLogs.length >= 2 ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
+    const ratedAll = recent7.filter(l => l.strong != null);
+    const mostRecentStrong = ratedAll.length > 0 ? ratedAll[0].strong : null;
+    const recentStrongZero = mostRecentStrong === 0;
+    const recentStrongRatings = ratedAll.slice(0, 4).map(l => l.strong);
     const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
+    const twoStrongTwos = recentStrongRatings.length >= 2 && recentStrongRatings[0] === 2 && recentStrongRatings[1] === 2;
     const capacity = avgSleep * volumeCoeff;
     const overLoadCap = weekLoad >= capacity;
     const lowSleep = avgSleep < 6.5;
     const lowStrong = avgStrong !== null && avgStrong < 1.0;
     const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
-    const lastNightSleep = windowLogs[0]?.sleep ?? null;
+    const lastNightSleep = prior[0]?.sleep ?? null;
     const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
 
-    const meta = { avgSleep, weekLoad, capacity, avgStrong, fourStrongDays, lowSleep, lowStrong, overLoadCap, sleptUnder6 };
-    if (sleptUnder6) {
-      signals.push("Last night sleep < 6h (hard override)");
-      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals, meta };
+    // cumulative load walking back from yesterday, broken by a rest day
+    let cumLoad = 0;
+    for (let i = 0; i < prior.length; i++) {
+      const ld = prior[i]?.load ?? 0;
+      if (ld === 0) break;
+      cumLoad += ld;
+      if (cumLoad >= 4) break;
     }
-    if (overLoadCap) {
-      signals.push(`overLoadCap: weekLoad ${weekLoad} >= capacity ${capacity.toFixed(2)}`);
-      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals, meta };
+    const overCumLoad = cumLoad >= 4;
+
+    const priorLoads = prior.slice(0, 2).map(l => l.load ?? 0);
+    const twoAdjacentHard = priorLoads.length === 2 && priorLoads[0] >= 2 && priorLoads[1] >= 2;
+    const wellSlept = avgSleep > 8 && (lastNightSleep !== null && lastNightSleep >= 8);
+
+    const meta = { avgSleep, weekLoad, capacity, avgStrong, fourStrongDays, lowSleep, lowStrong, overLoadCap, sleptUnder6, cumLoad, recentStrongZero };
+
+    if (sleptUnder6) { signals.push("Last night sleep < 6h (hard override)"); return REST(signals, meta); }
+    if (recentStrongZero) { signals.push("Most recent strong rating = 0 (felt weak) → Rest"); return REST(signals, meta); }
+    if (overCumLoad) { signals.push(`Cumulative load ${cumLoad} >= 4 uninterrupted by rest → Rest`); return REST(signals, meta); }
+    if (twoAdjacentHard) {
+      if (wellSlept && twoStrongTwos) { signals.push("Two adjacent load>=2 BUT well-slept + two strong=2 → Train Light or Rest"); return LIGHT_OR_REST(signals, meta); }
+      signals.push("Two adjacent days load >= 2 → Rest");
+      return REST(signals, meta);
     }
-    if (lowStrong) signals.push(`lowStrong: avgStrong ${avgStrong?.toFixed(2)} < 1.0 (fires Rest on its own)`);
+    if (overLoadCap) { signals.push(`overLoadCap: weekLoad ${weekLoad} >= capacity ${capacity.toFixed(2)}`); return REST(signals, meta); }
+    if (lowStrong) signals.push(`lowStrong: avgStrong ${avgStrong?.toFixed(2)} < 1.0 (red)`);
     if (fourStrongDays) signals.push("fourStrongDays: 4 most-recent ratings all = 2 (red)");
     if (lowSleep) signals.push(`lowSleep: avgSleep ${avgSleep.toFixed(2)} < 6.5 (red)`);
-    if (redCount >= 2 || lowStrong) {
-      signals.push(`${redCount} red signals fire (or lowStrong) → Rest`);
-      return { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)", signals, meta };
-    }
-    if (redCount === 1) {
-      signals.push(`${redCount} red signal → Train Light`);
-      return { label: "Train Light", color: C.orange, bg: "rgba(224,122,58,0.08)", signals, meta };
-    }
+    if (redCount >= 2) { signals.push(`${redCount} red signals → Rest`); return REST(signals, meta); }
+    if (redCount >= 1) { signals.push(`${redCount} red signal → Train Light`); return LIGHT(signals, meta); }
     signals.push("No signals fired → Train");
-    return { label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)", signals, meta };
+    return TRAIN(signals, meta);
   };
 
   const rec = computeRec(days);
