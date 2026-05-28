@@ -179,6 +179,25 @@ const V_GRADES = ["N/A", "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "
 const YDS_GRADES = ["N/A", "5.5", "5.6", "5.7", "5.8", "5.9", "5.10a", "5.10b", "5.10c", "5.10d", "5.11a", "5.11b", "5.11c", "5.11d", "5.12a", "5.12b", "5.12c", "5.12d", "5.13a", "5.13b", "5.13c", "5.13d", "5.14a", "5.14b", "5.14c", "5.14d", "5.15a", "5.15b", "5.15c", "5.15d"];
 const FREQ_OPTIONS = [1, 2, 3, 4, 5, 6, 7];
 
+// Plain-English explanations for each rec path. Keys match the `reasonKey`
+// returned by computeRec. Authored copy — keep these in sync with model rules.
+const REASON_TEXT = {
+  sleptUnder6: "You slept less than 6 hours last night. Your recovery is impaired and you're at higher risk of injury. Skip today to maximize session quality for next time.",
+  recentStrongZero: "You felt pretty weak yesterday, so a rest day is in order!",
+  overCumLoad: "Don't cram all your training into a short window during the week. You've accumulated some fatigue in the last couple days, so rest up.",
+  twoAdjacentHard: "Two back to back training days means it's time for rest. If you slept great you could train light today, but otherwise take it easy.",
+  twoAdjacentHardSoftened: "You trained back to back days, but your sleep average is high AND you slept great last night. Train light today or rest up and get after it tomorrow.",
+  overLoadCap: "You've trained a lot in the last few days, get some rest before you have another training day.",
+  reds_lowSleep_lowStrong: "Your sleep average is low and you've been feeling weak. Rest today to avoid frustration or injury.",
+  reds_lowSleep_fourStrongDays: "You're not getting enough sleep. Sometimes when we feel strong on low sleep, our connective tissue is doing so much lifting that we're more likely to get hurt. If you're this strong on low sleep, think of what you'll accomplish with better rest!",
+  reds_lowStrong_fourStrongDays: "You were feeling great recently, but then things dropped off. Seems like you got psyched, climbed a lot, and now are a little fatigued. Rest up and you'll be back at it in no time.",
+  reds_all_three: "You're doing a lot on low sleep. Ease up and rest before you get hurt.",
+  lowSleep_only: "You're not sleeping much, so train light today.",
+  lowStrong_only: "You're sleeping well but you haven't been feeling good on the wall. Take it easier and train light today.",
+  fourStrongDays_only: "You've been having consistently strong sessions. As odd as it may sound, sustained good performance stresses connective tissue even when nothing feels wrong. Ease up today before something tweaks so you can keep making gains.",
+  none: "You're resting well and you're not overly fatigued. Get after it.",
+};
+
 const VOLUME_TIERS = [
   { id: "low",       label: "Low",       multiplier: 0.5   },
   { id: "med_low",   label: "Med-Low",   multiplier: 0.875 },
@@ -2707,6 +2726,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [athleteTab, setAthleteTab] = useState("plan");
   const [showSleepPrompt, setShowSleepPrompt] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  // Toggles for the "Why?" explanation links on the banner.
+  const [showWhyToday, setShowWhyToday] = useState(false);
+  const [showWhyTomorrow, setShowWhyTomorrow] = useState(false);
   const [showVolumeModal, setShowVolumeModal] = useState(false);
   const [partialDayLog, setPartialDayLog] = useState(null);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
@@ -2741,6 +2763,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     weekly_frequency: "",
   });
   const [surveySaving, setSurveySaving] = useState(false);
+  // Intro explainer modal. Auto-shows on first login (when has_recoverbuddy
+  // is true, survey is done, seen_intro is false). Also reopenable via the
+  // "How does RecoverBuddy work?" button on the Welcome card.
+  const INTRO_TEXT = "RecoverBuddy uses your sleep and strength logs to issue you a training allowance. As you train throughout the week, you use up that allowance. As you rest, you earn it back. RecoverBuddy will adapt to how you're feeling, suggesting more or less training based on how things are going. In the short term, this means consistent, good sessions. In the long term, this means you'll be able to ramp up to higher volume without rushing into it. Log every day for the best results. Recover, buddy!!";
+  const needsIntro = hasRecoverBuddy && !needsSurvey && athlete?.seen_intro === false;
+  const [introOpen, setIntroOpen] = useState(needsIntro);
+  const dismissIntro = async () => {
+    setIntroOpen(false);
+    if (athlete?.seen_intro === false) {
+      const { error } = await sb.from("athletes").update({ seen_intro: true }).eq("id", athlete.id);
+      if (error) console.warn("[intro] failed to mark seen:", error);
+    }
+  };
+
   // Feedback form state (RecoverBuddy only). Permanent on page, no dismiss.
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
@@ -2820,6 +2856,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (catchupDismissed) return;
     if (catchupDays) return; // already shown
     if (surveyOpen) return; // wait until survey is dismissed first
+    if (introOpen) return;  // wait until intro is dismissed first
     // RecoverBuddy users always see the catch-up prompt. Other athletes
     // are gated to the test allowlist for now.
     const catchupAthletes = ["bzmmql6", "8ygufmv", "test001"];
@@ -2890,7 +2927,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             setCatchupDays(cal);
           });
       });
-  }, [athlete?.id, catchupDismissed, catchupDays, surveyOpen]);
+  }, [athlete?.id, catchupDismissed, catchupDays, surveyOpen, introOpen]);
 
   const cycleCatchupDay = (idx) => {
     setCatchupDays(prev => {
@@ -3083,15 +3120,32 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const twoAdjacentHard = priorLoads.length === 2 && priorLoads[0] >= 2 && priorLoads[1] >= 2;
       const wellSlept = avgSleep > 8 && (lastNightSleep !== null && lastNightSleep >= 8);
 
+      // Determine reasonKey for plain-English explanation lookup.
+      const tag = (rec, key) => ({ ...rec, reasonKey: key });
       // ── Decision order ──────────────────────────────────────────────────
-      if (sleptUnder6) return REST;
-      if (recentStrongZero) return REST;                    // felt weak last session
-      if (overCumLoad) return REST;
-      if (twoAdjacentHard) return (wellSlept && twoStrongTwos) ? LIGHT_OR_REST : REST;
-      if (overLoadCap) return REST;
-      if (redCount >= 2) return REST;
-      if (redCount >= 1) return LIGHT;
-      return TRAIN;
+      if (sleptUnder6) return tag(REST, "sleptUnder6");
+      if (recentStrongZero) return tag(REST, "recentStrongZero");
+      if (overCumLoad) return tag(REST, "overCumLoad");
+      if (twoAdjacentHard) {
+        if (wellSlept && twoStrongTwos) return tag(LIGHT_OR_REST, "twoAdjacentHardSoftened");
+        return tag(REST, "twoAdjacentHard");
+      }
+      if (overLoadCap) return tag(REST, "overLoadCap");
+      if (redCount >= 2) {
+        // Two or three reds — pick the specific combo key.
+        if (lowSleep && lowStrong && fourStrongDays) return tag(REST, "reds_all_three");
+        if (lowSleep && lowStrong) return tag(REST, "reds_lowSleep_lowStrong");
+        if (lowSleep && fourStrongDays) return tag(REST, "reds_lowSleep_fourStrongDays");
+        if (lowStrong && fourStrongDays) return tag(REST, "reds_lowStrong_fourStrongDays");
+        return tag(REST, "reds_lowSleep_lowStrong"); // fallback
+      }
+      if (redCount >= 1) {
+        if (lowSleep) return tag(LIGHT, "lowSleep_only");
+        if (lowStrong) return tag(LIGHT, "lowStrong_only");
+        if (fourStrongDays) return tag(LIGHT, "fourStrongDays_only");
+        return tag(LIGHT, "lowSleep_only"); // fallback
+      }
+      return tag(TRAIN, "none");
     };
 
     // Today's rec is computed against the 7 calendar days ENDING YESTERDAY.
@@ -3120,7 +3174,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     })();
     const tomorrowWindow = buildCalendarWindow(logs, tomorrowStr, 7);
     const tomorrowRec = todayLogged ? computeRec(tomorrowWindow) : null;
-    let tomorrow = tomorrowRec ? { label: tomorrowRec.label + " (May change based on tonight's sleep)", color: tomorrowRec.color } : null;
+    let tomorrow = tomorrowRec ? { label: tomorrowRec.label + " (May change based on tonight's sleep)", color: tomorrowRec.color, reasonKey: tomorrowRec.reasonKey } : null;
 
     // ── Train Light loop forecast ──────────────────────────────────────────
     // If today's rec is Train Light and the model predicts the next two
@@ -3194,7 +3248,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     };
 
     console.log("[recomputeFatigue] today:", todayRec.label, "display:", displayLabel, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
-    setFatigueRec({ label: displayLabel, color: displayColor, bg: displayBg, tomorrow, todayLogged, dashboard });
+    setFatigueRec({ label: displayLabel, color: displayColor, bg: displayBg, tomorrow, todayLogged, dashboard, reasonKey: todayRec.reasonKey, tomorrowReasonKey: tomorrowRec?.reasonKey });
   }, [athlete?.id, athlete?.volume_tier]);
 
   useEffect(() => {
@@ -3234,6 +3288,21 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       )}
 
       {/* Sleep prompt modal */}
+      {introOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 860, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflowY: "auto" }}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
+            <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 14 }}>How <span style={{ color: C.orange }}>RecoverBuddy</span> works</div>
+            <div style={{ fontSize: 14, color: C.white, lineHeight: 1.65, marginBottom: 22 }}>
+              {INTRO_TEXT}
+            </div>
+            <button onClick={dismissIntro}
+              style={{ width: "100%", ...mono, fontSize: 12, padding: "14px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", fontWeight: 600 }}>
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {surveyOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 850, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflowY: "auto" }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460, marginTop: 40, marginBottom: 40 }}>
@@ -3426,6 +3495,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           const { label, color, bg } = fLogs;
           const isLightLabel = label === "Train Light" || label === "Train Light or Rest";
           const subtitle = isLightLabel ? "Pick just 2 exercises to complete, not a full day." : null;
+          const todayReason = fLogs.reasonKey && !fLogs.todayLogged ? REASON_TEXT[fLogs.reasonKey] : null;
+          const tomorrowReason = fLogs.tomorrow?.reasonKey ? REASON_TEXT[fLogs.tomorrow.reasonKey] : null;
           return (
             <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
               {/* Title row: date + recommendation */}
@@ -3438,15 +3509,42 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   "Train Light" means pick two exercises to complete, rather than a whole day of training. You can finish the day another time.
                 </div>
               )}
+              {/* Why? toggle for today's rec */}
+              {todayReason && (
+                <div style={{ marginBottom: 10 }}>
+                  <button onClick={e => { e.stopPropagation(); setShowWhyToday(v => !v); }}
+                    style={{ ...mono, fontSize: 11, padding: "4px 10px", background: "none", border: `1px solid ${color}55`, borderRadius: 4, color, cursor: "pointer" }}>
+                    {showWhyToday ? "Hide" : "Why?"}
+                  </button>
+                  {showWhyToday && (
+                    <div style={{ marginTop: 8, fontSize: 13, color: C.white, lineHeight: 1.55, padding: "10px 12px", background: `${color}10`, borderRadius: 6, borderLeft: `2px solid ${color}` }}>
+                      {todayReason}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Divider */}
               <div style={{ borderTop: `1px solid ${color}22`, paddingTop: 10, marginTop: isLightLabel ? 0 : 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                   <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
                   {fLogs.tomorrow
-                    ? <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                    ? <>
+                        <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                        {tomorrowReason && (
+                          <button onClick={e => { e.stopPropagation(); setShowWhyTomorrow(v => !v); }}
+                            style={{ ...mono, fontSize: 10, padding: "2px 8px", background: "none", border: `1px solid ${fLogs.tomorrow.color}55`, borderRadius: 4, color: fLogs.tomorrow.color, cursor: "pointer" }}>
+                            {showWhyTomorrow ? "Hide" : "Why?"}
+                          </button>
+                        )}
+                      </>
                     : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
                   }
                 </div>
+                {tomorrowReason && showWhyTomorrow && (
+                  <div style={{ marginBottom: 10, fontSize: 13, color: C.white, lineHeight: 1.55, padding: "10px 12px", background: `${fLogs.tomorrow.color}10`, borderRadius: 6, borderLeft: `2px solid ${fLogs.tomorrow.color}` }}>
+                    {tomorrowReason}
+                  </div>
+                )}
 
                 <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginBottom: 12 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
 
@@ -3509,9 +3607,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, marginBottom: 8 }}>
                 Welcome to <span style={{ color: C.orange }}>RecoverBuddy</span> <span style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 0.5 }}>(beta)</span>
               </div>
-              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 12 }}>
                 Log each day and RecoverBuddy will make a recommendation for your training. Based on your sleep, load, and strength logs, RecoverBuddy will say Rest, Train Light, or Train. If you log consistently, RecoverBuddy will get better at making recommendations. Thanks for your help! I hope you like RecoverBuddy.
               </div>
+              <button onClick={() => setIntroOpen(true)}
+                style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.orange}`, background: "rgba(224,122,58,0.08)", color: C.orange, cursor: "pointer", fontWeight: 500 }}>
+                How does RecoverBuddy work?
+              </button>
             </div>
             <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
               <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6, lineHeight: 1.4 }}>Do you have thoughts for improving the platform? Additional features? Bugs?</div>
@@ -4054,22 +4156,36 @@ function SimulatorPage() {
 
     const meta = { avgSleep, weekLoad, capacity, avgStrong, fourStrongDays, lowSleep, lowStrong, overLoadCap, sleptUnder6, cumLoad, recentStrongZero };
 
-    if (sleptUnder6) { signals.push("Last night sleep < 6h (hard override)"); return REST(signals, meta); }
-    if (recentStrongZero) { signals.push("Most recent strong rating = 0 (felt weak) → Rest"); return REST(signals, meta); }
-    if (overCumLoad) { signals.push(`Cumulative load ${cumLoad} >= 4 uninterrupted by rest → Rest`); return REST(signals, meta); }
+    const tag = (recFn, key) => ({ ...recFn(signals, meta), reasonKey: key });
+    if (sleptUnder6) { signals.push("Last night sleep < 6h (hard override)"); return tag(REST, "sleptUnder6"); }
+    if (recentStrongZero) { signals.push("Most recent strong rating = 0 (felt weak) → Rest"); return tag(REST, "recentStrongZero"); }
+    if (overCumLoad) { signals.push(`Cumulative load ${cumLoad} >= 4 uninterrupted by rest → Rest`); return tag(REST, "overCumLoad"); }
     if (twoAdjacentHard) {
-      if (wellSlept && twoStrongTwos) { signals.push("Two adjacent load>=2 BUT well-slept + two strong=2 → Train Light or Rest"); return LIGHT_OR_REST(signals, meta); }
+      if (wellSlept && twoStrongTwos) { signals.push("Two adjacent load>=2 BUT well-slept + two strong=2 → Train Light or Rest"); return tag(LIGHT_OR_REST, "twoAdjacentHardSoftened"); }
       signals.push("Two adjacent days load >= 2 → Rest");
-      return REST(signals, meta);
+      return tag(REST, "twoAdjacentHard");
     }
-    if (overLoadCap) { signals.push(`overLoadCap: weekLoad ${weekLoad} >= capacity ${capacity.toFixed(2)}`); return REST(signals, meta); }
+    if (overLoadCap) { signals.push(`overLoadCap: weekLoad ${weekLoad} >= capacity ${capacity.toFixed(2)}`); return tag(REST, "overLoadCap"); }
     if (lowStrong) signals.push(`lowStrong: avgStrong ${avgStrong?.toFixed(2)} < 1.0 (red)`);
     if (fourStrongDays) signals.push("fourStrongDays: 4 most-recent ratings all = 2 (red)");
     if (lowSleep) signals.push(`lowSleep: avgSleep ${avgSleep.toFixed(2)} < 6.5 (red)`);
-    if (redCount >= 2) { signals.push(`${redCount} red signals → Rest`); return REST(signals, meta); }
-    if (redCount >= 1) { signals.push(`${redCount} red signal → Train Light`); return LIGHT(signals, meta); }
+    if (redCount >= 2) {
+      signals.push(`${redCount} red signals → Rest`);
+      if (lowSleep && lowStrong && fourStrongDays) return tag(REST, "reds_all_three");
+      if (lowSleep && lowStrong) return tag(REST, "reds_lowSleep_lowStrong");
+      if (lowSleep && fourStrongDays) return tag(REST, "reds_lowSleep_fourStrongDays");
+      if (lowStrong && fourStrongDays) return tag(REST, "reds_lowStrong_fourStrongDays");
+      return tag(REST, "reds_lowSleep_lowStrong");
+    }
+    if (redCount >= 1) {
+      signals.push(`${redCount} red signal → Train Light`);
+      if (lowSleep) return tag(LIGHT, "lowSleep_only");
+      if (lowStrong) return tag(LIGHT, "lowStrong_only");
+      if (fourStrongDays) return tag(LIGHT, "fourStrongDays_only");
+      return tag(LIGHT, "lowSleep_only");
+    }
     signals.push("No signals fired → Train");
-    return TRAIN(signals, meta);
+    return tag(TRAIN, "none");
   };
 
   const rec = computeRec(days);
@@ -4114,7 +4230,12 @@ function SimulatorPage() {
       {rec && (
         <div style={{ background: rec.bg, border: `1px solid ${rec.color}55`, borderRadius: 12, padding: "20px 22px", marginBottom: 12 }}>
           <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TODAY · RECOMMENDED</div>
-          <div style={{ ...bebas, fontSize: 38, letterSpacing: 1, color: rec.color, marginBottom: 12 }}>{rec.label}</div>
+          <div style={{ ...bebas, fontSize: 38, letterSpacing: 1, color: rec.color, marginBottom: 8 }}>{rec.label}</div>
+          {rec.reasonKey && REASON_TEXT[rec.reasonKey] && (
+            <div style={{ fontSize: 13, color: C.white, lineHeight: 1.55, padding: "10px 12px", background: `${rec.color}10`, borderRadius: 6, borderLeft: `2px solid ${rec.color}`, marginBottom: 12 }}>
+              {REASON_TEXT[rec.reasonKey]}
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${rec.color}22` }}>
             <div>
               <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>SLEEP</div>
