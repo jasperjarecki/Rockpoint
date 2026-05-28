@@ -3973,19 +3973,23 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
 // athlete would see in real life.
 function SimulatorPage() {
   const todayStr = localDateStr();
-  // Build 7-day window ending YESTERDAY (matches today's-rec convention).
+  // Build 7-day window: today + 6 prior. Matches the live model exactly.
+  // index 0 = today, index 1 = yesterday, ..., index 6 = 6 days ago.
   const makeBlankDays = () => {
     const days = [];
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 0; i <= 6; i++) {
       const [y, m, d] = todayStr.split("-").map(Number);
       const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - i);
       const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-      days.push({ date: ds, sleep: 8, load: 0, strong: null, strong_na: true });
+      // Today defaults to synthetic-rest (load 0, sleep 0, strong N/A) just
+      // like the live model's pre-logging state. Athletes can edit it.
+      days.push({ date: ds, sleep: i === 0 ? 0 : 8, load: 0, strong: null, strong_na: true });
     }
-    return days;  // index 0 = yesterday, 6 = 7 days ago
+    return days;
   };
-  // Persist between sessions via localStorage.
-  const STORAGE_KEY = "rp_simulator_v1";
+  // Persist between sessions. Bumped key suffix because the shape changed
+  // (today row added, oldest day removed).
+  const STORAGE_KEY = "rp_simulator_v2";
   const [tier, setTier] = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY))?.tier || DEFAULT_VOLUME_TIER; } catch { return DEFAULT_VOLUME_TIER; }
   });
@@ -4011,10 +4015,9 @@ function SimulatorPage() {
     const LIGHT_OR_REST = (s, meta) => ({ label: "Train Light or Rest", color: C.orange, bg: "rgba(224,122,58,0.08)", signals: s, meta });
     const TRAIN = (s, meta) => ({ label: "Train", color: "#3d9e7a", bg: "rgba(61,158,122,0.08)", signals: s, meta });
 
-    // In the simulator, every row the coach enters is a "prior" day (the days[]
-    // array is yesterday-first). The live model has today at index 0; here the
-    // coach is editing the prior days directly, so prior = the full array.
-    const prior = windowLogs;
+    // Matches the live model. windowLogs[0] = today (synthetic-rest if unlogged).
+    // Prior days (yesterday onward) start at index 1.
+    const prior = windowLogs.slice(1);
     const recent7 = windowLogs.slice(0, 7);
     const avgSleep = recent7.reduce((s, l) => s + (l.sleep || 0), 0) / recent7.length;
     const weekLoad = recent7.reduce((s, l) => s + (l.load || 0), 0);
@@ -4070,6 +4073,12 @@ function SimulatorPage() {
   };
 
   const rec = computeRec(days);
+  // Tomorrow's rec: shift the window forward by one day. Tomorrow becomes
+  // index 0 (synthetic-rest), today shifts to index 1, etc. Last (6 days ago)
+  // rolls off the back.
+  const tomorrowWindow = [{ sleep: 0, load: 0, strong: null, strong_na: true }, ...days.slice(0, 6)];
+  const tomorrowRec = computeRec(tomorrowWindow);
+
   const dashSleep = days.reduce((s, l) => s + (l.sleep || 0), 0) / days.length;
   const dashLoad = days.reduce((s, l) => s + (l.load || 0), 0);
   const dashStrongRatings = days.filter(l => l.strong != null).map(l => l.strong);
@@ -4086,7 +4095,7 @@ function SimulatorPage() {
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "32px 20px", width: "100%" }}>
       <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 6 }}>Simulator</div>
       <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 24, lineHeight: 1.6 }}>
-        Test the fatigue model with hypothetical day data. Local-only — nothing here is saved to the database. Edit any day, see the rec and which signals fire.
+        Test the fatigue model with hypothetical day data. Local-only — nothing here is saved to the database. Edit any day below; the banner above mirrors what the athlete sees.
       </div>
 
       {/* Volume tier + Reset */}
@@ -4101,15 +4110,48 @@ function SimulatorPage() {
         <button onClick={reset} style={{ ...mono, fontSize: 10, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer", marginTop: 16 }}>Reset</button>
       </div>
 
-      {/* Day inputs — index 0 = yesterday */}
+      {/* Banner at top — today's rec + dashboard */}
+      {rec && (
+        <div style={{ background: rec.bg, border: `1px solid ${rec.color}55`, borderRadius: 12, padding: "20px 22px", marginBottom: 12 }}>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TODAY · RECOMMENDED</div>
+          <div style={{ ...bebas, fontSize: 38, letterSpacing: 1, color: rec.color, marginBottom: 12 }}>{rec.label}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${rec.color}22` }}>
+            <div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>SLEEP</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashSleep.toFixed(1)}h</div>
+            </div>
+            <div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>LOAD</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashLoad}</div>
+            </div>
+            <div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>STRENGTH</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashStrongLabel}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tomorrow rec */}
+      {tomorrowRec && (
+        <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 1 }}>TOMORROW</div>
+          <div style={{ ...mono, fontSize: 12, color: tomorrowRec.color, fontWeight: 600 }}>
+            {tomorrowRec.label} (May change based on tonight's sleep)
+          </div>
+        </div>
+      )}
+
+      {/* Day inputs — index 0 = today */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 8, letterSpacing: 1 }}>LAST 7 DAYS (newest first)</div>
+        <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 8, letterSpacing: 1 }}>WINDOW (today + 6 prior, newest first)</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {days.map((d, i) => {
-            const label = i === 0 ? "Yesterday" : `${i + 1} days ago`;
+            const label = i === 0 ? "Today" : i === 1 ? "Yesterday" : `${i} days ago`;
+            const isToday = i === 0;
             return (
-              <div key={i} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ ...mono, fontSize: 10, color: C.muted, minWidth: 90 }}>{label}</div>
+              <div key={i} style={{ background: isToday ? "rgba(224,122,58,0.05)" : C.gray, border: `1px solid ${isToday ? C.orange : C.border}55`, borderRadius: 8, padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ ...mono, fontSize: 10, color: isToday ? C.orange : C.muted, minWidth: 90, fontWeight: isToday ? 600 : 400 }}>{label}</div>
                 <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ ...mono, fontSize: 10, color: C.muted }}>SLEEP</span>
                   <input type="number" step="0.5" min="0" max="14" value={d.sleep}
@@ -4143,33 +4185,10 @@ function SimulatorPage() {
         </div>
       </div>
 
-      {/* Banner — same visual as athlete view */}
-      {rec && (
-        <div style={{ background: rec.bg, border: `1px solid ${rec.color}55`, borderRadius: 12, padding: "20px 22px", marginBottom: 16 }}>
-          <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>RECOMMENDED</div>
-          <div style={{ ...bebas, fontSize: 38, letterSpacing: 1, color: rec.color, marginBottom: 12 }}>{rec.label}</div>
-          {/* Dashboard */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${rec.color}22` }}>
-            <div>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>SLEEP</div>
-              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashSleep.toFixed(1)}h</div>
-            </div>
-            <div>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>LOAD</div>
-              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashLoad}</div>
-            </div>
-            <div>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>STRENGTH</div>
-              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashStrongLabel}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Diagnostic readout */}
       {rec && (
         <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px" }}>
-          <div style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 1, marginBottom: 8 }}>SIGNALS</div>
+          <div style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 1, marginBottom: 8 }}>SIGNALS (TODAY)</div>
           <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
             {rec.signals.length === 0 && <div>(no signal trace)</div>}
             {rec.signals.map((s, i) => <div key={i}>· {s}</div>)}
