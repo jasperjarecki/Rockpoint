@@ -3733,10 +3733,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             const recWindow = [{ ...window7[0], load: 0, strong: null, strong_na: true }, ...window7.slice(1)];
             const prior7 = recWindow.slice(1);
 
+            // For today: if already logged, use actual load rather than optimizing
+            const actualTodayLog = offset === 0 ? simHistory.find(l => l.date === dateStr && l.load != null) : null;
+
             // Try load=2 (Train), then load=1 (Light), then load=0 (Rest)
             let chosenLoad = 0;
             let chosenLabel = "Rest";
-            for (const tryLoad of [2, 1, 0]) {
+            if (actualTodayLog) {
+              chosenLoad = actualTodayLog.load;
+              chosenLabel = chosenLoad === 0 ? "Rest" : chosenLoad === 1 ? "Train Light" : "Train";
+            } else for (const tryLoad of [2, 1, 0]) {
               if (tryLoad === 0) { chosenLoad = 0; chosenLabel = "Rest"; break; }
               // Simulate window with this load at index 0
               const simWindow = [{ date: dateStr, sleep: allTimeAvgSleep, load: tryLoad, strong: 1, strong_na: false }, ...recWindow.slice(1)];
@@ -3765,18 +3771,21 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 10 }}>
                 {forecastDays.map((fd, i) => {
                   const isToday = i === 0;
+                  const isTomorrow = i === 1;
                   const icon = fd.load === 0 ? "🛌" : "🚂";
                   const isLight = fd.label === "Train Light";
+                  const topLabel = isToday ? "Today" : isTomorrow ? "Tomorrow" : null;
                   return (
                     <div key={i} style={{
                       aspectRatio: "1",
                       borderRadius: 8,
                       background: fd.load === 0 ? "rgba(255,255,255,0.04)" : isLight ? "rgba(224,122,58,0.12)" : "rgba(61,158,122,0.15)",
                       border: `1px solid ${isToday ? C.orange : fd.load === 0 ? C.border : isLight ? "rgba(224,122,58,0.4)" : "rgba(61,158,122,0.4)"}`,
-                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: 2
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, padding: 2
                     }}>
+                      {topLabel && <div style={{ ...mono, fontSize: 7, color: isToday ? C.orange : C.muted, lineHeight: 1 }}>{topLabel}</div>}
                       <div style={{ ...mono, fontSize: 8, color: isToday ? C.orange : C.muted }}>{fd.dayOfWeek}</div>
-                      <div style={{ fontSize: 18, lineHeight: 1 }}>{icon}</div>
+                      <div style={{ fontSize: 16, lineHeight: 1 }}>{icon}</div>
                       {isLight && <div style={{ ...mono, fontSize: 7, color: C.orange, lineHeight: 1 }}>Light</div>}
                     </div>
                   );
