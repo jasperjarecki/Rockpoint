@@ -3566,7 +3566,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
               {/* Title row: date + recommendation */}
               <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1, marginBottom: 4 }}>
-                {recIcon(label)} {dateLabel}: {label}
+                {dateLabel}: {recIcon(label)} {label}
               </div>
               {/* Subtitle for Train Light variants */}
               {isLightLabel && (
@@ -3779,14 +3779,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                       width: 72,
                       height: 80,
                       borderRadius: 8,
-                      background: fd.load === 0 ? "rgba(255,255,255,0.04)" : isLight ? "rgba(224,122,58,0.12)" : "rgba(61,158,122,0.15)",
-                      border: `1px solid ${isToday ? C.orange : fd.load === 0 ? C.border : isLight ? "rgba(224,122,58,0.4)" : "rgba(61,158,122,0.4)"}`,
+                      background: fd.load === 0 ? "rgba(255,255,255,0.04)" : "rgba(61,158,122,0.15)",
+                      border: `1px solid ${isToday ? C.orange : fd.load === 0 ? C.border : "rgba(61,158,122,0.4)"}`,
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: 4
                     }}>
                       {topLabel && <div style={{ ...mono, fontSize: 8, color: isToday ? C.orange : C.muted, lineHeight: 1 }}>{topLabel}</div>}
                       <div style={{ ...mono, fontSize: 9, color: isToday ? C.orange : C.muted }}>{fd.dayOfWeek}</div>
                       <div style={{ fontSize: 20, lineHeight: 1 }}>{icon}</div>
-                      {isLight && <div style={{ ...mono, fontSize: 8, color: C.orange, lineHeight: 1 }}>Light</div>}
+                      {isLight && <div style={{ ...mono, fontSize: 8, color: C.black, lineHeight: 1 }}>Light</div>}
                     </div>
                   );
                 })}
@@ -3802,7 +3802,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         {hasRecoverBuddy && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
             <button onClick={() => setIntroOpen(true)}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(224,122,58,0.08)", color: C.orange, cursor: "pointer" }}>
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
               How does RecoverBuddy work?
             </button>
             <button onClick={() => setShowFeedback(true)}
