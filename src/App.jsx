@@ -3768,7 +3768,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           return (
             <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px", marginBottom: 16 }}>
               <div style={{ ...bebas, fontSize: 16, letterSpacing: 1, marginBottom: 12, color: C.white }}>7-Day Forecast</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 10, WebkitOverflowScrolling: "touch" }}>
                 {forecastDays.map((fd, i) => {
                   const isToday = i === 0;
                   const isTomorrow = i === 1;
@@ -3777,16 +3777,18 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   const topLabel = isToday ? "Today" : isTomorrow ? "Tomorrow" : null;
                   return (
                     <div key={i} style={{
-                      aspectRatio: "1",
+                      flexShrink: 0,
+                      width: 72,
+                      height: 80,
                       borderRadius: 8,
                       background: fd.load === 0 ? "rgba(255,255,255,0.04)" : isLight ? "rgba(224,122,58,0.12)" : "rgba(61,158,122,0.15)",
                       border: `1px solid ${isToday ? C.orange : fd.load === 0 ? C.border : isLight ? "rgba(224,122,58,0.4)" : "rgba(61,158,122,0.4)"}`,
-                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, padding: 2
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: 4
                     }}>
-                      {topLabel && <div style={{ ...mono, fontSize: 7, color: isToday ? C.orange : C.muted, lineHeight: 1 }}>{topLabel}</div>}
-                      <div style={{ ...mono, fontSize: 8, color: isToday ? C.orange : C.muted }}>{fd.dayOfWeek}</div>
-                      <div style={{ fontSize: 16, lineHeight: 1 }}>{icon}</div>
-                      {isLight && <div style={{ ...mono, fontSize: 7, color: C.orange, lineHeight: 1 }}>Light</div>}
+                      {topLabel && <div style={{ ...mono, fontSize: 8, color: isToday ? C.orange : C.muted, lineHeight: 1 }}>{topLabel}</div>}
+                      <div style={{ ...mono, fontSize: 9, color: isToday ? C.orange : C.muted }}>{fd.dayOfWeek}</div>
+                      <div style={{ fontSize: 20, lineHeight: 1 }}>{icon}</div>
+                      {isLight && <div style={{ ...mono, fontSize: 8, color: C.orange, lineHeight: 1 }}>Light</div>}
                     </div>
                   );
                 })}
