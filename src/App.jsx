@@ -3316,7 +3316,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 2 }}>
           {showRecoverBuddyWordmark
-            ? <>RECOVER<span style={{ color: C.orange }}>BUDDY</span></>
+            ? <>🌙 RECOVER<span style={{ color: C.orange }}>BUDDY</span></>
             : <>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></>}
         </div>
         <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
@@ -3561,11 +3561,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           const subtitle = isLightLabel ? "Pick just 2 exercises to complete, not a full day." : null;
           const todayReason = fLogs.reasonKey && !fLogs.todayLogged ? REASON_TEXT[fLogs.reasonKey] : null;
           const tomorrowReason = fLogs.tomorrow?.reasonKey ? REASON_TEXT[fLogs.tomorrow.reasonKey] : null;
+          const recIcon = (lbl) => (lbl === "Rest" || lbl === "Rested") ? "🛌" : "🚂";
           return (
             <div onClick={() => setShowVolumeModal(true)} style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
               {/* Title row: date + recommendation */}
               <div style={{ ...bebas, fontSize: 22, color, letterSpacing: 1, marginBottom: 4 }}>
-                {dateLabel}: {label}
+                {recIcon(label)} {dateLabel}: {label}
               </div>
               {/* Subtitle for Train Light variants */}
               {isLightLabel && (
@@ -3589,19 +3590,19 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               )}
               {/* Divider */}
               <div style={{ borderTop: `1px solid ${color}22`, paddingTop: 10, marginTop: isLightLabel ? 0 : 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>Tomorrow:</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  <div style={{ ...mono, fontSize: 12, color: C.muted, fontWeight: 600 }}>Tomorrow:</div>
                   {fLogs.tomorrow
                     ? <>
-                        <div style={{ ...mono, fontSize: 11, color: fLogs.tomorrow.color, fontWeight: 600 }}>{fLogs.tomorrow.label}</div>
+                        <div style={{ fontSize: 15, color: fLogs.tomorrow.color, fontWeight: 700 }}>{recIcon(fLogs.tomorrow.label)} {fLogs.tomorrow.label}</div>
                         {tomorrowReason && (
                           <button onClick={e => { e.stopPropagation(); setShowWhyTomorrow(v => !v); }}
-                            style={{ ...mono, fontSize: 10, padding: "2px 8px", background: "none", border: `1px solid ${fLogs.tomorrow.color}55`, borderRadius: 4, color: fLogs.tomorrow.color, cursor: "pointer" }}>
+                            style={{ ...mono, fontSize: 11, padding: "4px 12px", background: "none", border: `1px solid ${fLogs.tomorrow.color}55`, borderRadius: 4, color: fLogs.tomorrow.color, cursor: "pointer" }}>
                             {showWhyTomorrow ? "Hide" : "Why?"}
                           </button>
                         )}
                       </>
-                    : <div style={{ ...mono, fontSize: 11, color: C.muted }}>TBD — log today first</div>
+                    : <div style={{ fontSize: 13, color: C.muted }}>TBD — log today first</div>
                   }
                 </div>
                 {tomorrowReason && showWhyTomorrow && (
@@ -3657,17 +3658,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setShowCalendar(true)}
               style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-              📅 Calendar
+              📅 View Train/Rest History
             </button>
-            <button onClick={() => setShowForecast(v => !v)}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${showForecast ? C.orange : C.border}`, background: showForecast ? "rgba(61,158,122,0.08)" : "none", color: showForecast ? C.orange : C.muted, cursor: "pointer" }}>
-              📆 {showForecast ? "Hide forecast" : "View 7-day forecast (Will adapt to your logs)"}
-            </button>
+
           </div>
         )}
 
         {/* 7-day forecast */}
-        {showForecast && fatigueLogs.length > 0 && (() => {
+        {fatigueLogs.length > 0 && (() => {
           // All-time avg sleep from real logs
           const realLogs = fatigueLogs.filter(l => l.sleep != null && l.sleep > 0);
           const allTimeAvgSleep = realLogs.length > 0
