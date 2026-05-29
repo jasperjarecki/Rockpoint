@@ -2301,7 +2301,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     // version divided by avgSleep alone, ignoring the tier).
     const volumeCoeff = getVolumeMultiplier(athlete);
     const capacity = avgSleep * volumeCoeff;
-    const overLoadCap = weekLoad >= capacity;
+    const overLoadCap = weekLoad > capacity;
     const lowSleep = avgSleep < 6.5;
     // strong=0 = weak, strong=1 = standard, strong=2 = notably good. So
     // "below normal" means avg < 1.0.
@@ -2732,6 +2732,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showWhyTomorrow, setShowWhyTomorrow] = useState(false);
   const [showVolumeModal, setShowVolumeModal] = useState(false);
   const [tierUpBanner, setTierUpBanner] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
   const [partialDayLog, setPartialDayLog] = useState(null);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
@@ -2783,6 +2784,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackJustSent, setFeedbackJustSent] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const submitFeedback = async () => {
     const msg = feedbackText.trim();
     if (!msg) return;
@@ -2792,7 +2794,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (error) { console.warn("[feedback] error:", error); alert("Sorry, that didn't go through. Try again?"); return; }
     setFeedbackText("");
     setFeedbackJustSent(true);
-    setTimeout(() => setFeedbackJustSent(false), 4000);
+    setTimeout(() => { setFeedbackJustSent(false); setShowFeedback(false); }, 1800);
   };
   const submitSurvey = async () => {
     if (!surveyAnswers.age || !surveyAnswers.weekly_frequency) {
@@ -3103,10 +3105,18 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       //   - last night sleep < 8h → Rest
       //   - last night sleep >= 8h → Train Light
       // Two consecutive training-day strong=0 → Rest regardless of sleep.
-      const recentTrainingLogs = windowLogs.filter(l => (l.load ?? 0) > 0 && l.strong != null);
-      const mostRecentStrong = recentTrainingLogs.length > 0 ? recentTrainingLogs[0].strong : null;
+      // Recency guard: strong=0 only fires if the most recent training day
+      // is within 2 positions of yesterday (at most 1 rest day since last session).
+      const recentEnoughTraining = (() => {
+        for (let i = 0; i < Math.min(2, prior.length); i++) {
+          if ((prior[i]?.load ?? 0) > 0 && prior[i]?.strong != null) return prior[i];
+        }
+        return null;
+      })();
+      const mostRecentStrong = recentEnoughTraining ? recentEnoughTraining.strong : null;
       const recentStrongZero = mostRecentStrong === 0;
-      const twoConsecStrongZero = recentTrainingLogs.length >= 2 && recentTrainingLogs[0].strong === 0 && recentTrainingLogs[1].strong === 0;
+      const priorTraining = prior.filter(l => (l.load ?? 0) > 0 && l.strong != null);
+      const twoConsecStrongZero = priorTraining.length >= 2 && priorTraining[0].strong === 0 && priorTraining[1].strong === 0;
 
       // fiveStrongDays: 5 most-recent TRAINING day (load>0) strong ratings all = 2,
       // within last 14 calendar days. Rest days are skipped when counting.
@@ -3121,7 +3131,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const twoStrongTwos = recentStrongRatings.length >= 2 && recentStrongRatings[0] === 2 && recentStrongRatings[1] === 2;
 
       const capacity = avgSleep * volumeCoeff;
-      const overLoadCap = weekLoad >= capacity;
+      const overLoadCap = weekLoad > capacity;
       const lowSleep = avgSleep < 6.5;
       const lowStrong = avgStrong !== null && avgStrong < 1.0;
       const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
@@ -3544,7 +3554,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           if (!fLogs) return (
             <div onClick={() => setShowVolumeModal(true)} style={{ marginBottom: 16, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", cursor: "pointer" }}>
               <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 6 }}>{dateLabel}</div>
-              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
             </div>
           );
           const { label, color, bg } = fLogs;
@@ -3601,8 +3610,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   </div>
                 )}
 
-                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginBottom: 12 }}>Tap here to log daily volume data so we can make good training recommendations.</div>
-
                 {/* 7-day stat dashboard */}
                 {fLogs.dashboard && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${color}22` }}>
@@ -3647,47 +3654,180 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
         {/* Consistency calendar modal */}
         {fatigueLogs.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setShowCalendar(true)}
               style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
               📅 Calendar
             </button>
+            <button onClick={() => setShowForecast(v => !v)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${showForecast ? C.orange : C.border}`, background: showForecast ? "rgba(61,158,122,0.08)" : "none", color: showForecast ? C.orange : C.muted, cursor: "pointer" }}>
+              📆 {showForecast ? "Hide forecast" : "View 7-day forecast (Will adapt to your logs)"}
+            </button>
           </div>
         )}
 
-        {/* RecoverBuddy welcome + feedback (permanent, no dismiss) */}
-        {hasRecoverBuddy && (
-          <>
-            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
-              <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, marginBottom: 8 }}>
-                Welcome to <span style={{ color: C.orange }}>RecoverBuddy</span> <span style={{ ...mono, fontSize: 10, color: C.muted, letterSpacing: 0.5 }}>(beta)</span>
+        {/* 7-day forecast */}
+        {showForecast && fatigueLogs.length > 0 && (() => {
+          // All-time avg sleep from real logs
+          const realLogs = fatigueLogs.filter(l => l.sleep != null && l.sleep > 0);
+          const allTimeAvgSleep = realLogs.length > 0
+            ? realLogs.reduce((s, l) => s + l.sleep, 0) / realLogs.length
+            : 7;
+          const volCoeff = getVolumeMultiplier(athlete);
+          const cap = allTimeAvgSleep * volCoeff;
+
+          // Seed window: last 6 real days (today at index 0 as synthetic-rest,
+          // prior 6 days from actual logs via buildCalendarWindow).
+          // We re-implement a lightweight version here since buildCalendarWindow
+          // is only available inside recomputeFatigue's closure.
+          const todayStr2 = localDateStr();
+          const buildWindow = (allLogs, anchorDate, nDays) => {
+            const byDate = {};
+            allLogs.forEach(l => { byDate[l.date] = l; });
+            const out = [];
+            const [ay, am, ad] = anchorDate.split("-").map(Number);
+            const anchor = new Date(ay, am - 1, ad);
+            for (let i = 0; i < nDays; i++) {
+              const d = new Date(anchor); d.setDate(d.getDate() - i);
+              const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+              out.push(byDate[ds] || { date: ds, sleep: allTimeAvgSleep, load: 0, strong: null, strong_na: true, _synthetic: true });
+            }
+            return out;
+          };
+
+          // Lightweight overLoadCap check using strict >
+          const forecastOverCap = (window7) => {
+            const wl = window7.reduce((s, l) => s + (l.load || 0), 0);
+            return wl > cap;
+          };
+          const forecastCumLoad = (prior) => {
+            let cl = 0;
+            for (let i = 0; i < prior.length; i++) {
+              const ld = prior[i]?.load ?? 0;
+              if (ld === 0) break;
+              cl += ld;
+              if (cl >= 4) break;
+            }
+            return cl;
+          };
+
+          // Simulate 7 days starting today
+          // historicalLogs: real past logs feeding the initial window
+          const simHistory = [...fatigueLogs]; // real logs, newest-first
+          const forecastDays = [];
+
+          for (let offset = 0; offset < 7; offset++) {
+            const [ty2, tm2, td2] = todayStr2.split("-").map(Number);
+            const dt = new Date(ty2, tm2 - 1, td2); dt.setDate(dt.getDate() + offset);
+            const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+            const dayOfWeek = dt.toLocaleDateString("en-US", { weekday: "short" });
+
+            // Build a combined log array: simulated days so far + real history
+            const combinedLogs = [...forecastDays.map(fd => ({
+              date: fd.date, sleep: allTimeAvgSleep, load: fd.load, strong: fd.load > 0 ? 1 : null, strong_na: fd.load === 0
+            })).reverse(), ...simHistory];
+
+            // Window for this day: today=index0 (synthetic), prior days from combined
+            const window7 = buildWindow(combinedLogs, dateStr, 7);
+            // For rec purposes treat today as synthetic-rest (index 0)
+            const recWindow = [{ ...window7[0], load: 0, strong: null, strong_na: true }, ...window7.slice(1)];
+            const prior7 = recWindow.slice(1);
+
+            // Try load=2 (Train), then load=1 (Light), then load=0 (Rest)
+            let chosenLoad = 0;
+            let chosenLabel = "Rest";
+            for (const tryLoad of [2, 1, 0]) {
+              if (tryLoad === 0) { chosenLoad = 0; chosenLabel = "Rest"; break; }
+              // Simulate window with this load at index 0
+              const simWindow = [{ date: dateStr, sleep: allTimeAvgSleep, load: tryLoad, strong: 1, strong_na: false }, ...recWindow.slice(1)];
+              const simWeekLoad = simWindow.reduce((s, l) => s + (l.load || 0), 0);
+              // Check: would adding this load exceed capacity?
+              if (simWeekLoad > cap) continue;
+              // Check cumulative load (using prior, not including today)
+              const cl = forecastCumLoad(prior7);
+              if (cl >= 4) continue;
+              // Check two adjacent load>=2
+              const p0 = prior7[0]?.load ?? 0;
+              const p1 = prior7[1]?.load ?? 0;
+              if (tryLoad >= 2 && p0 >= 2 && p1 >= 2) continue;
+              if (tryLoad >= 2 && p0 >= 3) continue;
+              chosenLoad = tryLoad;
+              chosenLabel = tryLoad === 2 ? "Train" : "Train Light";
+              break;
+            }
+
+            forecastDays.push({ date: dateStr, dayOfWeek, load: chosenLoad, label: chosenLabel });
+          }
+
+          return (
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px", marginBottom: 16 }}>
+              <div style={{ ...bebas, fontSize: 16, letterSpacing: 1, marginBottom: 12, color: C.white }}>7-Day Forecast</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 10 }}>
+                {forecastDays.map((fd, i) => {
+                  const isToday = i === 0;
+                  const icon = fd.load === 0 ? "🛌" : "🚂";
+                  const isLight = fd.label === "Train Light";
+                  return (
+                    <div key={i} style={{
+                      aspectRatio: "1",
+                      borderRadius: 8,
+                      background: fd.load === 0 ? "rgba(255,255,255,0.04)" : isLight ? "rgba(224,122,58,0.12)" : "rgba(61,158,122,0.15)",
+                      border: `1px solid ${isToday ? C.orange : fd.load === 0 ? C.border : isLight ? "rgba(224,122,58,0.4)" : "rgba(61,158,122,0.4)"}`,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: 2
+                    }}>
+                      <div style={{ ...mono, fontSize: 8, color: isToday ? C.orange : C.muted }}>{fd.dayOfWeek}</div>
+                      <div style={{ fontSize: 18, lineHeight: 1 }}>{icon}</div>
+                      {isLight && <div style={{ ...mono, fontSize: 7, color: C.orange, lineHeight: 1 }}>Light</div>}
+                    </div>
+                  );
+                })}
               </div>
-              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 12 }}>
-                Log each day and RecoverBuddy will make a recommendation for your training. Based on your sleep, load, and strength logs, RecoverBuddy will say Rest, Train Light, or Train. If you log consistently, RecoverBuddy will get better at making recommendations. Thanks for your help! I hope you like RecoverBuddy.
+              <div style={{ ...mono, fontSize: 10, color: C.muted, lineHeight: 1.6 }}>
+                Based on your sleep, strength, and cumulative training load. Subject to change based on your actual logs.
               </div>
-              <button onClick={() => setIntroOpen(true)}
-                style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.orange}`, background: "rgba(224,122,58,0.08)", color: C.orange, cursor: "pointer", fontWeight: 500 }}>
-                How does RecoverBuddy work?
-              </button>
             </div>
-            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
-              <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6, lineHeight: 1.4 }}>Do you have thoughts for improving the platform? Additional features? Bugs?</div>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>Give feedback here and I'll implement it ASAP.</div>
+          );
+        })()}
+
+        {/* RecoverBuddy welcome card — compact */}
+        {hasRecoverBuddy && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+            <button onClick={() => setIntroOpen(true)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.orange}`, background: "rgba(224,122,58,0.08)", color: C.orange, cursor: "pointer" }}>
+              How does RecoverBuddy work?
+            </button>
+            <button onClick={() => setShowFeedback(true)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+              💬 Feedback
+            </button>
+          </div>
+        )}
+
+        {/* Feedback modal */}
+        {showFeedback && ReactDOM.createPortal(
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setShowFeedback(false)}>
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: "12px 12px 0 0", padding: "24px 20px calc(24px + env(safe-area-inset-bottom, 0px))", width: "100%", maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>Feedback</div>
+                <button onClick={() => setShowFeedback(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>Thoughts, bugs, feature requests — I'll implement it ASAP.</div>
               <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
                 placeholder="What's on your mind?"
-                rows={3}
-                style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
+                rows={4} autoFocus
+                style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 12 }} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 {feedbackJustSent
                   ? <div style={{ ...mono, fontSize: 11, color: "#3d9e7a" }}>✓ Sent — thank you!</div>
                   : <div />}
-                <button onClick={submitFeedback} disabled={feedbackSaving || !feedbackText.trim()}
-                  style={{ ...mono, fontSize: 11, padding: "10px 18px", borderRadius: 6, border: "none", background: feedbackText.trim() ? C.orange : C.border, color: "#fff", cursor: (feedbackSaving || !feedbackText.trim()) ? "default" : "pointer", fontWeight: 500 }}>
-                  {feedbackSaving ? "Sending..." : "Submit"}
+                <button onClick={() => { submitFeedback(); }} disabled={feedbackSaving || !feedbackText.trim()}
+                  style={{ ...mono, fontSize: 12, padding: "10px 22px", borderRadius: 6, border: "none", background: feedbackText.trim() ? C.orange : C.gray3, color: "#fff", cursor: (feedbackSaving || !feedbackText.trim()) ? "default" : "pointer", fontWeight: 500 }}>
+                  {feedbackSaving ? "Sending..." : "Send"}
                 </button>
               </div>
             </div>
-          </>
+          </div>,
+          document.body
         )}
         {showCalendar && fatigueLogs.length > 0 && ReactDOM.createPortal(
           <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" }} onClick={() => setShowCalendar(false)}>
@@ -4182,10 +4322,18 @@ function SimulatorPage() {
     const strongLogs = last3.filter(l => l.strong != null);
     const avgStrong = strongLogs.length >= 2 ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
     const ratedAll = recent7.filter(l => l.strong != null);
-    const recentTrainingLogs = windowLogs.filter(l => (l.load ?? 0) > 0 && l.strong != null);
-    const mostRecentStrong = recentTrainingLogs.length > 0 ? recentTrainingLogs[0].strong : null;
+    // Recency guard: strong=0 only fires if the most recent training day
+    // is within 2 positions of yesterday (at most 1 rest day since last session).
+    const recentEnoughTraining = (() => {
+      for (let i = 0; i < Math.min(2, prior.length); i++) {
+        if ((prior[i]?.load ?? 0) > 0 && prior[i]?.strong != null) return prior[i];
+      }
+      return null;
+    })();
+    const mostRecentStrong = recentEnoughTraining ? recentEnoughTraining.strong : null;
     const recentStrongZero = mostRecentStrong === 0;
-    const twoConsecStrongZero = recentTrainingLogs.length >= 2 && recentTrainingLogs[0].strong === 0 && recentTrainingLogs[1].strong === 0;
+    const priorTraining = prior.filter(l => (l.load ?? 0) > 0 && l.strong != null);
+    const twoConsecStrongZero = priorTraining.length >= 2 && priorTraining[0].strong === 0 && priorTraining[1].strong === 0;
     // fiveStrongDays: 5 most-recent training-day strong=2 within all simulator days
     const simTrainingLogs = days.filter(l => (l.load ?? 0) > 0 && l.strong != null);
     const fiveStrongTrainingRatings = simTrainingLogs.slice(0, 5).map(l => l.strong);
@@ -4194,7 +4342,7 @@ function SimulatorPage() {
     const recentStrongRatings = ratedAll.slice(0, 5).map(l => l.strong);
     const twoStrongTwos = recentStrongRatings.length >= 2 && recentStrongRatings[0] === 2 && recentStrongRatings[1] === 2;
     const capacity = avgSleep * volumeCoeff;
-    const overLoadCap = weekLoad >= capacity;
+    const overLoadCap = weekLoad > capacity;
     const lowSleep = avgSleep < 6.5;
     const lowStrong = avgStrong !== null && avgStrong < 1.0;
     const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
@@ -4254,7 +4402,10 @@ function SimulatorPage() {
     return tag(TRAIN, "none");
   };
 
-  const rec = computeRec(days);
+  // For the rec, today (index 0) is treated as synthetic-rest so logging
+  // a session today doesn't retroactively change today's recommendation.
+  const daysForRec = [{ ...days[0], load: 0, strong: null, strong_na: true }, ...days.slice(1)];
+  const rec = computeRec(daysForRec);
   // Tomorrow's rec: shift the window forward by one day. Tomorrow becomes
   // index 0 (synthetic-rest), today shifts to index 1, etc. Last (6 days ago)
   // rolls off the back.
