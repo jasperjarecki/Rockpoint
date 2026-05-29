@@ -195,6 +195,7 @@ const REASON_TEXT = {
   lowSleep_only: "You're not sleeping much, so train light today.",
   lowStrong_only: "You're sleeping well but you haven't been feeling good on the wall. Take it easier and train light today.",
   fourStrongDays_only: "You've been having consistently strong sessions. As odd as it may sound, sustained good performance stresses connective tissue even when nothing feels wrong. Ease up today before something tweaks so you can keep making gains.",
+  fiveStrongDays: "You've been feeling strong at your current volume, so take a rest day and we'll up the volume going forward.",
   none: "You're resting well and you're not overly fatigued. Get after it.",
 };
 
@@ -2294,8 +2295,8 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     const adjacentHardDays = last2Loads.length === 2 && last2Loads[0] >= 2 && last2Loads[1] >= 2;
     // fourStrongDays: 4 most-recent numeric strong ratings all = 2. Rest
     // days don't break the streak. Bounded to within recent7.
-    const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
-    const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
+    const recentStrongTrainingRatings = recent7.filter(l => l.strong != null && (l.load ?? 0) > 0).slice(0, 5).map(l => l.strong);
+    const fourStrongDays = recentStrongTrainingRatings.length === 5 && recentStrongTrainingRatings.every(s => s === 2);
     // Capacity includes volume tier multiplier (fix: previously this
     // version divided by avgSleep alone, ignoring the tier).
     const volumeCoeff = getVolumeMultiplier(athlete);
@@ -2730,6 +2731,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showWhyToday, setShowWhyToday] = useState(false);
   const [showWhyTomorrow, setShowWhyTomorrow] = useState(false);
   const [showVolumeModal, setShowVolumeModal] = useState(false);
+  const [tierUpBanner, setTierUpBanner] = useState(false);
   const [partialDayLog, setPartialDayLog] = useState(null);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
@@ -3048,6 +3050,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // Takes a calendar-aligned window (most-recent first). All math runs on
     // this; synthetic rest days fill unlogged gaps so the windowing is always
     // 7 actual calendar days regardless of logging compliance.
+    // allLogs14: real logs only (no synthetic) from last 14 days, for fiveStrongDays.
+    const allLogs14 = logs.filter(l => {
+      const [ly, lm, ld] = l.date.split("-").map(Number);
+      const [ty2, tm2, td2] = todayStr.split("-").map(Number);
+      const logDate = new Date(ly, lm - 1, ld);
+      const todayDate = new Date(ty2, tm2 - 1, td2);
+      const diff = (todayDate - logDate) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff < 14;
+    });
     const computeRec = (windowLogs) => {
       if (windowLogs.length < 3) return null;
       const REST = { label: "Rest", color: "#c0392b", bg: "rgba(192,57,43,0.08)" };
@@ -3088,19 +3099,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const hasEnoughStrong = strongLogs.length >= 2;
       const avgStrong = hasEnoughStrong ? strongLogs.reduce((s,l)=>s+l.strong,0)/strongLogs.length : null;
 
-      // Most-recent numeric strong rating (anywhere in the window). If it's 0,
-      // the athlete felt weak on their last real session → Rest.
-      const mostRecentStrong = (() => {
-        const rated = recent7.filter(l => l.strong != null);
-        return rated.length > 0 ? rated[0].strong : null;
-      })();
+      // Most-recent numeric strong rating (on a training day). If it's 0:
+      //   - last night sleep < 8h → Rest
+      //   - last night sleep >= 8h → Train Light
+      // Two consecutive training-day strong=0 → Rest regardless of sleep.
+      const recentTrainingLogs = windowLogs.filter(l => (l.load ?? 0) > 0 && l.strong != null);
+      const mostRecentStrong = recentTrainingLogs.length > 0 ? recentTrainingLogs[0].strong : null;
       const recentStrongZero = mostRecentStrong === 0;
+      const twoConsecStrongZero = recentTrainingLogs.length >= 2 && recentTrainingLogs[0].strong === 0 && recentTrainingLogs[1].strong === 0;
 
-      // fourStrongDays: 4 most-recent numeric ratings all = 2.
-      const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 4).map(l => l.strong);
-      const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
+      // fiveStrongDays: 5 most-recent TRAINING day (load>0) strong ratings all = 2,
+      // within last 14 calendar days. Rest days are skipped when counting.
+      const allLogs14Training = allLogs14.filter(l => (l.load ?? 0) > 0 && l.strong != null);
+      const fiveStrongTrainingRatings = allLogs14Training.slice(0, 5).map(l => l.strong);
+      const fiveStrongDays = fiveStrongTrainingRatings.length === 5 && fiveStrongTrainingRatings.every(s => s === 2);
+      // Legacy alias used by redCount and combo keys below
+      const fourStrongDays = fiveStrongDays;
 
       // Two most-recent numeric ratings both = 2 (for the sleep-softened path).
+      const recentStrongRatings = recent7.filter(l => l.strong != null).slice(0, 5).map(l => l.strong);
       const twoStrongTwos = recentStrongRatings.length >= 2 && recentStrongRatings[0] === 2 && recentStrongRatings[1] === 2;
 
       const capacity = avgSleep * volumeCoeff;
@@ -3124,7 +3141,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const tag = (rec, key) => ({ ...rec, reasonKey: key });
       // ── Decision order ──────────────────────────────────────────────────
       if (sleptUnder6) return tag(REST, "sleptUnder6");
-      if (recentStrongZero) return tag(REST, "recentStrongZero");
+      // fiveStrongDays: force Rest + flag for tier-up
+      if (fiveStrongDays) return tag({ ...REST, tierUp: true }, "fiveStrongDays");
+      // strong=0: Rest if sleep < 8h, Train Light if sleep >= 8h, unless two in a row
+      if (twoConsecStrongZero) return tag(REST, "recentStrongZero");
+      if (recentStrongZero) {
+        if (lastNightSleep !== null && lastNightSleep >= 8) return tag(LIGHT, "recentStrongZero");
+        return tag(REST, "recentStrongZero");
+      }
       if (overCumLoad) return tag(REST, "overCumLoad");
       if (twoAdjacentHard) {
         if (wellSlept && twoStrongTwos) return tag(LIGHT_OR_REST, "twoAdjacentHardSoftened");
@@ -3161,6 +3185,24 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     const todayWindow = buildCalendarWindow(logs, todayStr, 7);
     const todayRec = computeRec(todayWindow);
     if (!todayRec) { setFatigueRec(null); return; }
+
+    // ── Auto tier-up on fiveStrongDays ─────────────────────────────────────
+    if (todayRec.tierUp && athlete?.id) {
+      const currentTierId = athlete.volume_tier || DEFAULT_VOLUME_TIER;
+      const currentIdx = VOLUME_TIERS.findIndex(t => t.id === currentTierId);
+      if (currentIdx >= 0 && currentIdx < VOLUME_TIERS.length - 1) {
+        const newTierId = VOLUME_TIERS[currentIdx + 1].id;
+        // Only fire once: check if we already bumped for this exact streak.
+        // Guard: the most recent 5 training logs must still all be strong=2
+        // and the athlete's stored tier must still be the old tier.
+        const alreadyBumped = athlete.volume_tier === newTierId || athlete.volume_tier === VOLUME_TIERS.slice(currentIdx + 1).map(t => t.id).some(id => id === athlete.volume_tier);
+        if (!alreadyBumped || athlete.volume_tier === currentTierId) {
+          console.log("[autoTierUp] bumping from", currentTierId, "to", newTierId);
+          await sb.from("athletes").update({ volume_tier: newTierId }).eq("id", athlete.id);
+          setTierUpBanner(true);
+        }
+      }
+    }
 
     // Tomorrow's rec is computed against 7 calendar days ENDING TODAY.
     // Normally only meaningful once today is fully logged — but the forecast
@@ -3241,9 +3283,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       else if (avg < 2) dashStrongLabel = "Pretty Good";
       else dashStrongLabel = "Great";
     }
+    const dashCapacity = dashSleep * volumeCoeff;
+    const dashLoadPct = dashCapacity > 0 ? Math.round((dashLoad / dashCapacity) * 100) : 0;
     const dashboard = {
       sleep: dashSleep,
       load: dashLoad,
+      loadPct: dashLoadPct,
       strongLabel: dashStrongLabel,
     };
 
@@ -3480,6 +3525,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
       <>
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
+        {/* Tier-up dismissable banner */}
+        {tierUpBanner && (
+          <div style={{ background: "rgba(61,158,122,0.1)", border: `1px solid ${C.orange}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ flex: 1, fontSize: 13, color: C.white, lineHeight: 1.55 }}>
+              Heads up, you've been having consistently strong sessions at your current volume, so we'll start recommending more training sessions.
+            </div>
+            <button onClick={() => setTierUpBanner(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>✕</button>
+          </div>
+        )}
+
         {/* Date + recommendation banner */}
         {(() => {
           const now = new Date();
@@ -3557,7 +3612,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                     </div>
                     <div>
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Load</div>
-                      <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.load}</div>
+                      <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.loadPct}%</div>
                     </div>
                     <div>
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Strength</div>
@@ -4127,10 +4182,16 @@ function SimulatorPage() {
     const strongLogs = last3.filter(l => l.strong != null);
     const avgStrong = strongLogs.length >= 2 ? strongLogs.reduce((s, l) => s + l.strong, 0) / strongLogs.length : null;
     const ratedAll = recent7.filter(l => l.strong != null);
-    const mostRecentStrong = ratedAll.length > 0 ? ratedAll[0].strong : null;
+    const recentTrainingLogs = windowLogs.filter(l => (l.load ?? 0) > 0 && l.strong != null);
+    const mostRecentStrong = recentTrainingLogs.length > 0 ? recentTrainingLogs[0].strong : null;
     const recentStrongZero = mostRecentStrong === 0;
-    const recentStrongRatings = ratedAll.slice(0, 4).map(l => l.strong);
-    const fourStrongDays = recentStrongRatings.length === 4 && recentStrongRatings.every(s => s === 2);
+    const twoConsecStrongZero = recentTrainingLogs.length >= 2 && recentTrainingLogs[0].strong === 0 && recentTrainingLogs[1].strong === 0;
+    // fiveStrongDays: 5 most-recent training-day strong=2 within all simulator days
+    const simTrainingLogs = days.filter(l => (l.load ?? 0) > 0 && l.strong != null);
+    const fiveStrongTrainingRatings = simTrainingLogs.slice(0, 5).map(l => l.strong);
+    const fiveStrongDays = fiveStrongTrainingRatings.length === 5 && fiveStrongTrainingRatings.every(s => s === 2);
+    const fourStrongDays = fiveStrongDays; // alias
+    const recentStrongRatings = ratedAll.slice(0, 5).map(l => l.strong);
     const twoStrongTwos = recentStrongRatings.length >= 2 && recentStrongRatings[0] === 2 && recentStrongRatings[1] === 2;
     const capacity = avgSleep * volumeCoeff;
     const overLoadCap = weekLoad >= capacity;
@@ -4154,11 +4215,16 @@ function SimulatorPage() {
     const twoAdjacentHard = priorLoads.length === 2 && priorLoads[0] >= 2 && priorLoads[1] >= 2;
     const wellSlept = avgSleep > 8 && (lastNightSleep !== null && lastNightSleep >= 8);
 
-    const meta = { avgSleep, weekLoad, capacity, avgStrong, fourStrongDays, lowSleep, lowStrong, overLoadCap, sleptUnder6, cumLoad, recentStrongZero };
+    const meta = { avgSleep, weekLoad, capacity, avgStrong, fourStrongDays, fiveStrongDays, lowSleep, lowStrong, overLoadCap, sleptUnder6, cumLoad, recentStrongZero };
 
     const tag = (recFn, key) => ({ ...recFn(signals, meta), reasonKey: key });
     if (sleptUnder6) { signals.push("Last night sleep < 6h (hard override)"); return tag(REST, "sleptUnder6"); }
-    if (recentStrongZero) { signals.push("Most recent strong rating = 0 (felt weak) → Rest"); return tag(REST, "recentStrongZero"); }
+    if (fiveStrongDays) { signals.push("5 consecutive strong=2 training days → Rest + tier-up"); return tag(REST, "fiveStrongDays"); }
+    if (twoConsecStrongZero) { signals.push("Two consecutive strong=0 training days → Rest"); return tag(REST, "recentStrongZero"); }
+    if (recentStrongZero) {
+      if (lastNightSleep !== null && lastNightSleep >= 8) { signals.push("strong=0 but slept >= 8h → Train Light"); return tag(LIGHT, "recentStrongZero"); }
+      signals.push("Most recent strong rating = 0 (felt weak) → Rest"); return tag(REST, "recentStrongZero");
+    }
     if (overCumLoad) { signals.push(`Cumulative load ${cumLoad} >= 4 uninterrupted by rest → Rest`); return tag(REST, "overCumLoad"); }
     if (twoAdjacentHard) {
       if (wellSlept && twoStrongTwos) { signals.push("Two adjacent load>=2 BUT well-slept + two strong=2 → Train Light or Rest"); return tag(LIGHT_OR_REST, "twoAdjacentHardSoftened"); }
@@ -4197,6 +4263,8 @@ function SimulatorPage() {
 
   const dashSleep = days.reduce((s, l) => s + (l.sleep || 0), 0) / days.length;
   const dashLoad = days.reduce((s, l) => s + (l.load || 0), 0);
+  const simCapacity = dashSleep * volumeCoeff;
+  const dashLoadPct = simCapacity > 0 ? Math.round((dashLoad / simCapacity) * 100) : 0;
   const dashStrongRatings = days.filter(l => l.strong != null).map(l => l.strong);
   let dashStrongLabel = "—";
   if (dashStrongRatings.length > 0) {
@@ -4243,7 +4311,7 @@ function SimulatorPage() {
             </div>
             <div>
               <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>LOAD</div>
-              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashLoad}</div>
+              <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{dashLoadPct}%</div>
             </div>
             <div>
               <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 2 }}>STRENGTH</div>
@@ -4275,9 +4343,10 @@ function SimulatorPage() {
                 <div style={{ ...mono, fontSize: 10, color: isToday ? C.orange : C.muted, minWidth: 90, fontWeight: isToday ? 600 : 400 }}>{label}</div>
                 <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ ...mono, fontSize: 10, color: C.muted }}>SLEEP</span>
-                  <input type="number" step="0.5" min="0" max="14" value={d.sleep}
-                    onChange={e => updateDay(i, { sleep: parseFloat(e.target.value) || 0 })}
-                    style={{ width: 56, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 13, outline: "none" }} />
+                  <select value={d.sleep} onChange={e => updateDay(i, { sleep: parseFloat(e.target.value) })}
+                    style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", color: C.white, fontSize: 13, outline: "none" }}>
+                    {[0,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10].map(v => <option key={v} value={v}>{v}h</option>)}
+                  </select>
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ ...mono, fontSize: 10, color: C.muted }}>LOAD</span>
