@@ -264,6 +264,17 @@ async function dbBackupProgress(athleteId, progressData, backupType = 'edit') {
     await sb.from("progress_backups").insert({ athlete_id: athleteId, data: progressData, backup_type: backupType });
   } catch(e) { console.warn("Progress backup failed:", e); }
 }
+async function dbBackupFatigueLogs(athleteId, logsData, backupType = 'edit') {
+  try {
+    const limit = backupType === 'daily' ? 90 : 50;
+    const { data: existing } = await sb.from("fatigue_log_backups").select("id").eq("athlete_id", athleteId).eq("backup_type", backupType).order("saved_at", { ascending: true });
+    if (existing && existing.length >= limit) {
+      const toDelete = existing.slice(0, existing.length - limit + 1).map(r => r.id);
+      await sb.from("fatigue_log_backups").delete().in("id", toDelete);
+    }
+    await sb.from("fatigue_log_backups").insert({ athlete_id: athleteId, data: logsData, backup_type: backupType });
+  } catch(e) { console.warn("Fatigue log backup failed:", e); }
+}
 async function dbGetProgress() {
   const { data } = await sb.from("progress").select("*");
   const result = {};
@@ -2257,7 +2268,9 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
         : await sb.from("fatigue_logs").upsert(payload, { onConflict: "athlete_id,date" }).select().single();
       if (result.error) throw result.error;
       if (result.data) {
-        setLogs(prev => [result.data, ...prev.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date)));
+        const updatedLogs = [result.data, ...logs.filter(l => l.id !== result.data.id)].sort((a, b) => b.date.localeCompare(a.date));
+        setLogs(updatedLogs);
+        dbBackupFatigueLogs(athlete.id, updatedLogs, 'edit');
       }
       setShowForm(false);
       if (onSaved) onSaved(result.data);
@@ -3226,7 +3239,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     })();
     const tomorrowWindow = buildCalendarWindow(logs, tomorrowStr, 7);
     const tomorrowRec = todayLogged ? computeRec(tomorrowWindow) : null;
-    let tomorrow = tomorrowRec ? { label: tomorrowRec.label + " (May change based on tonight's sleep)", color: tomorrowRec.color, reasonKey: tomorrowRec.reasonKey } : null;
+    let tomorrow = tomorrowRec ? { label: tomorrowRec.label, color: tomorrowRec.color, reasonKey: tomorrowRec.reasonKey } : null;
 
     // ── Train Light loop forecast ──────────────────────────────────────────
     // If today's rec is Train Light and the model predicts the next two
@@ -3601,6 +3614,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                             {showWhyTomorrow ? "Hide" : "Why?"}
                           </button>
                         )}
+                        <div style={{ ...mono, fontSize: 10, color: C.muted, width: "100%" }}>May change based on tonight's sleep</div>
                       </>
                     : <div style={{ fontSize: 13, color: C.muted }}>TBD — log today first</div>
                   }
@@ -5394,6 +5408,21 @@ export default function App() {
         Object.entries(prg).forEach(([aid, progress]) => {
           if (Object.keys(progress).length > 0) dbBackupProgress(aid, progress, 'daily');
         });
+        // Daily fatigue log backup — fetch all logs per athlete and snapshot
+        if (ath.length > 0) {
+          sb.from("fatigue_logs").select("*").in("athlete_id", ath.map(a => a.id))
+            .order("date", { ascending: false })
+            .then(({ data: allFatigueLogs }) => {
+              if (!allFatigueLogs) return;
+              const byAthlete = {};
+              allFatigueLogs.forEach(row => {
+                (byAthlete[row.athlete_id] = byAthlete[row.athlete_id] || []).push(row);
+              });
+              Object.entries(byAthlete).forEach(([aid, logs]) => {
+                if (logs.length > 0) dbBackupFatigueLogs(aid, logs, 'daily');
+              });
+            });
+        }
         localStorage.setItem('lastDailyBackup', todayKey);
       }
       // ensure template creator has a plan
