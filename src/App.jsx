@@ -2456,7 +2456,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
       <div style={{ background: C.gray2, border: `1px solid ${isToday ? C.orange : C.border}`, borderRadius: 10, padding: "14px 16px", marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ ...mono, fontSize: 10, color: isToday ? C.orange : C.muted }}>{dayLabel}</span>
+            <span style={{ ...mono, fontSize: 13, color: isToday ? C.orange : C.black, fontWeight: 600 }}>{dayLabel}</span>
             {isToday && <span style={{ ...mono, fontSize: 8, color: C.orange, background: "rgba(61,158,122,0.12)", padding: "1px 6px", borderRadius: 3 }}>TODAY</span>}
           </div>
           {true && (
