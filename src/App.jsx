@@ -2650,6 +2650,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const week = plan?.weeks?.[activeWeekIdx];
   const days = week?.days || [];
 
+  // Feature flags — declared before any early returns so they're always in scope
+  const hasPlan = athlete?.has_plan !== false;
+  const hasRecoverBuddy = !!athlete?.has_recoverbuddy;
+  const isRecoverBuddy = hasRecoverBuddy;
+  const showRecoverBuddyWordmark = hasRecoverBuddy && !hasPlan;
+
   if ((!plan || publishedIndices.length === 0) && !hasRecoverBuddy) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
@@ -2666,14 +2672,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     );
   }
 
-  // RecoverBuddy athletes may have no plan — guard everything downstream.
-  // Feature flags. has_plan: show training plan section; has_recoverbuddy:
-  // show RecoverBuddy onboarding survey + catch-up + wordmark (when no plan).
-  const hasPlan = athlete?.has_plan !== false;  // default true when undefined
-  const hasRecoverBuddy = !!athlete?.has_recoverbuddy;
-  const isRecoverBuddy = hasRecoverBuddy;  // legacy alias; some downstream refs
-  // The wordmark only swaps to RecoverBuddy when that's the ONLY active feature.
-  const showRecoverBuddyWordmark = hasRecoverBuddy && !hasPlan;
+  // Feature flags declared above the early return — see above.
   const progKey = (wIdx, dIdx) => `w${wIdx}_d${dIdx}`;
   const sharedKey = (exId) => `shared_${exId}`;
   const overflow = progress[OVF] || [];
