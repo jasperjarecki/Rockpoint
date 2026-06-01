@@ -37,11 +37,11 @@ const DARK = {
   black: "#111111", white: "#f0efed", orange: "#3d9e7a", purple: "#7a9fc2",
   gray: "#1a1a1a", gray2: "#222222", gray3: "#333333", muted: "#888884", border: "#2e2e2e",
 };
-// Initialize C from localStorage immediately at module load so it's
-// never in a temporal dead zone when child components first render.
-let _darkMode = false;
+// Use var (not let/const) so C is hoisted and never in a temporal dead zone,
+// even if the minifier reorders module-level statements.
+var _darkMode = false;
 try { _darkMode = localStorage.getItem("rp_dark") === "1"; } catch(e) {}
-let C = _darkMode ? { ...DARK } : { ...LIGHT };
+var C = _darkMode ? { ...DARK } : { ...LIGHT };
 
 const SEED_ATHLETES = [
   { id: "a1", name: "Maya Torres", type: "Youth Comp", level: "V9" },
