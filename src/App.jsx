@@ -184,7 +184,7 @@ const FREQ_OPTIONS = [1, 2, 3, 4, 5, 6, 7];
 const REASON_TEXT = {
   sleptUnder6: "You slept less than 6 hours last night. Your recovery is impaired and you're at higher risk of injury. Skip today to maximize session quality for next time.",
   recentStrongZero: "You felt pretty weak yesterday, so a rest day is in order!",
-  overCumLoad: "Don't cram all your training into a short window during the week. You've accumulated some fatigue in the last couple days, so rest up.",
+  overCumLoad: "You've accumulated some fatigue in the last couple days, so rest up.",
   twoAdjacentHard: "Two back to back training days means it's time for rest. If you slept great you could train light today, but otherwise take it easy.",
   twoAdjacentHardSoftened: "You trained back to back days, but your sleep average is high AND you slept great last night. Train light today or rest up and get after it tomorrow.",
   overLoadCap: "You've trained a lot in the last few days, get some rest before you have another training day.",
@@ -3002,6 +3002,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
     setSleepPromptSaving(false);
     setShowSleepPrompt(false);
+    // Pre-populate partialDayLog with the saved sleep value so the form
+    // shows it when the athlete opens the modal to finish logging.
+    const todayStrAfter = localDateStr();
+    const { data: savedRow } = await sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id).eq("date", todayStrAfter).order("created_at", { ascending: false }).limit(1);
+    if (savedRow?.[0]) {
+      setPartialDayLog({ ...savedRow[0], sleep: val });
+    } else {
+      setPartialDayLog({ date: todayStrAfter, sleep: val });
+    }
     await recomputeFatigue();
   };
 
