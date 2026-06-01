@@ -3397,8 +3397,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   }, [athlete?.id, athlete?.volume_tier]);
 
   useEffect(() => {
-    recomputeFatigue();
-  }, [recomputeFatigue]);
+    if (hasRecoverBuddy) recomputeFatigue();
+  }, [recomputeFatigue, hasRecoverBuddy]);
 
 
   return (
@@ -3414,7 +3414,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       <div style={{ height: 2, background: `linear-gradient(90deg, ${C.orange}, ${C.purple}, transparent)`, flexShrink: 0 }} />
 
       {/* Volume Element modal */}
-      {showVolumeModal && ReactDOM.createPortal(
+      {hasRecoverBuddy && showVolumeModal && ReactDOM.createPortal(
         <div style={{ position: "fixed", inset: 0, zIndex: 9998, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowVolumeModal(false)}>
           <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 680, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
@@ -3592,6 +3592,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
       <>
       <div style={{ flex: 1, padding: "20px 16px", maxWidth: 640, margin: "0 auto", width: "100%" }}>
+        {/* All RecoverBuddy UI — gated on hasRecoverBuddy */}
+        {hasRecoverBuddy && <>
         {/* Tier-up dismissable banner */}
         {tierUpBanner && (
           <div style={{ background: "rgba(61,158,122,0.1)", border: `1px solid ${C.orange}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -3995,6 +3997,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>,
           document.body
         )}
+
+        </>}
 
         {hasPlan && plan && publishedIndices.length > 0 && <>
         {/* Athlete name — tappable, opens overview/update modal */}
