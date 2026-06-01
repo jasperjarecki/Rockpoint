@@ -3701,37 +3701,6 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
-        {/* Big action button — Log Today if not yet logged, otherwise Edit Logs */}
-        {(() => {
-          const isLogged = !!fatigueRec?.todayLogged;
-          return (
-            <button onClick={() => {
-                if (isLogged) {
-                  // Open modal in list view — no autoOpen.
-                  setPartialDayLog(null);
-                } else {
-                  const todayStr = localDateStr();
-                  setPartialDayLog({ date: todayStr });
-                }
-                setShowVolumeModal(true);
-              }}
-              style={{ width: "100%", ...mono, fontSize: 14, padding: "16px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", marginBottom: 16, letterSpacing: 0.5, fontWeight: 500 }}>
-              {isLogged ? "View/Edit Logs" : "+ Log Today"}
-            </button>
-          );
-        })()}
-
-        {/* Consistency calendar modal */}
-        {fatigueLogs.length > 0 && (
-          <div style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button onClick={() => setShowCalendar(true)}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-              📅 View Train/Rest History
-            </button>
-
-          </div>
-        )}
-
         {/* 7-day forecast */}
         {fatigueLogs.length > 0 && (() => {
           // All-time avg sleep from real logs
@@ -3866,21 +3835,24 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
-        {/* RecoverBuddy welcome card — compact */}
+        {/* Big action button */}
+        {(() => {
+          const isLogged = !!fatigueRec?.todayLogged;
+          return (
+            <button onClick={() => {
+                if (isLogged) { setPartialDayLog(null); }
+                else { const todayStr = localDateStr(); setPartialDayLog({ date: todayStr }); }
+                setShowVolumeModal(true);
+              }}
+              style={{ width: "100%", ...mono, fontSize: 14, padding: "16px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", marginBottom: 8, letterSpacing: 0.5, fontWeight: 500 }}>
+              {isLogged ? "View/Edit Logs" : "+ Log Today"}
+            </button>
+          );
+        })()}
+
+        {/* Log every day message */}
         {hasRecoverBuddy && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>Log every day so RecoverBuddy can work its magic.</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={() => setIntroOpen(true)}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-              How does RecoverBuddy work?
-            </button>
-            <button onClick={() => setShowFeedback(true)}
-              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-              💬 Feedback
-            </button>
-            </div>
-          </div>
+          <div style={{ fontSize: 14, color: "#111111", lineHeight: 1.6, marginBottom: 16, fontWeight: 500 }}>Log every day so RecoverBuddy can work its magic.</div>
         )}
 
         {/* Feedback modal */}
@@ -3909,6 +3881,26 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>,
           document.body
         )}
+        {/* Bottom row of utility buttons */}
+        {hasRecoverBuddy && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            {fatigueLogs.length > 0 && (
+              <button onClick={() => setShowCalendar(true)}
+                style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+                📅 View Train/Rest History
+              </button>
+            )}
+            <button onClick={() => setIntroOpen(true)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+              How does RecoverBuddy work?
+            </button>
+            <button onClick={() => setShowFeedback(true)}
+              style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+              💬 Feedback
+            </button>
+          </div>
+        )}
+
         {showCalendar && fatigueLogs.length > 0 && ReactDOM.createPortal(
           <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" }} onClick={() => setShowCalendar(false)}>
             <div style={{ background: C.black, flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 480, margin: "0 auto", width: "100%", WebkitOverflowScrolling: "touch" }} onClick={e => e.stopPropagation()}>
