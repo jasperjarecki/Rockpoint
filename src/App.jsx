@@ -4707,7 +4707,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
     const [ty, tm, td] = todayStr.split("-").map(Number);
     const dt = new Date(ty, tm - 1, td); dt.setDate(dt.getDate() - 14);
     const since = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-    sb.from("fatigue_logs").select("athlete_id,date,strong,strong_na").in("athlete_id", ids).gte("date", since)
+    sb.from("fatigue_logs").select("athlete_id,date,sleep,strong,strong_na").in("athlete_id", ids).gte("date", since)
       .then(({ data, error }) => {
         if (error) { console.warn("[VolumeTiers] logs fetch error:", error); return; }
         const byA = {};
@@ -4763,11 +4763,20 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
                   </div>
                   {(a.age || a.weekly_frequency || a.peak_grade_v_ever || a.peak_grade_yds_ever || a.typical_grade_v || a.typical_grade_yds) && (
                     <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 6, lineHeight: 1.6 }}>
-                      {a.age && <span>AGE {a.age}</span>}
-                      {(a.peak_grade_v_ever || a.peak_grade_yds_ever) && <span> · PEAK {[a.peak_grade_v_ever, a.peak_grade_yds_ever].filter(g => g && g !== "N/A").join(" / ")}</span>}
-                      {(a.peak_grade_v_recent || a.peak_grade_yds_recent) && <span> · RECENT {[a.peak_grade_v_recent, a.peak_grade_yds_recent].filter(g => g && g !== "N/A").join(" / ")}</span>}
-                      {(a.typical_grade_v || a.typical_grade_yds) && <span> · TYPICAL {[a.typical_grade_v, a.typical_grade_yds].filter(g => g && g !== "N/A").join(" / ")}</span>}
-                      {a.weekly_frequency && <span> · TRAINS {a.weekly_frequency}x/wk</span>}
+                      {(() => {
+                        const aLogs = (logsByAthlete[a.id] || []).filter(l => l.sleep != null && l.sleep > 0);
+                        const last7 = aLogs.slice(0, 7);
+                        const avgSlp = last7.length > 0 ? (last7.reduce((s, l) => s + l.sleep, 0) / last7.length).toFixed(1) : null;
+                        return (
+                          <>
+                            {a.age && <span>AGE {a.age}</span>}
+                            {(a.peak_grade_v_ever) && <span> · PEAK {a.peak_grade_v_ever}</span>}
+                            {(a.typical_grade_v) && <span> · TYPICAL {a.typical_grade_v}</span>}
+                            {a.weekly_frequency && <span> · TRAINS {a.weekly_frequency}x/wk</span>}
+                            {avgSlp && <span> · AVG SLEEP {avgSlp}h</span>}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
