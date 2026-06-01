@@ -4244,10 +4244,12 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
   const [error, setError] = useState("");
 
   const handleAthleteLogin = () => {
-    if (!selectedAthlete) { setError("Please select your name."); return; }
-    if (!credentials[selectedAthlete]) { setError("No password set. Contact your coach."); return; }
-    if (credentials[selectedAthlete] !== password) { setError("Incorrect password."); return; }
-    onLoginAthlete(selectedAthlete);
+    if (!selectedAthlete.trim()) { setError("Please enter your name."); return; }
+    const match = athletes.find(a => a.name.toLowerCase() === selectedAthlete.trim().toLowerCase());
+    if (!match) { setError("Name not found. Check your spelling."); return; }
+    if (!credentials[match.id]) { setError("No password set. Contact your coach."); return; }
+    if (credentials[match.id] !== password) { setError("Incorrect password."); return; }
+    onLoginAthlete(match.id);
   };
   const handleCoachLogin = async () => {
     // check admin password first
@@ -4278,10 +4280,7 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
           {tab === "athlete" ? (
             <>
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Your Name</div>
-              <select value={selectedAthlete} onChange={e => { setSelectedAthlete(e.target.value); setError(""); }} style={{ ...inputStyle, appearance: "none" }}>
-                <option value="">Select your name...</option>
-                {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+              <input autoFocus value={selectedAthlete} onChange={e => { setSelectedAthlete(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleAthleteLogin()} placeholder="Enter your full name..." style={{ ...inputStyle, boxSizing: "border-box" }} />
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Password</div>
               <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key==="Enter"&&handleAthleteLogin()} placeholder="Enter your password" style={{ ...inputStyle, boxSizing: "border-box" }} />
             </>
