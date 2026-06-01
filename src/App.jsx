@@ -108,12 +108,12 @@ const SEED_PLANS = {
 
 const _fl = document.createElement("link");
 _fl.rel = "stylesheet";
-_fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap";
+_fl.href = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,300;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap";
 document.head.appendChild(_fl);
 const _gs = document.createElement("style");
 document.head.appendChild(_gs);
 function updateGlobalStyles() {
-  _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'DM Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'DM Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
+  _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'Plus Jakarta Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'Plus Jakarta Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
 }
 // updateGlobalStyles() called inside App() only — not at module level to avoid TDZ
 
@@ -155,8 +155,8 @@ function getVideoMeta(url) {
   try { new URL(url); return { type: 'link', url }; } catch(e) { return null; }
 }
 
-const mono = { fontFamily: "'Space Mono', monospace" };
-const bebas = { fontFamily: "'Bebas Neue', sans-serif" };
+const mono = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, letterSpacing: 0.2 };
+const bebas = { fontFamily: "'Fraunces', serif", fontWeight: 700 };
 
 // ── MIGRATION: old flat plan → weekly plan ────────────────────────────────────
 function migratePlan(plan) {
@@ -373,9 +373,9 @@ function renderMarkdown(text, textColor) {
   while (i < lines.length) {
     const line = lines[i];
     if (line.startsWith('# ')) {
-      els.push(<div key={i} style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color:tc, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'Fraunces',serif", fontSize: 22, letterSpacing: 1, color:tc, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
     } else if (line.startsWith('## ')) {
-      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:tc, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", fontSize: 15, fontWeight: 700, color:tc, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
     } else if (line.startsWith('- ') || line.startsWith('• ')) {
       const items = [];
       while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• '))) {
@@ -486,7 +486,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
       <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} rows={rows}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Sans', sans-serif" }} />
+        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
     </div>
   );
 }
@@ -537,7 +537,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
-                {ex.sets && <span style={{ fontFamily:"'Space Mono',monospace", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
+                {ex.sets && <span style={{ fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600, fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 10, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
                 {sourceDayLabel && <span style={{ ...mono, fontSize: 10, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
