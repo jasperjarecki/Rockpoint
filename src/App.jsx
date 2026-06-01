@@ -2208,6 +2208,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showLoadHelp, setShowLoadHelp] = useState(false);
   const [activeView, setActiveView] = useState('log');
   const effectiveView = forcedView || activeView;
   const [saving, setSaving] = useState(false);
@@ -2585,7 +2586,27 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                 {[0,1,2,3,4].map(v => <ScaleBtn key={v} val={v} current={form.load} color={loadColor(v)} onPick={v => setForm(f => ({ ...f, load: v }))} />)}
               </div>
-              <Hint text="Use your judgment. Not necessarily just climbing. 0 = rest  ·  1 = light session — you ended well before you got tired. A long walk, easy fingerboard.  ·  2 = standard session — you worked hard but didn't go to the death. A run or mountain bike ride.  ·  3 = you pushed past tired. Enduro after bouldering. A big run or hike. A bit sore.  ·  4 = big day out. Mega approach and lots of pitches. A killer hike or marathon-type mission." />
+              <button onMouseDown={e => { e.preventDefault(); setShowLoadHelp(v => !v); }}
+                style={{ ...mono, fontSize: 11, padding: "5px 12px", borderRadius: 5, border: `1px solid ${showLoadHelp ? C.orange : C.border}`, background: showLoadHelp ? "rgba(61,158,122,0.08)" : "none", color: showLoadHelp ? C.orange : C.muted, cursor: "pointer", marginTop: 4 }}>
+                {showLoadHelp ? "Hide" : "How do I choose?"}
+              </button>
+              {showLoadHelp && (
+                <div style={{ marginTop: 10, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>Use your judgment. Not necessarily just climbing.</div>
+                  {[
+                    { n: 0, color: "#5b7fa6", text: "Rest. Nothing strenuous." },
+                    { n: 1, color: C.orange, text: "Light session. You ended well before you got tired. A long walk, easy fingerboard." },
+                    { n: 2, color: C.orange, text: "Standard session. You worked hard but didn't go to the death. A run or mountain bike ride." },
+                    { n: 3, color: "#e07a3a", text: "You pushed past tired. Enduro after bouldering, a big run or hike. A bit sore." },
+                    { n: 4, color: "#c0392b", text: "Big day out. Mega approach and lots of pitches. A killer hike or marathon-type mission." },
+                  ].map(({ n, color, text }) => (
+                    <div key={n} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                      <div style={{ ...mono, fontSize: 18, fontWeight: 700, color, minWidth: 20, lineHeight: 1.3 }}>{n}</div>
+                      <div style={{ fontSize: 13, color: C.white, lineHeight: 1.6 }}>{text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <Lbl text="Strong?" />
