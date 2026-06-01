@@ -37,6 +37,73 @@ const DARK = {
   black: "#111111", white: "#f0efed", orange: "#3d9e7a", purple: "#7a9fc2",
   gray: "#1a1a1a", gray2: "#222222", gray3: "#333333", muted: "#888884", border: "#2e2e2e",
 };
+// ── FONT SWITCHER ────────────────────────────────────────────────────────────
+const FONT_COMBOS = [
+  {
+    id: "original",
+    label: "Original",
+    sub: "Bebas Neue + Space Mono + DM Sans",
+    url: "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap",
+    display: { fontFamily: "'Bebas Neue', sans-serif", fontWeight: 400 },
+    mono: { fontFamily: "'Space Mono', monospace", fontWeight: 400, letterSpacing: 0 },
+    body: "'DM Sans', sans-serif",
+  },
+  {
+    id: "warm",
+    label: "Warm / Human",
+    sub: "Fraunces + Plus Jakarta Sans",
+    url: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,300&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap",
+    display: { fontFamily: "'Fraunces', serif", fontWeight: 700 },
+    mono: { fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, letterSpacing: 0.2 },
+    body: "'Plus Jakarta Sans', sans-serif",
+  },
+  {
+    id: "athletic",
+    label: "Athletic",
+    sub: "Barlow Condensed + Inter",
+    url: "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap",
+    display: { fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800 },
+    mono: { fontFamily: "'Inter', sans-serif", fontWeight: 600, letterSpacing: 0.3 },
+    body: "'Inter', sans-serif",
+  },
+  {
+    id: "editorial",
+    label: "Editorial",
+    sub: "Syne + Libre Franklin",
+    url: "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Libre+Franklin:ital,wght@0,300;0,400;0,600;0,700;1,300&display=swap",
+    display: { fontFamily: "'Syne', sans-serif", fontWeight: 800 },
+    mono: { fontFamily: "'Libre Franklin', sans-serif", fontWeight: 600, letterSpacing: 0.2 },
+    body: "'Libre Franklin', sans-serif",
+  },
+  {
+    id: "swiss",
+    label: "Swiss / Clean",
+    sub: "Outfit + Epilogue",
+    url: "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Epilogue:ital,wght@0,300;0,400;0,600;0,700;1,300&display=swap",
+    display: { fontFamily: "'Outfit', sans-serif", fontWeight: 700 },
+    mono: { fontFamily: "'Epilogue', sans-serif", fontWeight: 600, letterSpacing: 0.1 },
+    body: "'Outfit', sans-serif",
+  },
+];
+
+var _savedFontId = "original";
+try { _savedFontId = localStorage.getItem("rp_font") || "original"; } catch(e) {}
+var _activeCombo = FONT_COMBOS.find(f => f.id === _savedFontId) || FONT_COMBOS[0];
+
+var _fontLink = document.createElement("link");
+_fontLink.rel = "stylesheet";
+_fontLink.id = "rp-font-link";
+_fontLink.href = _activeCombo.url;
+document.head.appendChild(_fontLink);
+
+function applyFontCombo(combo) {
+  _activeCombo = combo;
+  var link = document.getElementById("rp-font-link");
+  if (link) link.href = combo.url;
+  try { localStorage.setItem("rp_font", combo.id); } catch(e) {}
+}
+// ── END FONT SWITCHER ─────────────────────────────────────────────────────────
+
 // Use var (not let/const) so C is hoisted and never in a temporal dead zone,
 // even if the minifier reorders module-level statements.
 var _darkMode = false;
@@ -106,14 +173,11 @@ const SEED_PLANS = {
   },
 };  // Patrick's plan lives in Supabase — removed from seed to prevent overwrite on network errors
 
-const _fl = document.createElement("link");
-_fl.rel = "stylesheet";
-_fl.href = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,300;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap";
-document.head.appendChild(_fl);
+// Font <link> injected dynamically by font switcher above
 const _gs = document.createElement("style");
 document.head.appendChild(_gs);
 function updateGlobalStyles() {
-  _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'Plus Jakarta Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'Plus Jakarta Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
+  _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:${_activeCombo.body}} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:${_activeCombo.body}} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
 }
 // updateGlobalStyles() called inside App() only — not at module level to avoid TDZ
 
@@ -155,8 +219,8 @@ function getVideoMeta(url) {
   try { new URL(url); return { type: 'link', url }; } catch(e) { return null; }
 }
 
-const mono = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, letterSpacing: 0.2 };
-const bebas = { fontFamily: "'Fraunces', serif", fontWeight: 700 };
+var mono = _activeCombo.mono;
+var bebas = _activeCombo.display;
 
 // ── MIGRATION: old flat plan → weekly plan ────────────────────────────────────
 function migratePlan(plan) {
@@ -373,9 +437,9 @@ function renderMarkdown(text, textColor) {
   while (i < lines.length) {
     const line = lines[i];
     if (line.startsWith('# ')) {
-      els.push(<div key={i} style={{ fontFamily:"'Fraunces',serif", fontSize: 22, letterSpacing: 1, color:tc, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
+      els.push(<div key={i} style={{ fontFamily:bebas.fontFamily, fontWeight:bebas.fontWeight, fontSize: 22, letterSpacing: 1, color:tc, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
     } else if (line.startsWith('## ')) {
-      els.push(<div key={i} style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", fontSize: 15, fontWeight: 700, color:tc, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
+      els.push(<div key={i} style={{ fontFamily:"'DM Sans',sans-serif", fontSize: 15, fontWeight: 700, color:tc, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
     } else if (line.startsWith('- ') || line.startsWith('• ')) {
       const items = [];
       while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• '))) {
@@ -486,7 +550,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
       <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} rows={rows}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
+        style={{ width: "100%", background: "transparent", border: "none", color: C.white, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", padding: "10px 12px", fontFamily: "'DM Sans', sans-serif" }} />
     </div>
   );
 }
@@ -537,7 +601,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
-                {ex.sets && <span style={{ fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600, fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
+                {ex.sets && <span style={{ fontFamily:mono.fontFamily, fontWeight: mono.fontWeight || 500, fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 10, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
                 {sourceDayLabel && <span style={{ ...mono, fontSize: 10, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
@@ -4958,7 +5022,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </>
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
-          <div style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
+          <div onClick={handleWordmarkTap} style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white, cursor: "default", userSelect: "none" }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
           <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
             {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
             <button onClick={undo} disabled={!canUndo} title="Undo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.muted : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩</button>
@@ -5446,6 +5510,23 @@ export default function App() {
   const [templates, setTemplates] = useState([]);
   const [session, setSession] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [showFontSwitcher, setShowFontSwitcher] = useState(false);
+  const [activeFont, setActiveFont] = useState(_activeCombo.id);
+  const fontTapCount = React.useRef(0);
+  const fontTapTimer = React.useRef(null);
+  const handleWordmarkTap = () => {
+    fontTapCount.current += 1;
+    if (fontTapTimer.current) clearTimeout(fontTapTimer.current);
+    if (fontTapCount.current >= 5) { setShowFontSwitcher(true); fontTapCount.current = 0; return; }
+    fontTapTimer.current = setTimeout(() => { fontTapCount.current = 0; }, 2000);
+  };
+  const applyFont = (combo) => {
+    applyFontCombo(combo);
+    mono = combo.mono;
+    bebas = combo.display;
+    updateGlobalStyles();
+    setActiveFont(combo.id);
+  };
 
   useEffect(() => {
     (async () => {
@@ -5673,7 +5754,29 @@ export default function App() {
   // filter athletes by coach if sub-coach
   const visibleAthletes = session.isAdmin ? athletes : athletes.filter(a => a.coach_id === session.coachId);
 
-  return <CoachDashboard
+  return <>
+    {showFontSwitcher && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: '100%', maxWidth: 400, padding: 24 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4, color: C.white, fontFamily: 'sans-serif' }}>Font Tester</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 18, fontFamily: 'sans-serif' }}>Tap the wordmark 5× to reopen. Saved to this browser.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+            {FONT_COMBOS.map(combo => (
+              <button key={combo.id} onClick={() => applyFont(combo)}
+                style={{ textAlign: 'left', padding: '12px 16px', borderRadius: 8, border: `1px solid ${activeFont === combo.id ? C.orange : C.border}`, background: activeFont === combo.id ? 'rgba(61,158,122,0.08)' : C.gray2, cursor: 'pointer', width: '100%' }}>
+                <div style={{ fontFamily: combo.display.fontFamily, fontWeight: combo.display.fontWeight, fontSize: 20, color: activeFont === combo.id ? C.orange : C.white, marginBottom: 2 }}>{combo.label}</div>
+                <div style={{ fontFamily: combo.body, fontSize: 12, color: C.muted, fontWeight: 400 }}>{combo.sub}</div>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setShowFontSwitcher(false)}
+            style={{ width: '100%', padding: '12px', borderRadius: 8, border: 'none', background: C.orange, color: '#fff', cursor: 'pointer', fontFamily: 'sans-serif', fontWeight: 600, fontSize: 14 }}>
+            Done
+          </button>
+        </div>
+      </div>
+    )}
+    <CoachDashboard
     athletes={visibleAthletes} allAthletes={athletes} plans={plans} progress={progress} credentials={credentials}
     coaches={coaches} isAdmin={session.isAdmin} coachId={session.coachId || null}
     templates={templates}
@@ -5695,5 +5798,5 @@ export default function App() {
     onUpdateCoach={updateCoach}
     onLogout={() => setSession(null)}
     saved={saved}
-  />;
+  /></>;
 }
