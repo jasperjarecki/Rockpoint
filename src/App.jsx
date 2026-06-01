@@ -2255,6 +2255,34 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
     setShowForm(true);
   };
 
+  const savePartial = async () => {
+    // Save whatever has been filled in so far, even if incomplete
+    const sleepVal = parseFloat(form.sleep);
+    if (isNaN(sleepVal) || sleepVal <= 0) { setShowForm(false); return; } // nothing useful to save
+    try {
+      const payload = {
+        athlete_id: athlete.id,
+        date: form.date,
+        sleep: sleepVal,
+        load: form.load != null && form.load !== '' ? parseInt(form.load) : null,
+        strong: (form.strong !== '' && form.strong != null) ? parseInt(form.strong) : null,
+        strong_na: form.strong_na === true,
+        summary: form.summary,
+        tweaks: form.tweaks,
+      };
+      if (editingId) {
+        await sb.from("fatigue_logs").update(payload).eq("id", editingId);
+      } else {
+        await sb.from("fatigue_logs").upsert(payload, { onConflict: "athlete_id,date" });
+      }
+      if (onSaved) {
+        const { data: rows } = await sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id).eq("date", form.date).order("created_at", { ascending: false }).limit(1);
+        if (rows?.[0]) onSaved(rows[0]);
+      }
+    } catch(e) { console.warn("Partial save failed:", e); }
+    setShowForm(false);
+  };
+
   const save = async () => {
     console.log('[save] form=', JSON.stringify(form));
     const sleepVal = parseFloat(form.sleep);
@@ -2532,7 +2560,10 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
 
       {showForm && (
         <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 20px", marginBottom: 20 }}>
-          <div style={{ ...bebas, fontSize: 18, marginBottom: 20, color: C.orange, letterSpacing: 1 }}>TODAY'S CHECK-IN</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <div style={{ ...bebas, fontSize: 18, color: C.orange, letterSpacing: 1 }}>TODAY'S CHECK-IN</div>
+            <button onMouseDown={e => { e.preventDefault(); savePartial(); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             <div>
               <Lbl text="Date" />
@@ -2554,7 +2585,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                 {[0,1,2,3,4].map(v => <ScaleBtn key={v} val={v} current={form.load} color={loadColor(v)} onPick={v => setForm(f => ({ ...f, load: v }))} />)}
               </div>
-              <Hint text="0 = rest  ·  1 = light (walk, fingerboard only)  ·  2 = climbing session, real work  ·  3 = big session, soreness, high volume  ·  4 = huge mission (multipitch + approach)" />
+              <Hint text="Use your judgment. Not necessarily just climbing. 0 = rest  ·  1 = light session — you ended well before you got tired. A long walk, easy fingerboard.  ·  2 = standard session — you worked hard but didn't go to the death. A run or mountain bike ride.  ·  3 = you pushed past tired. Enduro after bouldering. A big run or hike. A bit sore.  ·  4 = big day out. Mega approach and lots of pitches. A killer hike or marathon-type mission." />
             </div>
             <div>
               <Lbl text="Strong?" />
@@ -2774,7 +2805,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   // answered the onboarding questions. Detected by checking if any of the
   // survey fields are missing.
   const needsSurvey = hasRecoverBuddy && !athlete?.age && !athlete?.weekly_frequency;
-  const [surveyOpen, setSurveyOpen] = useState(needsSurvey);
+  const needsIntroFirst = hasRecoverBuddy && athlete?.seen_intro === false;
+  // Intro fires first; survey fires after intro is dismissed (if needed)
+  const [surveyOpen, setSurveyOpen] = useState(needsSurvey && !needsIntroFirst);
   const [surveyAnswers, setSurveyAnswers] = useState({
     age: "",
     peak_grade_v_ever: "N/A", peak_grade_yds_ever: "N/A",
@@ -2789,7 +2822,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const INTRO_TEXT_1 = "RecoverBuddy uses your sleep and strength logs to issue you a training allowance. As you train throughout the week, you use up that allowance. As you rest, you earn it back.";
   const INTRO_TEXT_2 = "RecoverBuddy will adapt to how you're feeling, suggesting more or less training based on how things are going. In the short term, this means consistent, good sessions. In the long term, this means you'll be able to ramp up to higher volume without rushing into it. Log every day for the best results.";
   const INTRO_TEXT_3 = "Recover, buddy!!";
-  const needsIntro = hasRecoverBuddy && !needsSurvey && athlete?.seen_intro === false;
+  const needsIntro = hasRecoverBuddy && athlete?.seen_intro === false;
   const [introOpen, setIntroOpen] = useState(needsIntro);
   const dismissIntro = async () => {
     setIntroOpen(false);
@@ -2797,6 +2830,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const { error } = await sb.from("athletes").update({ seen_intro: true }).eq("id", athlete.id);
       if (error) console.warn("[intro] failed to mark seen:", error);
     }
+    // Open survey after intro if still needed
+    if (needsSurvey) setSurveyOpen(true);
   };
 
   // Feedback form state (RecoverBuddy only). Permanent on page, no dismiss.
@@ -2862,11 +2897,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // filter, the prompt could fire on a different device if the most-recently-
     // created row happened to have sleep=null even though another row for the
     // same day already had sleep logged.
-    sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).not("sleep", "is", null).limit(1)
-      .then(({ data: rows, error }) => {
-        if (error) { console.warn("[sleepPrompt] query error:", error); return; }
-        console.log("[sleepPrompt] rows with sleep set today:", rows?.length || 0);
-        if (!rows || rows.length === 0) setShowSleepPrompt(true);
+    // Skip sleep prompt on first ever login (no logs yet)
+    sb.from("fatigue_logs").select("id", { count: "exact", head: true }).eq("athlete_id", athlete.id)
+      .then(({ count }) => {
+        if ((count ?? 0) === 0) return; // brand new user — skip sleep prompt
+        sb.from("fatigue_logs").select("id").eq("athlete_id", athlete.id).eq("date", todayStr).not("sleep", "is", null).limit(1)
+          .then(({ data: rows, error }) => {
+            if (error) { console.warn("[sleepPrompt] query error:", error); return; }
+            if (!rows || rows.length === 0) setShowSleepPrompt(true);
+          });
       });
   }, [athlete?.id]);
 
@@ -3006,16 +3045,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
     setSleepPromptSaving(false);
     setShowSleepPrompt(false);
-    // Pre-populate partialDayLog with the saved sleep value so the form
-    // shows it when the athlete opens the modal to finish logging.
+    // Pre-populate partialDayLog with the saved sleep value.
+    // Run recomputeFatigue first, then set partialDayLog so it isn't cleared.
     const todayStrAfter = localDateStr();
+    await recomputeFatigue();
     const { data: savedRow } = await sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id).eq("date", todayStrAfter).order("created_at", { ascending: false }).limit(1);
     if (savedRow?.[0]) {
       setPartialDayLog({ ...savedRow[0], sleep: val });
     } else {
       setPartialDayLog({ date: todayStrAfter, sleep: val });
     }
-    await recomputeFatigue();
   };
 
   // Compute recommendation for banner using fatigue logs stored in state
@@ -3372,7 +3411,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {introOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 860, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflowY: "auto" }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
-            <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 14 }}>How <span style={{ color: C.orange }}>RecoverBuddy</span> works</div>
+            <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 14 }}>Welcome to <span style={{ color: C.orange }}>RecoverBuddy</span></div>
             <div style={{ fontSize: 14, color: C.white, lineHeight: 1.65, marginBottom: 22 }}>
               <div style={{ marginBottom: 20 }}>{INTRO_TEXT_1}</div>
               <div style={{ marginBottom: 20 }}>{INTRO_TEXT_2}</div>
@@ -3389,81 +3428,43 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {surveyOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 850, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflowY: "auto" }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460, marginTop: 40, marginBottom: 40 }}>
-            <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 6 }}>Welcome to <span style={{ color: C.orange }}>RecoverBuddy</span></div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 24, lineHeight: 1.5 }}>
-              A few quick questions so we can start making good recommendations.
+            <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 8 }}>A few quick questions</div>
+            <div style={{ fontSize: 16, color: C.muted, marginBottom: 24, lineHeight: 1.5 }}>
+              So we can start making good recommendations.
             </div>
             {/* Age */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>AGE</div>
+              <div style={{ ...mono, fontSize: 16, color: C.white, fontWeight: 500, marginBottom: 6 }}>AGE</div>
               <input type="number" min="10" max="90" value={surveyAnswers.age} onChange={e => setSurveyAnswers(p => ({ ...p, age: e.target.value }))}
                 placeholder="34"
                 style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }} />
             </div>
-            {/* Peak grade ever */}
+            {/* All-time hardest send — V scale only */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>HIGHEST GRADE EVER</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>V scale</div>
-                  <select value={surveyAnswers.peak_grade_v_ever} onChange={e => setSurveyAnswers(p => ({ ...p, peak_grade_v_ever: e.target.value }))}
-                    style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                    {V_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>YDS</div>
-                  <select value={surveyAnswers.peak_grade_yds_ever} onChange={e => setSurveyAnswers(p => ({ ...p, peak_grade_yds_ever: e.target.value }))}
-                    style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                    {YDS_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-              </div>
+              <div style={{ ...mono, fontSize: 16, color: C.white, fontWeight: 500, marginBottom: 6 }}>ALL-TIME HARDEST SEND</div>
+              <select value={surveyAnswers.peak_grade_v_ever} onChange={e => setSurveyAnswers(p => ({ ...p, peak_grade_v_ever: e.target.value }))}
+                style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
+                {V_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
             </div>
-            {/* Peak recent */}
+            {/* Typical day — V scale only */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>HIGHEST GRADE IN LAST 2 MONTHS</div>
+              <div style={{ ...mono, fontSize: 16, color: C.white, fontWeight: 500, marginBottom: 3 }}>ON AN AVERAGE DAY, YOU CAN SEND</div>
+              <div style={{ fontSize: 13, color: C.muted, fontStyle: "italic", marginBottom: 6, lineHeight: 1.5 }}>Be realistic, there's no one to impress here :)</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>V scale</div>
-                  <select value={surveyAnswers.peak_grade_v_recent} onChange={e => setSurveyAnswers(p => ({ ...p, peak_grade_v_recent: e.target.value }))}
-                    style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                    {V_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>YDS</div>
-                  <select value={surveyAnswers.peak_grade_yds_recent} onChange={e => setSurveyAnswers(p => ({ ...p, peak_grade_yds_recent: e.target.value }))}
-                    style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                    {YDS_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-            {/* Typical day */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 3 }}>ON AN AVERAGE DAY, YOU CAN SEND</div>
-              <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginBottom: 6, lineHeight: 1.5 }}>Be realistic, there's no one to impress here :)</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>Boulder (V scale)</div>
+                  <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 3 }}>Boulder (V scale)</div>
                   <select value={surveyAnswers.typical_grade_v} onChange={e => setSurveyAnswers(p => ({ ...p, typical_grade_v: e.target.value }))}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
                     {V_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>Sport (YDS)</div>
-                  <select value={surveyAnswers.typical_grade_yds} onChange={e => setSurveyAnswers(p => ({ ...p, typical_grade_yds: e.target.value }))}
-                    style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none" }}>
-                    {YDS_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
+
               </div>
             </div>
             {/* Frequency */}
             <div style={{ marginBottom: 22 }}>
-              <div style={{ ...mono, fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 6 }}>HOW MANY TIMES PER WEEK DO YOU TRAIN?</div>
+              <div style={{ ...mono, fontSize: 16, color: C.white, fontWeight: 500, marginBottom: 6 }}>HOW MANY TIMES PER WEEK DO YOU TRAIN?</div>
               <select value={surveyAnswers.weekly_frequency} onChange={e => setSurveyAnswers(p => ({ ...p, weekly_frequency: e.target.value }))}
                 style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none" }}>
                 <option value="">Choose...</option>
@@ -3839,7 +3840,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
         {/* RecoverBuddy welcome card — compact */}
         {hasRecoverBuddy && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>Log every day so RecoverBuddy can work its magic.</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => setIntroOpen(true)}
               style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
               How does RecoverBuddy work?
@@ -3848,6 +3851,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               style={{ ...mono, fontSize: 10, padding: "6px 14px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
               💬 Feedback
             </button>
+            </div>
           </div>
         )}
 
@@ -4301,7 +4305,7 @@ function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCo
           {error && <div style={{ ...mono, fontSize: 11, color: "#a05555", marginBottom: 14, padding: "8px 12px", background: "rgba(160,85,85,0.08)", borderRadius: 6 }}>{error}</div>}
           <button onClick={tab==="athlete"?handleAthleteLogin:handleCoachLogin}
             style={{ width: "100%", padding: "15px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", ...bebas, fontSize: 22, letterSpacing: 2 }}>
-            {tab==="athlete"?"VIEW MY PLAN":"ENTER COACH VIEW"}
+            {tab==="athlete"?"LOG IN":"ENTER COACH VIEW"}
           </button>
         </div>
         <div style={{ textAlign: "center", marginTop: 20, ...mono, fontSize: 10, color: C.muted }}>rockpointcoaching.com</div>
