@@ -3671,7 +3671,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                 setShowVolumeModal(true);
               }}
               style={{ width: "100%", ...mono, fontSize: 14, padding: "16px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", cursor: "pointer", marginBottom: 16, letterSpacing: 0.5, fontWeight: 500 }}>
-              {isLogged ? "Edit Logs" : "+ Log Today"}
+              {isLogged ? "View/Edit Logs" : "+ Log Today"}
             </button>
           );
         })()}
