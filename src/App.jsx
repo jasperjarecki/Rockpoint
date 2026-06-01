@@ -2746,6 +2746,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showVolumeModal, setShowVolumeModal] = useState(false);
   const [tierUpBanner, setTierUpBanner] = useState(false);
   const [showForecast, setShowForecast] = useState(false);
+  const [showLoadTooltip, setShowLoadTooltip] = useState(false);
   const [partialDayLog, setPartialDayLog] = useState(null);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
@@ -2782,7 +2783,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   // Intro explainer modal. Auto-shows on first login (when has_recoverbuddy
   // is true, survey is done, seen_intro is false). Also reopenable via the
   // "How does RecoverBuddy work?" button on the Welcome card.
-  const INTRO_TEXT = "RecoverBuddy uses your sleep and strength logs to issue you a training allowance. As you train throughout the week, you use up that allowance. As you rest, you earn it back. RecoverBuddy will adapt to how you're feeling, suggesting more or less training based on how things are going. In the short term, this means consistent, good sessions. In the long term, this means you'll be able to ramp up to higher volume without rushing into it. Log every day for the best results. Recover, buddy!!";
+  const INTRO_TEXT_1 = "RecoverBuddy uses your sleep and strength logs to issue you a training allowance. As you train throughout the week, you use up that allowance. As you rest, you earn it back.";
+  const INTRO_TEXT_2 = "RecoverBuddy will adapt to how you're feeling, suggesting more or less training based on how things are going. In the short term, this means consistent, good sessions. In the long term, this means you'll be able to ramp up to higher volume without rushing into it. Log every day for the best results.";
+  const INTRO_TEXT_3 = "Recover, buddy!!";
   const needsIntro = hasRecoverBuddy && !needsSurvey && athlete?.seen_intro === false;
   const [introOpen, setIntroOpen] = useState(needsIntro);
   const dismissIntro = async () => {
@@ -3370,7 +3373,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
             <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 14 }}>How <span style={{ color: C.orange }}>RecoverBuddy</span> works</div>
             <div style={{ fontSize: 14, color: C.white, lineHeight: 1.65, marginBottom: 22 }}>
-              {INTRO_TEXT}
+              <div style={{ marginBottom: 12 }}>{INTRO_TEXT_1}</div>
+              <div style={{ marginBottom: 12 }}>{INTRO_TEXT_2}</div>
+              <div style={{ fontStyle: "italic" }}>{INTRO_TEXT_3}</div>
             </div>
             <button onClick={dismissIntro}
               style={{ width: "100%", ...mono, fontSize: 12, padding: "14px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer", fontWeight: 600 }}>
@@ -3641,9 +3646,19 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Sleep</div>
                       <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.sleep.toFixed(1)}h</div>
                     </div>
-                    <div>
+                    <div style={{ position: "relative" }}>
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Load</div>
-                      <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.loadPct}%</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.loadPct}%</div>
+                        <button onClick={e => { e.stopPropagation(); setShowLoadTooltip(v => !v); }}
+                          style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>ⓘ</button>
+                      </div>
+                      {showLoadTooltip && (
+                        <div onClick={e => e.stopPropagation()} style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, width: 240, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
+                          <div style={{ fontSize: 12, color: C.white, lineHeight: 1.6 }}>% of your weekly training allowance used today + the last 6 days. Training and/or poor sleep increase the percentage, resting and good sleep decrease it.</div>
+                          <button onClick={() => setShowLoadTooltip(false)} style={{ ...mono, fontSize: 10, color: C.muted, background: "none", border: "none", cursor: "pointer", marginTop: 6, padding: 0 }}>Dismiss</button>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Strength</div>
