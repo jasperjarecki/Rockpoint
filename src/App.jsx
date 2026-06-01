@@ -3038,6 +3038,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const { error } = await sb.from("fatigue_logs").upsert(rows, { onConflict: "athlete_id,date" });
       if (error) console.warn("[catchup] upsert error:", error);
     }
+    // Save self-reported avg sleep to athlete profile
+    if (!isNaN(sleepVal) && sleepVal > 0 && sleepVal <= 14) {
+      await sb.from("athletes").update({ avg_sleep_reported: sleepVal }).eq("id", athlete.id);
+    }
     setCatchupSaving(false);
     setCatchupDays(null);
     setCatchupKind(null);
@@ -3434,6 +3438,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
             <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 14 }}>Welcome to <span style={{ color: C.orange }}>RecoverBuddy</span></div>
             <div style={{ fontSize: 14, color: C.white, lineHeight: 1.65, marginBottom: 22 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.white, lineHeight: 1.6, marginBottom: 20 }}>
+                RecoverBuddy is a climbing log that tells you whether to train or rest today. It also makes a recommendation for tomorrow, and for the next 7 days to get your training load just right.
+              </div>
               <div style={{ marginBottom: 20 }}>{INTRO_TEXT_1}</div>
               <div style={{ marginBottom: 20 }}>{INTRO_TEXT_2}</div>
               <div style={{ fontStyle: "italic" }}>{INTRO_TEXT_3}</div>
@@ -4773,7 +4780,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
                             {(a.peak_grade_v_ever) && <span> · PEAK {a.peak_grade_v_ever}</span>}
                             {(a.typical_grade_v) && <span> · TYPICAL {a.typical_grade_v}</span>}
                             {a.weekly_frequency && <span> · TRAINS {a.weekly_frequency}x/wk</span>}
-                            {avgSlp && <span> · AVG SLEEP {avgSlp}h</span>}
+                            {a.avg_sleep_reported && <span> · AVG SLEEP {a.avg_sleep_reported}h (self-reported)</span>}
                           </>
                         );
                       })()}
