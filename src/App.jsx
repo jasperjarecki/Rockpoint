@@ -2456,7 +2456,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
       <div style={{ background: C.gray2, border: `1px solid ${isToday ? C.orange : C.border}`, borderRadius: 10, padding: "14px 16px", marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ ...mono, fontSize: 13, color: isToday ? C.orange : C.black, fontWeight: 600 }}>{dayLabel}</span>
+            <span style={{ ...mono, fontSize: 13, color: isToday ? C.orange : "#111111", fontWeight: 600 }}>{dayLabel}</span>
             {isToday && <span style={{ ...mono, fontSize: 8, color: C.orange, background: "rgba(61,158,122,0.12)", padding: "1px 6px", borderRadius: 3 }}>TODAY</span>}
           </div>
           {true && (
@@ -3373,8 +3373,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
             <div style={{ ...bebas, fontSize: 26, letterSpacing: 1, marginBottom: 14 }}>How <span style={{ color: C.orange }}>RecoverBuddy</span> works</div>
             <div style={{ fontSize: 14, color: C.white, lineHeight: 1.65, marginBottom: 22 }}>
-              <div style={{ marginBottom: 12 }}>{INTRO_TEXT_1}</div>
-              <div style={{ marginBottom: 12 }}>{INTRO_TEXT_2}</div>
+              <div style={{ marginBottom: 20 }}>{INTRO_TEXT_1}</div>
+              <div style={{ marginBottom: 20 }}>{INTRO_TEXT_2}</div>
               <div style={{ fontStyle: "italic" }}>{INTRO_TEXT_3}</div>
             </div>
             <button onClick={dismissIntro}
