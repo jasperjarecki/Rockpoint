@@ -115,7 +115,7 @@ document.head.appendChild(_gs);
 function updateGlobalStyles() {
   _gs.textContent = `*, *::before, *::after{box-sizing:border-box;margin:0;padding:0} body{background:${C.black};color:${C.white};font-family:'DM Sans',sans-serif} ::-webkit-scrollbar{width:3px;height:3px} ::-webkit-scrollbar-thumb{background:${C.gray3};border-radius:2px} input,textarea,select{font-family:'DM Sans',sans-serif} textarea.athlete-note::placeholder{color:#888;font-style:normal;font-size:12px;letter-spacing:0.3px}`;
 }
-updateGlobalStyles();
+// updateGlobalStyles() called inside App() only — not at module level to avoid TDZ
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const TEMPLATE_CREATOR_ID = "__template_creator__";
