@@ -2853,8 +2853,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (!athlete?.id) return;
     const todayStr = localDateStr();
     // Only show sleep prompt for test users (Jasper + Patrick)
-    const sleepPromptAthletes = ["bzmmql6", "8ygufmv", "test001"];
-    if (!sleepPromptAthletes.includes(athlete.id)) return;
+    if (!hasRecoverBuddy) return;
     // Ask the DB directly whether ANY row for today has a non-null sleep value.
     // This is robust to duplicate rows for the same athlete+date — without this
     // filter, the prompt could fire on a different device if the most-recently-
@@ -2879,8 +2878,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (introOpen) return;  // wait until intro is dismissed first
     // RecoverBuddy users always see the catch-up prompt. Other athletes
     // are gated to the test allowlist for now.
-    const catchupAthletes = ["bzmmql6", "8ygufmv", "test001"];
-    if (!hasRecoverBuddy && !catchupAthletes.includes(athlete.id)) return;
+    if (!hasRecoverBuddy) return;
     const todayStr = localDateStr();
     // First: check if athlete has ANY fatigue_logs rows ever. If not, this is
     // a cold-start athlete and the prompt fires with first-time copy.
