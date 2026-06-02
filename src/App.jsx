@@ -4892,7 +4892,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
   );
 }
 
-function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
+function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark, onWordmarkTap }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
@@ -5022,7 +5022,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </>
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56, borderBottom: `1px solid ${C.border}`, flexShrink: 0, gap: 6 }}>
-          <div onClick={handleWordmarkTap} style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white, cursor: "default", userSelect: "none" }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
+          <div onClick={onWordmarkTap || undefined} style={{ ...bebas, fontSize: 18, letterSpacing: 2, flexShrink: 0, color: C.white, cursor: "default", userSelect: "none" }}>Rock Point <span style={{ color: C.orange }}>Coaching</span></div>
           <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
             {saved && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e" }}>✓</span>}
             <button onClick={undo} disabled={!canUndo} title="Undo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.muted : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩</button>
@@ -5798,5 +5798,6 @@ export default function App() {
     onUpdateCoach={updateCoach}
     onLogout={() => setSession(null)}
     saved={saved}
+    onWordmarkTap={handleWordmarkTap}
   /></>;
 }
