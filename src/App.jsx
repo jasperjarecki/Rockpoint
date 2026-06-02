@@ -3687,7 +3687,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                       </div>
                       {showLoadTooltip && (
                         <div onClick={e => e.stopPropagation()} style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, width: 240, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
-                          <div style={{ fontSize: 12, color: C.white, lineHeight: 1.6 }}>% of your weekly training allowance used today + the last 6 days. Training and/or poor sleep increase the percentage, resting and good sleep decrease it.</div>
+                          <div style={{ fontSize: 12, color: C.white, lineHeight: 1.6 }}>This number represents your weekly training allowance used in the last 7 days. Training and/or poor sleep increase the percentage, resting and good sleep decrease it.</div>
                           <button onClick={() => setShowLoadTooltip(false)} style={{ ...mono, fontSize: 10, color: C.muted, background: "none", border: "none", cursor: "pointer", marginTop: 6, padding: 0 }}>Dismiss</button>
                         </div>
                       )}
