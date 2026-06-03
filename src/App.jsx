@@ -4632,6 +4632,7 @@ function SimulatorPage() {
 function AthleteLogsPage({ athletes, getVolumeMultiplier }) {
   const [logs, setLogs] = React.useState({});
   const [loading, setLoading] = React.useState(true);
+  const [selectedLog, setSelectedLog] = React.useState(null);
 
   const rbAthletes = athletes.filter(a => !!a.has_recoverbuddy);
 
@@ -4775,22 +4776,72 @@ function AthleteLogsPage({ athletes, getVolumeMultiplier }) {
                 </div>
               )}
 
-              {/* Recent log strip */}
+              {/* Recent log strip — tappable */}
               {stats && (
-                <div style={{ marginTop: 14, display: "flex", gap: 4 }}>
-                  {(logs[athlete.id] || []).slice(0, 14).reverse().map((log, i) => {
-                    const loadColor = log.load === 0 ? C.gray3 : log.load === 1 ? "#5b7fa6" : log.load <= 2 ? C.orange : "#c0392b";
-                    return (
-                      <div key={i} title={`${log.date}: load ${log.load}, sleep ${log.sleep}h`}
-                        style={{ flex: 1, height: 6, borderRadius: 3, background: loadColor, minWidth: 0 }} />
-                    );
-                  })}
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Last 14 days — tap a bar</div>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {(logs[athlete.id] || []).slice(0, 14).reverse().map((log, i) => {
+                      const barColor = log.load === 0 ? C.gray3 : log.load === 1 ? "#5b7fa6" : log.load <= 2 ? C.orange : "#c0392b";
+                      const d = new Date(log.date + "T12:00:00");
+                      return (
+                        <div key={i} onClick={() => setSelectedLog({ log, athleteName: athlete.name })}
+                          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", minWidth: 0 }}>
+                          <div style={{ width: "100%", height: 12, borderRadius: 3, background: barColor }} />
+                          <div style={{ ...mono, fontSize: 7, color: C.muted }}>{d.getDate()}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* Day detail modal */}
+      {selectedLog && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={() => setSelectedLog(null)}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 360, padding: 24 }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div>
+                <div style={{ ...bebas, fontSize: 18, color: C.white }}>{selectedLog.athleteName}</div>
+                <div style={{ ...mono, fontSize: 11, color: C.muted }}>{new Date(selectedLog.log.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+              </div>
+              <button onClick={() => setSelectedLog(null)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[{ label: "Sleep", value: selectedLog.log.sleep != null ? selectedLog.log.sleep + "h" : "—",
+                  color: selectedLog.log.sleep >= 8 ? "#3d9e7a" : selectedLog.log.sleep >= 6 ? C.orange : "#c0392b" },
+                { label: "Load", value: selectedLog.log.load != null ? String(selectedLog.log.load) : "—",
+                  color: selectedLog.log.load === 0 ? C.muted : selectedLog.log.load <= 2 ? C.orange : "#c0392b" },
+                { label: "Strong", value: selectedLog.log.strong_na ? "N/A" : selectedLog.log.strong != null ? String(selectedLog.log.strong) : "—",
+                  color: selectedLog.log.strong === 0 ? "#c0392b" : selectedLog.log.strong === 2 ? "#3d9e7a" : C.orange },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ background: C.gray2, borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            {selectedLog.log.summary && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>What they did</div>
+                <div style={{ fontSize: 13, color: C.white, lineHeight: 1.55 }}>{selectedLog.log.summary}</div>
+              </div>
+            )}
+            {selectedLog.log.tweaks && (
+              <div>
+                <div style={{ ...mono, fontSize: 9, color: "#c0392b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Tweaks</div>
+                <div style={{ fontSize: 13, color: C.white, lineHeight: 1.55 }}>{selectedLog.log.tweaks}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
