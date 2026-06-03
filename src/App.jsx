@@ -121,6 +121,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const TEMPLATE_CREATOR_ID = "__template_creator__";
 const VOLUME_TIERS_PAGE_ID = "__volume_tiers__";
 const SIMULATOR_PAGE_ID = "__simulator__";
+const ATHLETE_LOGS_PAGE_ID = "__athlete_logs__";
 
 function parseYouTubeTimestamp(url) {
   if (!url) return 0;
@@ -4627,6 +4628,174 @@ function SimulatorPage() {
   );
 }
 
+// ── ATHLETE LOGS PAGE ─────────────────────────────────────────────────────────
+function AthleteLogsPage({ athletes, getVolumeMultiplier }) {
+  const [logs, setLogs] = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+
+  const rbAthletes = athletes.filter(a => !!a.has_recoverbuddy);
+
+  React.useEffect(() => {
+    if (rbAthletes.length === 0) { setLoading(false); return; }
+    const ids = rbAthletes.map(a => a.id);
+    const todayStr = localDateStr();
+    const [ty, tm, td] = todayStr.split("-").map(Number);
+    const dt = new Date(ty, tm - 1, td); dt.setDate(dt.getDate() - 30);
+    const since = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+    sb.from("fatigue_logs").select("*").in("athlete_id", ids).gte("date", since)
+      .order("date", { ascending: false })
+      .then(({ data }) => {
+        const byAthlete = {};
+        (data || []).forEach(r => { (byAthlete[r.athlete_id] = byAthlete[r.athlete_id] || []).push(r); });
+        setLogs(byAthlete);
+        setLoading(false);
+      });
+  }, [athletes.map(a => a.id).join(",")]);
+
+  const todayStr = localDateStr();
+
+  const getStats = (athlete) => {
+    const athleteLogs = logs[athlete.id] || [];
+    if (athleteLogs.length === 0) return null;
+
+    const recent7 = athleteLogs.slice(0, 7);
+    const avgSleep = recent7.reduce((s, l) => s + (l.sleep || 0), 0) / recent7.length;
+    const weekLoad = recent7.reduce((s, l) => s + (l.load || 0), 0);
+    const volCoeff = getVolumeMultiplier(athlete);
+    const capacity = avgSleep * volCoeff;
+    const loadPct = capacity > 0 ? Math.round((weekLoad / capacity) * 100) : 0;
+
+    const strongRatings = recent7.filter(l => l.strong != null).map(l => l.strong);
+    let strengthLabel = "—";
+    if (strongRatings.length > 0) {
+      const avg = strongRatings.reduce((s, v) => s + v, 0) / strongRatings.length;
+      if (avg < 1) strengthLabel = "Fatigued";
+      else if (avg === 1) strengthLabel = "Normal";
+      else if (avg < 2) strengthLabel = "Pretty Good";
+      else strengthLabel = "Great";
+    }
+
+    const lastLog = athleteLogs[0];
+    const [ly, lm, ld] = lastLog.date.split("-").map(Number);
+    const lastDate = new Date(ly, lm - 1, ld);
+    const [ty2, tm2, td2] = todayStr.split("-").map(Number);
+    const today = new Date(ty2, tm2 - 1, td2);
+    const daysSince = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+
+    // Compute rec
+    const prior = recent7.slice(1);
+    const lowSleep = avgSleep < 6.5;
+    const overLoadCap = weekLoad > capacity;
+    let cumLoad = 0;
+    for (let i = 0; i < prior.length; i++) {
+      const ld2 = prior[i]?.load ?? 0;
+      if (ld2 === 0) break;
+      cumLoad += ld2;
+      if (cumLoad >= 4) break;
+    }
+    const priorLoads = prior.slice(0, 2).map(l => l.load ?? 0);
+    const twoAdjacentHard = priorLoads.length === 2 && priorLoads[0] >= 2 && priorLoads[1] >= 2;
+    const lastNightSleep = prior[0]?.sleep ?? null;
+    const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
+    const lowStrong = strongRatings.length >= 2 && (strongRatings.reduce((s,v)=>s+v,0)/strongRatings.length) < 1.0;
+    const redCount = [lowSleep, lowStrong].filter(Boolean).length;
+
+    let rec = "Train", recColor = "#3d9e7a";
+    if (sleptUnder6 || overLoadCap || (twoAdjacentHard) || cumLoad >= 4) { rec = "Rest"; recColor = "#c0392b"; }
+    else if (redCount >= 2) { rec = "Rest"; recColor = "#c0392b"; }
+    else if (redCount >= 1 || lowSleep) { rec = "Train Light"; recColor = C.orange; }
+
+    return { avgSleep, loadPct, strengthLabel, lastLog, daysSince, rec, recColor };
+  };
+
+  // Sort: athletes with no logs last, others by most recently logged
+  const sorted = [...rbAthletes].sort((a, b) => {
+    const la = logs[a.id]?.[0]?.date || "0000-00-00";
+    const lb = logs[b.id]?.[0]?.date || "0000-00-00";
+    return lb.localeCompare(la);
+  });
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 24px", width: "100%" }}>
+      <div style={{ ...bebas, fontSize: 32, letterSpacing: 1, marginBottom: 6 }}>Athlete Logs</div>
+      <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 28, lineHeight: 1.6 }}>
+        RecoverBuddy athletes — last 30 days. Sorted by most recently logged.
+      </div>
+
+      {loading && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 40 }}>Loading...</div>}
+
+      {!loading && sorted.length === 0 && (
+        <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 40 }}>No RecoverBuddy athletes yet.</div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {!loading && sorted.map(athlete => {
+          const stats = getStats(athlete);
+          const notLogged = !stats;
+          const overdue = stats?.daysSince >= 3;
+
+          return (
+            <div key={athlete.id} style={{
+              background: C.gray,
+              border: `1px solid ${overdue ? "#c0392b44" : notLogged ? C.border : C.border}`,
+              borderRadius: 10,
+              padding: "16px 20px",
+            }}>
+              {/* Header row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: stats ? 14 : 0, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ ...bebas, fontSize: 18, color: C.white }}>{athlete.name}</div>
+                  <Badge type={athlete.type} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {notLogged && <span style={{ ...mono, fontSize: 10, color: C.muted }}>No logs yet</span>}
+                  {overdue && <span style={{ ...mono, fontSize: 10, color: "#c0392b", background: "rgba(192,57,43,0.1)", padding: "3px 8px", borderRadius: 4 }}>⚠ {stats.daysSince}d ago</span>}
+                  {stats && !overdue && <span style={{ ...mono, fontSize: 10, color: C.muted }}>{stats.daysSince === 0 ? "Today" : stats.daysSince === 1 ? "Yesterday" : `${stats.daysSince}d ago`}</span>}
+                  {stats && <span style={{ ...mono, fontSize: 11, color: stats.recColor, fontWeight: 600, background: `${stats.recColor}18`, padding: "3px 10px", borderRadius: 4 }}>{stats.rec}</span>}
+                </div>
+              </div>
+
+              {/* Stats row */}
+              {stats && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                  {[
+                    { label: "Avg Sleep", value: stats.avgSleep.toFixed(1) + "h" },
+                    { label: "Load", value: stats.loadPct + "%" },
+                    { label: "Strength", value: stats.strengthLabel },
+                    { label: "Last logged", value: (() => {
+                      const d = new Date(stats.lastLog.date + "T12:00:00");
+                      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    })() },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: C.white }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recent log strip */}
+              {stats && (
+                <div style={{ marginTop: 14, display: "flex", gap: 4 }}>
+                  {(logs[athlete.id] || []).slice(0, 14).reverse().map((log, i) => {
+                    const loadColor = log.load === 0 ? C.gray3 : log.load === 1 ? "#5b7fa6" : log.load <= 2 ? C.orange : "#c0392b";
+                    return (
+                      <div key={i} title={`${log.date}: load ${log.load}, sleep ${log.sleep}h`}
+                        style={{ flex: 1, height: 6, borderRadius: 3, background: loadColor, minWidth: 0 }} />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
 // ── COACH DASHBOARD ───────────────────────────────────────────────────────────
 
 // Compute a tier-change suggestion for an athlete based on the last 14 days
@@ -4888,7 +5057,9 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
       ? { id: VOLUME_TIERS_PAGE_ID, name: "Volume Tiers" }
       : selectedId === SIMULATOR_PAGE_ID
         ? { id: SIMULATOR_PAGE_ID, name: "Simulator" }
-        : athletes.find(a => a.id === selectedId);
+        : selectedId === ATHLETE_LOGS_PAGE_ID
+          ? { id: ATHLETE_LOGS_PAGE_ID, name: "Athlete Logs" }
+          : athletes.find(a => a.id === selectedId);
   const btnS = (active) => ({ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, padding: "6px 10px", borderRadius: 4, border: `1px solid ${active?C.orange:C.border}`, background: active?"rgba(61,158,122,0.1)":"none", color: active?C.orange:C.muted, cursor: "pointer" });
 
   const openBackups = async () => {
@@ -5015,6 +5186,12 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   <div style={{ ...mono, fontSize: 10, color: C.muted }}>test fatigue model with hypothetical data</div>
                 </button>
               </div>
+              <div style={{ marginBottom: 6 }}>
+                <button onClick={() => setSelectedId(ATHLETE_LOGS_PAGE_ID)} style={{ width: "100%", textAlign: "left", background: selectedId===ATHLETE_LOGS_PAGE_ID?"rgba(61,158,122,0.10)":"none", border: `1px solid ${selectedId===ATHLETE_LOGS_PAGE_ID?C.orange:"rgba(61,158,122,0.3)"}`, borderRadius: 6, padding: "9px 12px", cursor: "pointer" }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.orange, marginBottom: 2 }}>Athlete Logs</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted }}>RecoverBuddy athletes — sleep, load, strength</div>
+                </button>
+              </div>
               <div style={{ borderBottom: `1px solid ${C.border}`, marginBottom: 6 }} />
               {athletes.map(a => (
                 <div key={a.id} style={{ position: "relative", marginBottom: 2 }}
@@ -5068,6 +5245,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             <VolumeTiersPage athletes={athletes} onUpdateAthlete={onUpdateAthlete} />
           ) : selectedId === SIMULATOR_PAGE_ID ? (
             <SimulatorPage />
+          ) : selectedId === ATHLETE_LOGS_PAGE_ID ? (
+            <AthleteLogsPage athletes={athletes} getVolumeMultiplier={getVolumeMultiplier} />
           ) : mode === "coach" ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
               {isMobile && selected.id !== TEMPLATE_CREATOR_ID ? (
