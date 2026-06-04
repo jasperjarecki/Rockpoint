@@ -3866,7 +3866,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
         {/* Log every day message */}
         {hasRecoverBuddy && (
-          <div style={{ fontSize: 14, color: "#111111", lineHeight: 1.6, marginBottom: 16, fontWeight: 500 }}>Log every day so RecoverBuddy can work its magic.</div>
+          <div style={{ fontSize: 14, color: "#111111", lineHeight: 1.6, marginBottom: 16, fontWeight: 500 }}>Log every day so RecoverBuddy can work its magic. 🪄</div>
         )}
 
         {/* Feedback modal */}
