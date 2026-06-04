@@ -3771,14 +3771,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             const recWindow = [{ ...window7[0], load: 0, strong: null, strong_na: true }, ...window7.slice(1)];
             const prior7 = recWindow.slice(1);
 
-            // For today: if already logged, use actual load rather than optimizing
+            // For today (offset=0):
+            //   - Already logged → use actual load
+            //   - Not logged → assume the athlete follows today's rec
             const actualTodayLog = offset === 0 ? simHistory.find(l => l.date === dateStr && l.load != null) : null;
+
+            // Infer assumed load from fatigueRec when not yet logged
+            const todayRecLabel = fatigueRec?.label;
+            const assumedTodayLoad = offset === 0 && !actualTodayLog
+              ? (todayRecLabel === "Train" ? 2 : todayRecLabel === "Train Light" || todayRecLabel === "Train Light or Rest" ? 1 : 0)
+              : null;
 
             // Try load=2 (Train), then load=1 (Light), then load=0 (Rest)
             let chosenLoad = 0;
             let chosenLabel = "Rest";
             if (actualTodayLog) {
               chosenLoad = actualTodayLog.load;
+              chosenLabel = chosenLoad === 0 ? "Rest" : chosenLoad === 1 ? "Train Light" : "Train";
+            } else if (assumedTodayLoad !== null) {
+              chosenLoad = assumedTodayLoad;
               chosenLabel = chosenLoad === 0 ? "Rest" : chosenLoad === 1 ? "Train Light" : "Train";
             } else for (const tryLoad of [2, 1, 0]) {
               if (tryLoad === 0) { chosenLoad = 0; chosenLabel = "Rest"; break; }
