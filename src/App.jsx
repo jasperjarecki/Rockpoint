@@ -2596,10 +2596,10 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
                   <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>Use your judgment. Not necessarily just climbing.</div>
                   {[
                     { n: 0, color: "#5b7fa6", text: "Rest. Nothing strenuous." },
-                    { n: 1, color: C.orange, text: "Light session. You ended well before you got tired. A long walk, easy fingerboard." },
-                    { n: 2, color: C.orange, text: "Standard session. You worked hard but didn't go to the death. A run or mountain bike ride." },
-                    { n: 3, color: "#e07a3a", text: "You pushed past tired. Enduro after bouldering, a big run or hike. A bit sore." },
-                    { n: 4, color: "#c0392b", text: "Big day out. Mega approach and lots of pitches. A killer hike or marathon-type mission." },
+                    { n: 1, color: C.orange, text: "Light session. You ended well before you got tired. A super short sesh, long walk, low volume fingerboard. Etc." },
+                    { n: 2, color: C.orange, text: "Standard session. You climbed hard but didn't go to the death. A run or mountain bike ride counts, too." },
+                    { n: 3, color: "#e07a3a", text: "You pushed past tired. Ex: Enduro after bouldering, a big run or hike. A bit sore. (Note: choose this if your climbing session was particularly fingery)." },
+                    { n: 4, color: "#c0392b", text: "Big day out. Mega approach, lots of pitches. Huge day in the gym. A killer hike or marathon-type mission. Beat." },
                   ].map(({ n, color, text }) => (
                     <div key={n} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                       <div style={{ ...mono, fontSize: 18, fontWeight: 700, color, minWidth: 20, lineHeight: 1.3 }}>{n}</div>
