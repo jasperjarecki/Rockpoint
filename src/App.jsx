@@ -192,7 +192,7 @@ const REASON_TEXT = {
   overCumLoad: "You've accumulated some fatigue in the last couple days, so rest up.",
   twoAdjacentHard: "Two back to back training days means it's time for rest. If you slept great you could train light today, but otherwise take it easy.",
   twoAdjacentHardSoftened: "You trained back to back days, but your sleep average is high AND you slept great last night. Train light today or rest up and get after it tomorrow.",
-  overLoadCap: "You've trained a lot in the last few days, get some rest before you have another training day.",
+  overLoadCap: "You've exceeded your current training load capacity. Rest up, focus on high quality rested sessions. RecoverBuddy will help you ramp into this volume in no time.",
   reds_lowSleep_lowStrong: "Your sleep average is low and you've been feeling weak. Rest today to avoid frustration or injury.",
   reds_lowSleep_fourStrongDays: "You're not getting enough sleep. Sometimes when we feel strong on low sleep, our connective tissue is doing so much lifting that we're more likely to get hurt. If you're this strong on low sleep, think of what you'll accomplish with better rest!",
   reds_lowStrong_fourStrongDays: "You were feeling great recently, but then things dropped off. Seems like you got psyched, climbed a lot, and now are a little fatigued. Rest up and you'll be back at it in no time.",
@@ -2679,7 +2679,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       }
     }
     if (overrideWeek != null) {
-      return publishedIndices.reduce((best, idx) => Math.abs(idx - overrideWeek) < Math.abs(best - overrideWeek) ? idx : best, publishedIndices[0]);
+      // If the override week is published, use it directly.
+      // If not, use the highest published week that doesn't exceed it.
+      if (publishedIndices.includes(overrideWeek)) return overrideWeek;
+      const below = publishedIndices.filter(i => i <= overrideWeek);
+      if (below.length > 0) return Math.max(...below);
+      return publishedIndices[0];
     }
     if (!plan?.blockStart) return publishedIndices[0];
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
@@ -3584,8 +3589,12 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.white, fontSize: 16, outline: "none", marginBottom: 6, boxSizing: "border-box" }} />
             <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 20, lineHeight: 1.5 }}>Take the hours you spent asleep, subtract 0.5 if it was bad sleep, subtract 1 if it was really bad. This is pretty subjective, so don't worry too much about nailing it.</div>
             <button onClick={submitSleepPrompt} disabled={!sleepPromptValue || sleepPromptSaving}
-              style={{ width: "100%", ...mono, fontSize: 12, padding: "14px", borderRadius: 8, border: "none", background: sleepPromptValue ? C.orange : C.border, color: "#fff", cursor: sleepPromptValue ? "pointer" : "default" }}>
+              style={{ width: "100%", ...mono, fontSize: 12, padding: "14px", borderRadius: 8, border: "none", background: sleepPromptValue ? C.orange : C.border, color: "#fff", cursor: sleepPromptValue ? "pointer" : "default", marginBottom: 10 }}>
               {sleepPromptSaving ? "Saving..." : "Log Sleep"}
+            </button>
+            <button onClick={() => setShowSleepPrompt(false)}
+              style={{ width: "100%", ...mono, fontSize: 11, padding: "10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
+              Skip for now
             </button>
           </div>
         </div>
