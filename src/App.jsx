@@ -2814,6 +2814,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showVolumeModal, setShowVolumeModal] = useState(false);
   const [tierUpBanner, setTierUpBanner] = useState(false);
   const [showForecast, setShowForecast] = useState(false);
+  const [pyramidLogs, setPyramidLogs] = useState([]);
+  const [pyramidCycle, setPyramidCycle] = useState(1);
+  const [pyramidLoading, setPyramidLoading] = useState(false);
+  const [showPyramidLog, setShowPyramidLog] = useState(null); // { grade, slotIndex, existing }
+  const [pyramidForm, setPyramidForm] = useState({ date: localDateStr(), notes: "" });
+  const [pyramidSaving, setPyramidSaving] = useState(false);
+  const [viewingPyramidSlot, setViewingPyramidSlot] = useState(null);
   const [showLoadTooltip, setShowLoadTooltip] = useState(false);
   const [partialDayLog, setPartialDayLog] = useState(null);
   const [volumeModalTab, setVolumeModalTab] = useState('log');
@@ -3412,6 +3419,23 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   useEffect(() => {
     if (hasRecoverBuddy) recomputeFatigue();
   }, [recomputeFatigue, hasRecoverBuddy]);
+
+  // Fetch pyramid logs
+  useEffect(() => {
+    if (!athlete?.is_dev || !athlete?.id) return;
+    setPyramidLoading(true);
+    sb.from("pyramid_logs").select("*").eq("athlete_id", athlete.id)
+      .order("pyramid_cycle", { ascending: false })
+      .then(({ data }) => {
+        const allLogs = data || [];
+        // Find current cycle (highest)
+        const maxCycle = allLogs.length > 0 ? Math.max(...allLogs.map(l => l.pyramid_cycle)) : 1;
+        const cycleLogs = allLogs.filter(l => l.pyramid_cycle === maxCycle);
+        setPyramidCycle(maxCycle);
+        setPyramidLogs(cycleLogs);
+        setPyramidLoading(false);
+      });
+  }, [athlete?.id, athlete?.is_dev]);
 
 
   return (
@@ -4025,6 +4049,178 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>,
           document.body
         )}
+
+
+        {/* Bouldering Pyramid — dev only */}
+        {athlete?.is_dev && (() => {
+          // Compute pyramid structure from typical_grade_v
+          const typicalGrade = athlete?.typical_grade_v;
+          const gradeIdx = V_GRADES.indexOf(typicalGrade);
+          if (!typicalGrade || typicalGrade === 'N/A' || gradeIdx < 1) return null;
+
+          // Top grade = typical + 1, then 3 rows below
+          // Row 0 (top): 1 slot at gradeIdx+1
+          // Row 1: 2 slots at gradeIdx
+          // Row 2: 4 slots at gradeIdx-1
+          // Row 3: 8 slots at gradeIdx-2
+          const rows = [];
+          for (let r = 0; r < 4; r++) {
+            const gIdx = gradeIdx + 1 - r;
+            if (gIdx < 1) break;
+            rows.push({ grade: V_GRADES[gIdx], count: Math.pow(2, r) });
+          }
+          const totalSlots = rows.reduce((s, r) => s + r.count, 0);
+
+          // Map logs to slots — each row gets its count filled in order
+          const logsByGrade = {};
+          pyramidLogs.forEach(l => { (logsByGrade[l.grade] = logsByGrade[l.grade] || []).push(l); });
+
+          const isComplete = rows.every(row => (logsByGrade[row.grade] || []).length >= row.count);
+
+          const logSlot = async () => {
+            if (!showPyramidLog) return;
+            setPyramidSaving(true);
+            await sb.from("pyramid_logs").insert({
+              athlete_id: athlete.id,
+              grade: showPyramidLog.grade,
+              logged_at: pyramidForm.date,
+              notes: pyramidForm.notes || null,
+              pyramid_cycle: pyramidCycle,
+            });
+            // Refetch
+            const { data } = await sb.from("pyramid_logs").select("*").eq("athlete_id", athlete.id)
+              .eq("pyramid_cycle", pyramidCycle);
+            const newLogs = data || [];
+            setPyramidLogs(newLogs);
+            // Check if now complete — if so bump cycle
+            const newLogsByGrade = {};
+            newLogs.forEach(l => { (newLogsByGrade[l.grade] = newLogsByGrade[l.grade] || []).push(l); });
+            const nowComplete = rows.every(row => (newLogsByGrade[row.grade] || []).length >= row.count);
+            if (nowComplete) {
+              const newCycle = pyramidCycle + 1;
+              setPyramidCycle(newCycle);
+              setPyramidLogs([]);
+            }
+            setPyramidSaving(false);
+            setShowPyramidLog(null);
+            setPyramidForm({ date: localDateStr(), notes: "" });
+          };
+
+          return (
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 16px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ ...bebas, fontSize: 20, color: C.white, letterSpacing: 1 }}>Bouldering Pyramid</div>
+                {pyramidCycle > 1 && <div style={{ ...mono, fontSize: 10, color: C.muted }}>Cycle {pyramidCycle}</div>}
+              </div>
+              <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
+                Fill every slot to complete the pyramid. Tap a slot to log a boulder.
+              </div>
+              {pyramidLoading ? (
+                <div style={{ ...mono, fontSize: 11, color: C.muted, textAlign: "center", padding: 16 }}>Loading...</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
+                  {rows.map((row, ri) => {
+                    const filled = (logsByGrade[row.grade] || []);
+                    return (
+                      <div key={ri} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: "100%" }}>
+                        <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>{row.grade}</div>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                          {Array.from({ length: row.count }).map((_, si) => {
+                            const log = filled[si];
+                            const isFilled = !!log;
+                            return (
+                              <button key={si}
+                                onClick={() => isFilled
+                                  ? setViewingPyramidSlot(log)
+                                  : (setShowPyramidLog({ grade: row.grade, slotIndex: si }), setPyramidForm({ date: localDateStr(), notes: "" }))
+                                }
+                                style={{
+                                  width: Math.min(64, Math.floor(320 / row.count) - 6),
+                                  height: 44,
+                                  borderRadius: 8,
+                                  border: `2px solid ${isFilled ? '#2aaa5e' : C.border}`,
+                                  background: isFilled ? 'rgba(61,158,122,0.15)' : C.gray2,
+                                  cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'all 0.15s',
+                                }}>
+                                {isFilled
+                                  ? <span style={{ color: '#2aaa5e', fontSize: 18 }}>✓</span>
+                                  : <span style={{ color: C.gray3, fontSize: 18 }}>+</span>
+                                }
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {isComplete && (
+                <div style={{ marginTop: 14, textAlign: "center", padding: "12px", background: "rgba(61,158,122,0.1)", borderRadius: 8, border: "1px solid rgba(61,158,122,0.3)" }}>
+                  <div style={{ ...bebas, fontSize: 20, color: '#2aaa5e' }}>Pyramid Complete! 🎉</div>
+                  <div style={{ ...mono, fontSize: 11, color: C.muted, marginTop: 4 }}>Starting cycle {pyramidCycle + 1}...</div>
+                </div>
+              )}
+
+              {/* Log slot modal */}
+              {showPyramidLog && ReactDOM.createPortal(
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+                  onClick={() => setShowPyramidLog(null)}>
+                  <div style={{ background: C.gray, borderRadius: '12px 12px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))' }}
+                    onClick={e => e.stopPropagation()}>
+                    <div style={{ ...bebas, fontSize: 22, marginBottom: 4, color: C.white }}>Log {showPyramidLog.grade}</div>
+                    <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 16 }}>Must be a {showPyramidLog.grade} boulder.</div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>DATE</div>
+                      <input type="date" value={pyramidForm.date} max={localDateStr()}
+                        onChange={e => setPyramidForm(f => ({ ...f, date: e.target.value }))}
+                        style={{ width: '100%', background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 12px', color: C.white, fontSize: 14, outline: 'none', colorScheme: 'dark', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>NOTES (optional)</div>
+                      <textarea value={pyramidForm.notes} onChange={e => setPyramidForm(f => ({ ...f, notes: e.target.value }))}
+                        placeholder="Boulder name, gym, style..."
+                        rows={3}
+                        style={{ width: '100%', background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 12px', color: C.white, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setShowPyramidLog(null)}
+                        style={{ flex: 1, ...mono, fontSize: 12, padding: '12px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'none', color: C.muted, cursor: 'pointer' }}>Cancel</button>
+                      <button onClick={logSlot} disabled={pyramidSaving}
+                        style={{ flex: 2, ...mono, fontSize: 12, padding: '12px', borderRadius: 8, border: 'none', background: C.orange, color: '#fff', cursor: pyramidSaving ? 'default' : 'pointer' }}>
+                        {pyramidSaving ? 'Saving...' : 'Log Boulder'}
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )}
+
+              {/* View filled slot */}
+              {viewingPyramidSlot && ReactDOM.createPortal(
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+                  onClick={() => setViewingPyramidSlot(null)}>
+                  <div style={{ background: C.gray, borderRadius: 12, width: '100%', maxWidth: 360, padding: 24 }}
+                    onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <div style={{ ...bebas, fontSize: 22, color: '#2aaa5e' }}>✓ {viewingPyramidSlot.grade}</div>
+                      <button onClick={() => setViewingPyramidSlot(null)} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                    </div>
+                    <div style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 8 }}>
+                      {new Date(viewingPyramidSlot.logged_at + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    </div>
+                    {viewingPyramidSlot.notes && (
+                      <div style={{ fontSize: 13, color: C.white, lineHeight: 1.6, marginTop: 8 }}>{viewingPyramidSlot.notes}</div>
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
+            </div>
+          );
+        })()}
 
         </>}
 
