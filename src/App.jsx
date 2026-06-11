@@ -238,6 +238,13 @@ async function dbGetPlans() {
   return result;
 }
 async function dbUpsertPlan(athleteId, planData) { await sb.from("plans").upsert({ athlete_id: athleteId, data: planData }); }
+async function dbSaveArchive(athleteId, label, planData, progressData) {
+  await sb.from("plan_archives").insert({ athlete_id: athleteId, label, plan_data: planData, progress_data: progressData || null });
+}
+async function dbGetArchives(athleteId) {
+  const { data } = await sb.from("plan_archives").select("*").eq("athlete_id", athleteId).order("archived_at", { ascending: false });
+  return data || [];
+}
 async function dbBackupPlan(athleteId, planData, backupType = 'edit') {
   try {
     const limit = backupType === 'daily' ? 90 : 50;
@@ -5112,6 +5119,14 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiveLabel, setArchiveLabel] = useState("");
+  const [archiveStep, setArchiveStep] = useState("label"); // label | structure
+  const [archiveSaving, setArchiveSaving] = useState(false);
+  const [showArchiveList, setShowArchiveList] = useState(false);
+  const [archives, setArchives] = useState([]);
+  const [loadingArchives, setLoadingArchives] = useState(false);
+  const [viewingArchive, setViewingArchive] = useState(null); // { label, plan_data, progress_data, archived_at }
   const [showCoaches, setShowCoaches] = useState(false);
   const [newCoach, setNewCoach] = useState({ name: "", password: "" });
   const [editingCoach, setEditingCoach] = useState(null);
@@ -5140,6 +5155,36 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
     const { data } = await sb.from("plan_backups").select("*").eq("athlete_id", selectedId).order("saved_at", { ascending: false }).limit(20);
     setBackups(data || []);
     setLoadingBackups(false);
+  };
+  const openArchiveModal = () => {
+    setArchiveLabel("");
+    setArchiveStep("label");
+    setShowArchiveModal(true);
+  };
+  const saveArchive = async (keepStructure) => {
+    if (!selectedId || !archiveLabel.trim()) return;
+    setArchiveSaving(true);
+    const currentPlan = plans[selectedId];
+    const currentProgress = progress[selectedId] || {};
+    await dbSaveArchive(selectedId, archiveLabel.trim(), currentPlan, currentProgress);
+    // Build new plan
+    const newPlan = keepStructure
+      ? { weeks: currentPlan.weeks.map(wk => ({ label: wk.label, days: wk.days.map(d => ({ label: d.label, exercises: d.exercises.map(e => ({ ...e, id: uid() })) })) })), published: [], blockStart: "", blockEnd: "", blockNotes: "", blockUpdate: "", blockImageUrl: null }
+      : { weeks: [{ label: "Week 1", days: [{ label: "Day 1", exercises: [] }] }], published: [], blockStart: "", blockEnd: "", blockNotes: "", blockUpdate: "", blockImageUrl: null };
+    await dbUpsertPlan(selectedId, newPlan);
+    // Clear progress
+    await sb.from("progress").upsert({ athlete_id: selectedId, data: {} });
+    onPlanChange(selectedId, newPlan);
+    setArchiveSaving(false);
+    setShowArchiveModal(false);
+  };
+  const openArchiveList = async () => {
+    if (!selectedId) return;
+    setLoadingArchives(true);
+    setShowArchiveList(true);
+    const data = await dbGetArchives(selectedId);
+    setArchives(data);
+    setLoadingArchives(false);
   };
   const restoreBackup = async (backup) => {
     if (!window.confirm("Restore this backup? Current plan will be overwritten.")) return;
@@ -5207,6 +5252,8 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             <button onClick={redo} disabled={!canRedo} title="Redo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canRedo ? C.muted : C.gray3, cursor: canRedo ? "pointer" : "default" }}>↪</button>
             <button onClick={openPasswords} style={btnS(false)}>🔑</button>
             {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
+            {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveModal} style={btnS(false)} title="Archive block">📦 Archive</button>}
+            {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveList} style={btnS(false)} title="View archives">🗂 Archives</button>}
             {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
             <button onClick={openTemplates} style={btnS(false)}>Templates</button>
             <div style={{ width: 1, height: 20, background: C.border }} />
@@ -5499,6 +5546,135 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <button onClick={() => setConfirmDelete(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
               <button onClick={() => { onDeleteAthlete(confirmDelete); if(selectedId===confirmDelete) setSelectedId(null); setConfirmDelete(null); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: "#a05555", border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Remove</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive block modal */}
+      {showArchiveModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 420, padding: 28 }}>
+            {archiveStep === "label" ? (
+              <>
+                <div style={{ ...bebas, fontSize: 22, marginBottom: 6 }}>Archive This Block</div>
+                <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>Give this block a name. All exercises, notes, and athlete progress will be saved.</p>
+                <input autoFocus value={archiveLabel} onChange={e => setArchiveLabel(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && archiveLabel.trim() && setArchiveStep("structure")}
+                  placeholder="e.g. Spring Block 2026..."
+                  style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", marginBottom: 16 }} />
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button onClick={() => setShowArchiveModal(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
+                  <button onClick={() => { if (archiveLabel.trim()) setArchiveStep("structure"); }} disabled={!archiveLabel.trim()}
+                    style={{ ...mono, fontSize: 11, padding: "8px 16px", background: archiveLabel.trim() ? C.orange : C.gray3, border: "none", borderRadius: 5, color: "#fff", cursor: archiveLabel.trim() ? "pointer" : "default" }}>Next →</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ ...bebas, fontSize: 22, marginBottom: 6 }}>Start New Block</div>
+                <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>How would you like to start the new block?</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                  <button onClick={() => saveArchive(false)} disabled={archiveSaving}
+                    style={{ textAlign: "left", padding: "14px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.gray2, cursor: "pointer" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.white, marginBottom: 3 }}>Start fresh</div>
+                    <div style={{ ...mono, fontSize: 11, color: C.muted }}>Blank plan — one empty week and day</div>
+                  </button>
+                  <button onClick={() => saveArchive(true)} disabled={archiveSaving}
+                    style={{ textAlign: "left", padding: "14px 16px", borderRadius: 8, border: `1px solid ${C.orange}`, background: "rgba(61,158,122,0.06)", cursor: "pointer" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.orange, marginBottom: 3 }}>Keep structure</div>
+                    <div style={{ ...mono, fontSize: 11, color: C.muted }}>Copy weeks, days, and exercises — clear progress and block info</div>
+                  </button>
+                </div>
+                {archiveSaving && <div style={{ ...mono, fontSize: 11, color: C.muted, textAlign: "center" }}>Archiving...</div>}
+                <button onClick={() => setArchiveStep("label")} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>← Back</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Archive list modal */}
+      {showArchiveList && !viewingArchive && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 500, maxWidth: "100%", maxHeight: "80vh", overflow: "auto", padding: 28 }}>
+            <div style={{ ...bebas, fontSize: 22, marginBottom: 4 }}>Archived Blocks</div>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>{athletes.find(a => a.id === selectedId)?.name} — tap a block to view it.</p>
+            {loadingArchives && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>Loading...</div>}
+            {!loadingArchives && archives.length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: "center", padding: 24 }}>No archived blocks yet.</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {archives.map(a => {
+                const d = new Date(a.archived_at);
+                const weekCount = a.plan_data?.weeks?.length || 0;
+                const exCount = (a.plan_data?.weeks || []).reduce((n, w) => n + (w.days || []).reduce((m, d2) => m + (d2.exercises || []).length, 0), 0);
+                return (
+                  <button key={a.id} onClick={() => setViewingArchive(a)}
+                    style={{ textAlign: "left", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.white, marginBottom: 3 }}>{a.label}</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted }}>{weekCount} weeks · {exCount} exercises · {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+                    </div>
+                    <span style={{ ...mono, fontSize: 18, color: C.muted }}>›</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setShowArchiveList(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View archived block — read-only */}
+      {viewingArchive && (
+        <div style={{ position: "fixed", inset: 0, background: C.black, zIndex: 500, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+          <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+            <button onClick={() => setViewingArchive(null)} style={{ ...mono, fontSize: 13, padding: "8px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, cursor: "pointer" }}>‹ Back</button>
+            <div>
+              <div style={{ ...bebas, fontSize: 20, color: C.white }}>{viewingArchive.label}</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted }}>{athletes.find(a => a.id === selectedId)?.name} · Archived {new Date(viewingArchive.archived_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>
+            </div>
+          </div>
+          <div style={{ flex: 1, padding: "24px 20px", maxWidth: 700, margin: "0 auto", width: "100%" }}>
+            {viewingArchive.plan_data?.blockNotes && (
+              <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px 16px", marginBottom: 20 }}>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Block Notes</div>
+                <div style={{ fontSize: 13, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(viewingArchive.plan_data.blockNotes, C.white)}</div>
+              </div>
+            )}
+            {(viewingArchive.plan_data?.weeks || []).map((wk, wi) => (
+              <div key={wi} style={{ marginBottom: 28 }}>
+                <div style={{ ...bebas, fontSize: 20, color: C.orange, marginBottom: 12 }}>{wk.label}</div>
+                {(wk.days || []).map((day, di) => {
+                  const progKey = `w${wi}_d${di}`;
+                  const dayProg = (viewingArchive.progress_data || {})[progKey] || {};
+                  return (
+                    <div key={di} style={{ marginBottom: 16 }}>
+                      <div style={{ ...mono, fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>{day.label}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {(day.exercises || []).map(ex => {
+                          const ep = dayProg[ex.id] || {};
+                          return (
+                            <div key={ex.id} style={{ background: ep.checked ? "rgba(61,158,122,0.06)" : C.gray, border: `1px solid ${ep.checked ? "rgba(61,158,122,0.4)" : C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: ex.notes || ep.note ? 6 : 0 }}>
+                                <div style={{ width: 22, height: 22, borderRadius: 5, border: `2px solid ${ep.checked ? "#2aaa5e" : C.gray3}`, background: ep.checked ? "#2aaa5e" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  {ep.checked && <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>✓</span>}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 500, color: ep.checked ? C.muted : C.white, textDecoration: ep.checked ? "line-through" : "none" }}>{ex.text}</div>
+                                  {ex.sets && <div style={{ ...mono, fontSize: 12, color: C.orange }}>{ex.sets}</div>}
+                                </div>
+                              </div>
+                              {ex.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: ep.note ? 4 : 0 }}>{ex.notes}</div>}
+                              {ep.note && <div style={{ ...mono, fontSize: 11, color: C.purple, fontStyle: "italic", background: "rgba(91,127,166,0.08)", padding: "5px 8px", borderRadius: 5, marginTop: 4 }}>📝 {ep.note}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       )}
