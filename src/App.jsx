@@ -3008,7 +3008,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               dt.setDate(dt.getDate() - 1);
             }
             console.log("[catchup] consecutive unlogged streak ending at/near today:", streak);
-            if (streak < 3) return;
+            if (streak < 1) return;
             const cal = [];
             const dt2 = new Date(ty, tm - 1, td);
             dt2.setDate(dt2.getDate() - 1);
