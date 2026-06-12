@@ -3723,21 +3723,50 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
                 {/* 7-day stat dashboard */}
                 {fLogs.dashboard && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${color}22` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, paddingTop: 10, borderTop: `1px solid ${color}22` }}>
                     <div>
                       <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Sleep</div>
                       <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.sleep.toFixed(1)}h</div>
                     </div>
-                    <div style={{ position: "relative" }}>
-                      <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Load</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <div style={{ fontSize: 14, color: C.white, fontWeight: 500 }}>{fLogs.dashboard.loadPct}%</div>
-                        <button onClick={e => { e.stopPropagation(); setShowLoadTooltip(v => !v); }}
-                          style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>ⓘ</button>
+                    <div style={{ position: "relative", gridColumn: "1 / -1" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Training Load</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <div style={{ ...mono, fontSize: 11, color: C.white, fontWeight: 600 }}>{fLogs.dashboard.loadPct}%</div>
+                          <button onClick={e => { e.stopPropagation(); setShowLoadTooltip(v => !v); }}
+                            style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0 }}>ⓘ</button>
+                        </div>
                       </div>
+                      {/* Segmented bar */}
+                      {(() => {
+                        const pct = fLogs.dashboard.loadPct;
+                        // Bar is 120 units wide: 0-60 = blue (50%), 60-100 = green (33%), 100-120 = red (17%)
+                        // Marker position maps pct → bar position
+                        const markerPos = pct <= 60
+                          ? (pct / 60) * 50        // 0-60% → 0-50% of bar
+                          : pct <= 100
+                          ? 50 + ((pct - 60) / 40) * 33   // 60-100% → 50-83% of bar
+                          : Math.min(50 + 33 + ((pct - 100) / 40) * 17, 99); // 100%+ → 83-100%
+                        return (
+                          <div>
+                            <div style={{ position: "relative", height: 10, borderRadius: 5, overflow: "hidden", display: "flex" }}>
+                              <div style={{ width: "50%", background: "#3b6cb7" }} />
+                              <div style={{ width: "33%", background: "#2aaa5e" }} />
+                              <div style={{ width: "17%", background: "#c0392b" }} />
+                              {/* Marker */}
+                              <div style={{ position: "absolute", left: `${markerPos}%`, top: -2, width: 3, height: 14, background: C.white, borderRadius: 2, transform: "translateX(-50%)", boxShadow: "0 0 4px rgba(0,0,0,0.5)" }} />
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                              <div style={{ ...mono, fontSize: 8, color: "#3b6cb7", width: "50%" }}>Undertrained</div>
+                              <div style={{ ...mono, fontSize: 8, color: "#2aaa5e", width: "33%", textAlign: "center" }}>Optimal</div>
+                              <div style={{ ...mono, fontSize: 8, color: "#c0392b", width: "17%", textAlign: "right" }}>Overtrained</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {showLoadTooltip && (
-                        <div onClick={e => e.stopPropagation()} style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, width: 240, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
-                          <div style={{ fontSize: 12, color: C.white, lineHeight: 1.6 }}>This number represents your weekly training allowance used in the last 7 days. Training and/or poor sleep increase the percentage, resting and good sleep decrease it.</div>
+                        <div onClick={e => e.stopPropagation()} style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, width: 260, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
+                          <div style={{ fontSize: 12, color: C.white, lineHeight: 1.6 }}>Your weekly training load over the last 7 days. Aim for the green zone. Training and/or poor sleep increase it, resting and good sleep decrease it.</div>
                           <button onClick={() => setShowLoadTooltip(false)} style={{ ...mono, fontSize: 10, color: C.muted, background: "none", border: "none", cursor: "pointer", marginTop: 6, padding: 0 }}>Dismiss</button>
                         </div>
                       )}
