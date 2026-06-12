@@ -2239,9 +2239,18 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   // Auto-open form pre-filled if there's a partial log (sleep only)
   useEffect(() => {
     if (autoOpenLog && !showForm) {
-      setForm({ date: autoOpenLog.date, summary: autoOpenLog.summary || "", sleep: autoOpenLog.sleep ?? "", load: autoOpenLog.load ?? null, ...deriveStrong(autoOpenLog), tweaks: autoOpenLog.tweaks || "" });
-      setEditingId(autoOpenLog.id);
-      setShowForm(true);
+      // Always fetch the latest row from DB to avoid race conditions
+      // where partialDayLog was set before the DB write completed.
+      const todayStr = localDateStr();
+      sb.from("fatigue_logs").select("*").eq("athlete_id", athlete.id).eq("date", autoOpenLog.date || todayStr)
+        .order("created_at", { ascending: false }).limit(1)
+        .then(({ data: rows }) => {
+          const freshRow = rows?.[0];
+          const logToUse = freshRow || autoOpenLog;
+          setForm({ date: logToUse.date || todayStr, summary: logToUse.summary || "", sleep: logToUse.sleep ?? "", load: logToUse.load ?? null, ...deriveStrong(logToUse), tweaks: logToUse.tweaks || "" });
+          setEditingId(freshRow?.id || autoOpenLog.id || null);
+          setShowForm(true);
+        });
     }
   }, [autoOpenLog]);
 
@@ -6066,7 +6075,12 @@ export default function App() {
   const [credentials, setCredentials] = useState({});
   const [coaches, setCoaches] = useState([]);
   const [templates, setTemplates] = useState([]);
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem("rp_session");
+      return saved ? JSON.parse(saved) : null;
+    } catch(e) { return null; }
+  });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -6277,9 +6291,21 @@ export default function App() {
 
   if (!session) return (
     <LoginScreen athletes={athletes} credentials={credentials} coaches={coaches}
-      onLoginAthlete={(id) => setSession({ role: "athlete", athleteId: id })}
-      onLoginCoach={() => setSession({ role: "coach", isAdmin: true })}
-      onLoginSubCoach={(coachId) => setSession({ role: "coach", isAdmin: false, coachId })} />
+      onLoginAthlete={(id) => {
+        const s = { role: "athlete", athleteId: id };
+        try { localStorage.setItem("rp_session", JSON.stringify(s)); } catch(e) {}
+        setSession(s);
+      }}
+      onLoginCoach={() => {
+        const s = { role: "coach", isAdmin: true };
+        try { localStorage.setItem("rp_session", JSON.stringify(s)); } catch(e) {}
+        setSession(s);
+      }}
+      onLoginSubCoach={(coachId) => {
+        const s = { role: "coach", isAdmin: false, coachId };
+        try { localStorage.setItem("rp_session", JSON.stringify(s)); } catch(e) {}
+        setSession(s);
+      }} />
   );
 
   if (session.role === "athlete") {
@@ -6289,7 +6315,7 @@ export default function App() {
       darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
       onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
-      onLogout={() => setSession(null)} />;
+      onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }} />;
   }
 
   // filter athletes by coach if sub-coach
@@ -6315,7 +6341,7 @@ export default function App() {
     onAddCoach={addCoach}
     onDeleteCoach={deleteCoach}
     onUpdateCoach={updateCoach}
-    onLogout={() => setSession(null)}
+    onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }}
     saved={saved}
   />;
 }
