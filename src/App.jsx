@@ -545,7 +545,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: ex.notes ? 6 : 0 }}>
-                {ex.sets && <span style={{ fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600, fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
+                {ex.sets && <span style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", fontSize: 15, fontWeight: 500, color: C.orange, display: "block", marginBottom: 2 }}>{ex.sets}</span>}
                 <span style={{ ...mono, fontSize: 10, color: C.muted }}>{ex.category}</span>
                 {isOverflow && ex.fromDay != null && <span style={{ ...mono, fontSize: 10, color: "#4a7aab", background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>skipped from {ex.fromWeek != null ? `W${ex.fromWeek + 1} · ` : ""}Day {ex.fromDay + 1}</span>}
                 {sourceDayLabel && <span style={{ ...mono, fontSize: 10, color: C.purple, background: "rgba(91,127,166,0.1)", padding: "2px 6px", borderRadius: 3 }}>from {sourceDayLabel}</span>}
@@ -2417,7 +2417,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
       if (!byMonth[ym]) byMonth[ym] = {};
       byMonth[ym][log.date] = log;
     });
-    const minMonth = athlete?.id === "bzmmql6" ? "2026-04" : "0000-00";
+    const minMonth = "0000-00"; // show all months
     const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
 
     return (
@@ -3255,7 +3255,11 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const lowStrong = avgStrong !== null && avgStrong < 1.0;
       const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
 
-      const lastNightSleep = prior[0]?.sleep ?? null;       // yesterday's sleep
+      // lastNightSleep: sleep logged TODAY (this morning) takes priority over
+      // yesterday's row, since the sleep prompt saves to today's date.
+      const lastNightSleep = (windowLogs[0]?.sleep != null && !windowLogs[0]?._synthetic)
+        ? windowLogs[0].sleep
+        : prior[0]?.sleep ?? null;
       const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
 
       // Two adjacent load>=2 days (yesterday + day-before). Normally Rest, but
@@ -3324,8 +3328,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         // Only fire once: check if we already bumped for this exact streak.
         // Guard: the most recent 5 training logs must still all be strong=2
         // and the athlete's stored tier must still be the old tier.
-        const alreadyBumped = athlete.volume_tier === newTierId || athlete.volume_tier === VOLUME_TIERS.slice(currentIdx + 1).map(t => t.id).some(id => id === athlete.volume_tier);
-        if (!alreadyBumped || athlete.volume_tier === currentTierId) {
+        // Guard: only bump if the athlete is still at the current tier
+        const alreadyBumped = athlete.volume_tier !== currentTierId;
+        if (!alreadyBumped) {
           console.log("[autoTierUp] bumping from", currentTierId, "to", newTierId);
           await sb.from("athletes").update({ volume_tier: newTierId }).eq("id", athlete.id);
           setTierUpBanner(true);
@@ -3423,7 +3428,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
     console.log("[recomputeFatigue] today:", todayRec.label, "display:", displayLabel, "tomorrow:", tomorrow?.label, "todayLogged:", todayLogged, "coeff:", volumeCoeff);
     setFatigueRec({ label: displayLabel, color: displayColor, bg: displayBg, tomorrow, todayLogged, dashboard, reasonKey: todayRec.reasonKey, tomorrowReasonKey: tomorrowRec?.reasonKey });
-  }, [athlete?.id, athlete?.volume_tier]);
+  }, [athlete?.id, athlete?.volume_tier, athlete?.typical_grade_v]);
 
   useEffect(() => {
     if (hasRecoverBuddy) recomputeFatigue();
@@ -3435,7 +3440,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     setPyramidLoading(true);
     sb.from("pyramid_logs").select("*").eq("athlete_id", athlete.id)
       .order("pyramid_cycle", { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) { console.warn("[pyramid] fetch error:", error); setPyramidLoading(false); return; }
         const allLogs = data || [];
         // Find current cycle (highest)
         const maxCycle = allLogs.length > 0 ? Math.max(...allLogs.map(l => l.pyramid_cycle)) : 1;
@@ -3839,14 +3845,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             const dayOfWeek = dt.toLocaleDateString("en-US", { weekday: "short" });
 
             // Build a combined log array: simulated days so far + real history
+            // For offset > 0, forecastDays already has today's actual/assumed load
+            // so prior days correctly see today's training when computing tomorrow's window.
             const combinedLogs = [...forecastDays.map(fd => ({
               date: fd.date, sleep: allTimeAvgSleep, load: fd.load, strong: fd.load > 0 ? 1 : null, strong_na: fd.load === 0
             })).reverse(), ...simHistory];
 
-            // Window for this day: today=index0 (synthetic), prior days from combined
+            // Window for this day: today=index0, prior days from combined
             const window7 = buildWindow(combinedLogs, dateStr, 7);
-            // For rec purposes treat today as synthetic-rest (index 0)
-            const recWindow = [{ ...window7[0], load: 0, strong: null, strong_na: true }, ...window7.slice(1)];
+            // For rec purposes: if offset=0, treat as synthetic-rest (we haven't logged yet).
+            // For offset>0, use the actual simulated load from forecastDays (which includes
+            // today's assumed load), so tomorrow correctly sees today's training.
+            const recWindow = offset === 0
+              ? [{ ...window7[0], load: 0, strong: null, strong_na: true }, ...window7.slice(1)]
+              : window7;
             const prior7 = recWindow.slice(1);
 
             // For today (offset=0):
@@ -4008,7 +4020,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             if (!byMonth[ym]) byMonth[ym] = {};
             byMonth[ym][log.date] = log;
           });
-          const minMonth = athlete?.id === "bzmmql6" ? "2026-04" : "0000-00";
+          const minMonth = "0000-00"; // show all months
           const months = Object.keys(byMonth).filter(m => m >= minMonth).sort();
           return (
             <div style={{ marginBottom: 20 }}>
@@ -4683,7 +4695,9 @@ function SimulatorPage() {
     const lowSleep = avgSleep < 6.5;
     const lowStrong = avgStrong !== null && avgStrong < 1.0;
     const redCount = [fourStrongDays, lowSleep, lowStrong].filter(Boolean).length;
-    const lastNightSleep = prior[0]?.sleep ?? null;
+    const lastNightSleep = (windowLogs[0]?.sleep != null && !windowLogs[0]?._synthetic)
+      ? windowLogs[0].sleep
+      : prior[0]?.sleep ?? null;
     const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
 
     // cumulative load walking back from yesterday, broken by a rest day
@@ -4957,7 +4971,10 @@ function AthleteLogsPage({ athletes, getVolumeMultiplier }) {
     }
     const priorLoads = prior.slice(0, 2).map(l => l.load ?? 0);
     const twoAdjacentHard = priorLoads.length === 2 && priorLoads[0] >= 2 && priorLoads[1] >= 2;
-    const lastNightSleep = prior[0]?.sleep ?? null;
+    // Match main model: today's row is index 0 of recent7, prior starts at index 1
+    const lastNightSleep = (recent7[0]?.sleep != null && !recent7[0]?._synthetic)
+      ? recent7[0].sleep
+      : prior[0]?.sleep ?? null;
     const sleptUnder6 = lastNightSleep !== null && lastNightSleep < 6;
     const lowStrong = strongRatings.length >= 2 && (strongRatings.reduce((s,v)=>s+v,0)/strongRatings.length) < 1.0;
     const redCount = [lowSleep, lowStrong].filter(Boolean).length;
@@ -5309,7 +5326,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
   );
 }
 
-function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
+function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onResetProgress, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
@@ -5406,9 +5423,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
       ? { weeks: currentPlan.weeks.map(wk => ({ label: wk.label, days: wk.days.map(d => ({ label: d.label, exercises: d.exercises.map(e => ({ ...e, id: uid() })) })) })), published: [], blockStart: "", blockEnd: "", blockNotes: "", blockUpdate: "", blockImageUrl: null }
       : { weeks: [{ label: "Week 1", days: [{ label: "Day 1", exercises: [] }] }], published: [], blockStart: "", blockEnd: "", blockNotes: "", blockUpdate: "", blockImageUrl: null };
     await dbUpsertPlan(selectedId, newPlan);
-    // Clear progress
+    // Clear progress in DB
     await sb.from("progress").upsert({ athlete_id: selectedId, data: {} });
     onPlanChange(selectedId, newPlan);
+    // Force a fresh progress fetch so parent state reflects the cleared data
+    if (onResetProgress) onResetProgress(selectedId);
     setArchiveSaving(false);
     setShowArchiveModal(false);
   };
@@ -6361,6 +6380,10 @@ export default function App() {
     onPlanChange={updatePlan}
     onPublish={publishWeeks}
     onProgressChange={updateProgress}
+    onResetProgress={async (id) => {
+      await sb.from("progress").upsert({ athlete_id: id, data: {} });
+      setProgress(prev => ({ ...prev, [id]: {} }));
+    }}
     darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
     onOverflowChange={updateOverflow}
     onEditExercise={editExercise}
