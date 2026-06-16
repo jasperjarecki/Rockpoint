@@ -3007,17 +3007,18 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             const byDate = {};
             (data || []).forEach(r => { byDate[r.date] = r; });
             const [ty, tm, td] = todayStr.split("-").map(Number);
+            // Count ANY unlogged days in the last 7 days (not just a consecutive streak
+            // ending at yesterday — this catches gaps buried behind a logged day)
+            let anyUnlogged = 0;
             const dt = new Date(ty, tm - 1, td);
             dt.setDate(dt.getDate() - 1); // start at yesterday
-            let streak = 0;
             for (let i = 0; i < 7; i++) {
               const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-              if (!logged.has(ds)) streak++;
-              else break;
+              if (!logged.has(ds)) anyUnlogged++;
               dt.setDate(dt.getDate() - 1);
             }
-            console.log("[catchup] consecutive unlogged streak ending at/near today:", streak);
-            if (streak < 1) return;
+            console.log("[catchup] unlogged days in last 7:", anyUnlogged);
+            if (anyUnlogged < 1) return;
             const cal = [];
             const dt2 = new Date(ty, tm - 1, td);
             dt2.setDate(dt2.getDate() - 1);
@@ -3761,6 +3762,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                               <div style={{ width: "17%", background: "#c0392b" }} />
                               {/* Marker */}
                               <div style={{ position: "absolute", left: `${markerPos}%`, top: -2, width: 3, height: 14, background: C.white, borderRadius: 2, transform: "translateX(-50%)", boxShadow: "0 0 4px rgba(0,0,0,0.5)" }} />
+                              <div style={{ position: "absolute", left: `${markerPos}%`, top: 14, transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderBottom: `6px solid ${C.white}` }} />
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
                               <div style={{ ...mono, fontSize: 8, color: "#3b6cb7", width: "50%" }}>Undertrained</div>
