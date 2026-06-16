@@ -3057,7 +3057,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     if (!catchupDays) return;
     setCatchupSaving(true);
     const sleepVal = parseFloat(catchupSleep);
-    const sleepHours = (!isNaN(sleepVal) && sleepVal > 0 && sleepVal <= 14) ? sleepVal : 7;
+    // For regular catch-up, default to athlete's real 7-day avg sleep
+    // rather than asking — they've already been logging
+    const realAvgSleep = (() => {
+      const real = fatigueLogs.filter(l => l.sleep != null && l.sleep > 0).slice(0, 7);
+      return real.length > 0 ? real.reduce((s, l) => s + l.sleep, 0) / real.length : 7;
+    })();
+    const sleepHours = catchupKind === "regular"
+      ? Math.round(realAvgSleep * 2) / 2  // round to nearest 0.5
+      : (!isNaN(sleepVal) && sleepVal > 0 && sleepVal <= 14) ? sleepVal : 7;
     // Commit ALL editable days — including Rest (load=0). Untapped means
     // "confirmed rest day," not "skip writing a row." Cleaner data model
     // and prevents the catch-up prompt from re-firing for the same days.
@@ -3605,14 +3613,16 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
               Tap to cycle: 🛌 Rest → 🚂 Train → 🚂 Light. Grayed-out days are already logged.
             </div>
-            <div style={{ marginBottom: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 4, lineHeight: 1.4 }}>On average, how many hours of sleep do you get a night?</div>
-              <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginBottom: 8, lineHeight: 1.5 }}>Be realistic, no judgment here.</div>
-              <input type="number" step="0.5" min="0" max="14" value={catchupSleep}
-                onChange={e => setCatchupSleep(e.target.value)}
-                placeholder="e.g. 7.5"
-                style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-            </div>
+            {catchupKind !== "regular" && (
+              <div style={{ marginBottom: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 4, lineHeight: 1.4 }}>On average, how many hours of sleep do you get a night?</div>
+                <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginBottom: 8, lineHeight: 1.5 }}>Be realistic, no judgment here.</div>
+                <input type="number" step="0.5" min="0" max="14" value={catchupSleep}
+                  onChange={e => setCatchupSleep(e.target.value)}
+                  placeholder="e.g. 7.5"
+                  style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={dismissCatchup}
                 style={{ flex: 1, ...mono, fontSize: 11, padding: "12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
