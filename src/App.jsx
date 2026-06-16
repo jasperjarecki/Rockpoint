@@ -3563,9 +3563,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       {catchupDays && !showSleepPrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, width: "100%", maxWidth: 420 }}>
-            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>Welcome!</div>
+            <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, marginBottom: 6 }}>
+              {catchupKind === "regular" ? "We noticed you missed a couple days recently." : "Welcome!"}
+            </div>
             <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
-              Help us log (approximately) what you did the last 7 days. Doesn't have to be perfect, just do your best.
+              {catchupKind === "regular"
+                ? "Tap those days below to log so we can make the right recommendation."
+                : "Help us log (approximately) what you did the last 7 days. Doesn't have to be perfect, just do your best."}
             </div>
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Last 7 days</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 16 }}>
