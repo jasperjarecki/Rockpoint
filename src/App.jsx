@@ -3616,7 +3616,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={dismissCatchup}
                 style={{ flex: 1, ...mono, fontSize: 11, padding: "12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-                Skip
+                Skip for now
               </button>
               <button onClick={submitCatchup} disabled={catchupSaving}
                 style={{ flex: 2, ...mono, fontSize: 11, padding: "12px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: catchupSaving ? "default" : "pointer" }}>
