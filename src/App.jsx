@@ -237,6 +237,33 @@ async function dbGetPlans() {
   (data || []).forEach(row => { result[row.athlete_id] = migratePlan(row.data); });
   return result;
 }
+async function dbSaveAthleteComment(athleteId, weekIdx, dayIdx, exId, body) {
+  try {
+    const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'athlete').limit(1);
+    if (ex?.[0]) await sb.from('exercise_comments').update({ body, read_by_coach: false, created_at: new Date().toISOString() }).eq('id', ex[0].id);
+    else await sb.from('exercise_comments').insert({ athlete_id: athleteId, plan_week: weekIdx, plan_day: dayIdx, exercise_id: exId, author: 'athlete', body, read_by_coach: false, read_by_athlete: true });
+  } catch(e) { console.warn('[comment] athlete save failed:', e); }
+}
+async function dbSaveCoachReply(athleteId, weekIdx, dayIdx, exId, body) {
+  try {
+    const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'coach').limit(1);
+    if (ex?.[0]) await sb.from('exercise_comments').update({ body, read_by_athlete: false, created_at: new Date().toISOString() }).eq('id', ex[0].id);
+    else await sb.from('exercise_comments').insert({ athlete_id: athleteId, plan_week: weekIdx, plan_day: dayIdx, exercise_id: exId, author: 'coach', body, read_by_athlete: false, read_by_coach: true });
+  } catch(e) { console.warn('[comment] coach reply failed:', e); }
+}
+async function dbGetUnreadComments(ids) {
+  try { const { data } = await sb.from('exercise_comments').select('*').in('athlete_id', ids).eq('author', 'athlete').eq('read_by_coach', false); return data || []; } catch(e) { return []; }
+}
+async function dbGetCommentsForAthlete(athleteId) {
+  try { const { data } = await sb.from('exercise_comments').select('*').eq('athlete_id', athleteId).order('created_at', { ascending: false }); return data || []; } catch(e) { return []; }
+}
+async function dbMarkCommentsReadByCoach(athleteId) {
+  try { await sb.from('exercise_comments').update({ read_by_coach: true }).eq('athlete_id', athleteId).eq('author', 'athlete'); } catch(e) {}
+}
+async function dbMarkCommentsReadByAthlete(athleteId) {
+  try { await sb.from('exercise_comments').update({ read_by_athlete: true }).eq('athlete_id', athleteId).eq('author', 'coach'); } catch(e) {}
+}
+
 async function dbUpsertPlan(athleteId, planData) { await sb.from("plans").upsert({ athlete_id: athleteId, data: planData }); }
 async function dbSaveArchive(athleteId, label, planData, progressData) {
   await sb.from("plan_archives").insert({ athlete_id: athleteId, label, plan_data: planData, progress_data: progressData || null });
@@ -3804,8 +3831,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           );
         })()}
 
-        {/* 7-day forecast */}
-        {fatigueLogs.length > 0 && (() => {
+        {/* 7-day forecast — only render once fatigueRec is available so today's assumed load is correct */}
+        {fatigueLogs.length > 0 && fatigueRec && (() => {
           // All-time avg sleep from real logs
           const realLogs = fatigueLogs.filter(l => l.sleep != null && l.sleep > 0);
           const allTimeAvgSleep = realLogs.length > 0
@@ -5342,7 +5369,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
   );
 }
 
-function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onResetProgress, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark }) {
+function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onResetProgress, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark, unreadComments, onOpenInbox }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
   const [sharedWeekIdx, setSharedWeekIdx] = useState(0);
@@ -5520,6 +5547,10 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             <button onClick={undo} disabled={!canUndo} title="Undo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canUndo ? C.muted : C.gray3, cursor: canUndo ? "pointer" : "default" }}>↩</button>
             <button onClick={redo} disabled={!canRedo} title="Redo" style={{ ...mono, fontSize: 13, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: "none", color: canRedo ? C.muted : C.gray3, cursor: canRedo ? "pointer" : "default" }}>↪</button>
             <button onClick={openPasswords} style={btnS(false)}>🔑</button>
+            <div style={{ position: "relative", display: "inline-block" }}>
+              <button onClick={() => onOpenInbox(selectedId || null)} style={btnS(false)}>💬 Inbox</button>
+              {unreadComments?.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: "#c0392b", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadComments.length}</span>}
+            </div>
             {selectedId && <button onClick={openBackups} style={btnS(false)} title="Restore backup">↩ Backup</button>}
             {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveModal} style={btnS(false)} title="Archive block">📦 Archive</button>}
             {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveList} style={btnS(false)} title="View archives">🗂 Archives</button>}
@@ -5585,7 +5616,10 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   onMouseEnter={e => { const b=e.currentTarget.querySelector(".athlete-actions"); if(b) b.style.opacity="1"; }}
                   onMouseLeave={e => { const b=e.currentTarget.querySelector(".athlete-actions"); if(b) b.style.opacity="0"; }}>
                   <button onClick={() => setSelectedId(a.id)} style={{ width: "100%", textAlign: "left", background: selectedId===a.id?C.gray2:"none", border: `1px solid ${selectedId===a.id?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 52px 10px 12px", cursor: "pointer" }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 4 }}>{a.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{a.name}</div>
+                      {unreadComments?.some(c => c.athlete_id === a.id) && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, flexShrink: 0 }} />}
+                    </div>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{a.level}</span></div>
                     {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 10, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
                   </button>
@@ -5934,7 +5968,12 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                                 </div>
                               </div>
                               {ex.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: ep.note ? 4 : 0 }}>{ex.notes}</div>}
-                              {ep.note && <div style={{ ...mono, fontSize: 11, color: C.purple, fontStyle: "italic", background: "rgba(91,127,166,0.08)", padding: "5px 8px", borderRadius: 5, marginTop: 4 }}>📝 {ep.note}</div>}
+                              {ep.note && (
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ ...mono, fontSize: 11, color: C.purple, fontStyle: "italic", background: "rgba(91,127,166,0.08)", padding: "5px 8px", borderRadius: ep._coachReply ? "5px 5px 0 0" : 5 }}>📝 {ep.note}</div>
+                  {ep._coachReply && <div style={{ ...mono, fontSize: 11, color: C.orange, background: "rgba(61,158,122,0.08)", padding: "5px 8px", borderRadius: "0 0 5px 5px", borderTop: `1px solid ${C.border}` }}>💬 Coach: {ep._coachReply}</div>}
+                </div>
+              )}
                             </div>
                           );
                         })}
@@ -6146,6 +6185,12 @@ export default function App() {
     } catch(e) { return null; }
   });
   const [saved, setSaved] = useState(false);
+  const [unreadComments, setUnreadComments] = useState([]);
+  const [athleteComments, setAthleteComments] = useState({});
+  const [showInbox, setShowInbox] = useState(false);
+  const [inboxAthleteId, setInboxAthleteId] = useState(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [replySaving, setReplySaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -6159,7 +6204,8 @@ export default function App() {
         }
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
-      setAthletes(ath); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
+      setAthletes(ath);
+      if (ath.length > 0) dbGetUnreadComments(ath.map(a => a.id)).then(setUnreadComments); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
       // Daily backup on app load — runs once per day, uses 'daily' type so edit backups can't overwrite it
       const todayKey = localDateStr();
       if (localStorage.getItem('lastDailyBackup') !== todayKey) {
@@ -6256,7 +6302,11 @@ export default function App() {
       }
       return np;
     });
-  }, []);
+    if (ep?.note?.trim() && session?.role === 'athlete') {
+      const m = dayKey.match(/w(\d+)_d(\d+)/);
+      if (m) dbSaveAthleteComment(id, parseInt(m[1]), parseInt(m[2]), exId, ep.note.trim());
+    }
+  }, [session?.role]);
 
   const updateOverflow = useCallback(async (id, ov) => {
     setProgress(prev => {
@@ -6372,6 +6422,25 @@ export default function App() {
       }} />
   );
 
+  React.useEffect(() => {
+    if (session?.role !== 'athlete' || !session?.athleteId) return;
+    dbGetCommentsForAthlete(session.athleteId).then(comments => {
+      const replies = comments.filter(c => c.author === 'coach');
+      if (!replies.length) return;
+      setProgress(prev => {
+        const ap = { ...(prev[session.athleteId] || {}) };
+        replies.forEach(r => {
+          const dk = `w${r.plan_week}_d${r.plan_day}`;
+          const dp = { ...(ap[dk] || {}) };
+          dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body };
+          ap[dk] = dp;
+        });
+        return { ...prev, [session.athleteId]: ap };
+      });
+      dbMarkCommentsReadByAthlete(session.athleteId);
+    });
+  }, [session?.athleteId, session?.role]);
+
   if (session.role === "athlete") {
     const athlete = athletes.find(a => a.id === session.athleteId);
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
@@ -6395,6 +6464,21 @@ export default function App() {
     onUpdateCoachPassword={() => {}}
     onPlanChange={updatePlan}
     onPublish={publishWeeks}
+    unreadComments={unreadComments}
+    onOpenInbox={async (athleteId) => {
+      setInboxAthleteId(athleteId || null);
+      setShowInbox(true);
+      if (athleteId) {
+        const cs = await dbGetCommentsForAthlete(athleteId);
+        setAthleteComments(prev => ({ ...prev, [athleteId]: cs }));
+        await dbMarkCommentsReadByCoach(athleteId);
+        setUnreadComments(prev => prev.filter(c => c.athlete_id !== athleteId));
+      } else {
+        const grouped = {};
+        for (const c of unreadComments) { if (!grouped[c.athlete_id]) grouped[c.athlete_id] = []; grouped[c.athlete_id].push(c); }
+        setAthleteComments(grouped);
+      }
+    }}
     onProgressChange={updateProgress}
     onResetProgress={async (id) => {
       await sb.from("progress").upsert({ athlete_id: id, data: {} });
@@ -6412,4 +6496,68 @@ export default function App() {
     onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }}
     saved={saved}
   />;
+
+  if (showInbox) return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={() => setShowInbox(false)}>
+      <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ ...bebas, fontSize: 22, color: C.white }}>Athlete Notes</div>
+            {inboxAthleteId && <div style={{ ...mono, fontSize: 11, color: C.muted, marginTop: 2 }}>{athletes.find(a => a.id === inboxAthleteId)?.name}</div>}
+          </div>
+          <button onClick={() => setShowInbox(false)} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
+          {Object.entries(athleteComments).length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: 'center', padding: 32 }}>No athlete notes yet.</div>}
+          {Object.entries(athleteComments).map(([aid, comments]) => {
+            const aName = athletes.find(a => a.id === aid)?.name || aid;
+            const plan = plans[aid];
+            const notes = comments.filter(c => c.author === 'athlete');
+            if (!notes.length) return null;
+            return (
+              <div key={aid} style={{ marginBottom: 24 }}>
+                {!inboxAthleteId && <div style={{ ...bebas, fontSize: 16, color: C.orange, marginBottom: 10 }}>{aName}</div>}
+                {notes.map(c => {
+                  const wk = plan?.weeks?.[c.plan_week]; const dy = wk?.days?.[c.plan_day];
+                  const ex = dy?.exercises?.find(e => e.id === c.exercise_id);
+                  const reply = comments.find(r => r.author === 'coach' && r.exercise_id === c.exercise_id);
+                  return (
+                    <div key={c.id} style={{ background: C.gray2, border: `1px solid ${!c.read_by_coach ? C.orange : C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 10 }}>
+                      <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                        {wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || c.exercise_id}
+                      </div>
+                      <div style={{ fontSize: 13, color: C.purple, fontStyle: 'italic', marginBottom: reply ? 10 : 8, lineHeight: 1.5 }}>📝 {c.body}</div>
+                      {reply ? (
+                        <div style={{ fontSize: 12, color: C.orange, lineHeight: 1.5, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>💬 You: {reply.body}</div>
+                      ) : (
+                        <div>
+                          <textarea value={replyDraft} onChange={e => setReplyDraft(e.target.value)} placeholder='Reply to athlete...' rows={2}
+                            style={{ width: '100%', background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px', color: C.white, fontSize: 12, outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans',sans-serif", boxSizing: 'border-box', marginBottom: 6 }} />
+                          <button disabled={replySaving || !replyDraft.trim()} onClick={async () => {
+                            if (!replyDraft.trim()) return;
+                            setReplySaving(true);
+                            await dbSaveCoachReply(aid, c.plan_week, c.plan_day, c.exercise_id, replyDraft.trim());
+                            const updated = await dbGetCommentsForAthlete(aid);
+                            setAthleteComments(prev => ({ ...prev, [aid]: updated }));
+                            const dk = `w${c.plan_week}_d${c.plan_day}`;
+                            const ep = ((progress[aid] || {})[dk] || {})[c.exercise_id] || {};
+                            updateProgress(aid, dk, c.exercise_id, { ...ep, _coachReply: replyDraft.trim() });
+                            setReplyDraft(''); setReplySaving(false);
+                          }} style={{ ...mono, fontSize: 11, padding: '7px 14px', borderRadius: 6, border: 'none', background: replyDraft.trim() ? C.orange : C.gray3, color: '#fff', cursor: replyDraft.trim() ? 'pointer' : 'default' }}>
+                            {replySaving ? 'Sending...' : 'Send Reply'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
