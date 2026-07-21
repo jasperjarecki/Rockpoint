@@ -6181,8 +6181,12 @@ export default function App() {
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem("rp_session");
-      return saved ? JSON.parse(saved) : null;
-    } catch(e) { return null; }
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (!parsed?.role) { localStorage.removeItem("rp_session"); return null; }
+      if (parsed.role === 'athlete' && !parsed.athleteId) { localStorage.removeItem("rp_session"); return null; }
+      return parsed;
+    } catch(e) { try { localStorage.removeItem("rp_session"); } catch(_) {} return null; }
   });
   const [saved, setSaved] = useState(false);
   const [unreadComments, setUnreadComments] = useState([]);
@@ -6206,6 +6210,13 @@ export default function App() {
       }
       setAthletes(ath);
       if (ath.length > 0) dbGetUnreadComments(ath.map(a => a.id)).then(setUnreadComments); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
+      // Validate sub-coach session — if coachId no longer exists, clear and show login
+      setSession(prev => {
+        if (!prev || prev.role !== 'coach' || prev.isAdmin) return prev;
+        const valid = coachs.some(c => c.id === prev.coachId);
+        if (!valid) { try { localStorage.removeItem('rp_session'); } catch(_) {} return null; }
+        return prev;
+      });
       // Daily backup on app load — runs once per day, uses 'daily' type so edit backups can't overwrite it
       const todayKey = localDateStr();
       if (localStorage.getItem('lastDailyBackup') !== todayKey) {
