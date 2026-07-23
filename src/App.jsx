@@ -4346,32 +4346,38 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>
         </div>
 
-        {/* Inline block overview — collapsible card on the home page, starts
-            collapsed. The tap-the-name sheet remains as a secondary path (it
-            also holds the coach update + training-load graph). */}
+        {/* Plan Overview — an unmistakable button on the home page. Starts
+            collapsed; tapping expands the overview (image + notes) below it. */}
         {(plan.blockNotes || plan.blockImageUrl) && (
-          <div style={{ marginBottom: 16, background: C.gray, border: `1px solid ${overviewOpen ? C.orange : C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ marginBottom: 16 }}>
             <button onClick={() => setOverviewOpen(v => !v)}
-              style={{ width: "100%", background: "none", border: "none", padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ ...mono, fontSize: 10, color: C.orange, textTransform: "uppercase", letterSpacing: 1 }}>📋 Block Overview</span>
-                {!overviewOpen && <span style={{ ...mono, fontSize: 10, color: C.muted }}>Tap to read</span>}
+              style={{
+                width: "100%",
+                background: overviewOpen ? C.gray2 : C.gray,
+                border: `1px solid ${C.border}`,
+                borderRadius: overviewOpen ? "10px 10px 0 0" : 10,
+                padding: "14px 18px",
+                cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              }}>
+              <span style={{ ...bebas, fontSize: 17, letterSpacing: 1, color: C.white }}>
+                📋 Plan Overview
               </span>
-              <span style={{ ...mono, fontSize: 12, color: overviewOpen ? C.orange : C.muted }}>{overviewOpen ? "▲" : "▼"}</span>
+              <span style={{ ...mono, fontSize: 13, color: C.muted }}>{overviewOpen ? "▲" : "▼"}</span>
             </button>
             {overviewOpen && (
-              <>
+              <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
                 {plan.blockImageUrl && (
-                  <img src={plan.blockImageUrl} alt="Block overview"
+                  <img src={plan.blockImageUrl} alt="Plan overview"
                     onClick={() => window.open(plan.blockImageUrl, "_blank")}
-                    style={{ width: "100%", maxHeight: 180, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block", cursor: "pointer" }} />
+                    style={{ width: "100%", maxHeight: 200, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block", cursor: "pointer" }} />
                 )}
                 {plan.blockNotes && (
-                  <div style={{ padding: "12px 16px 16px" }}>
+                  <div style={{ padding: "14px 16px 16px" }}>
                     <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.white)}</div>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         )}
