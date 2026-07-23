@@ -6230,8 +6230,16 @@ function AppInner() {
   const [replyDraft, setReplyDraft] = useState('');
   const [replySaving, setReplySaving] = useState(false);
 
+  // BUGFIX: the boot fetch previously had no error handling. If any of the
+  // parallel Supabase requests rejected (flaky network on a cold PWA launch),
+  // setLoading(false) was never reached and the app hung on "Loading..."
+  // forever. Now: try/catch/finally + a visible retry state. bootAttempt in
+  // the dependency array lets the Retry button re-run the whole effect.
+  const [bootError, setBootError] = useState(false);
+  const [bootAttempt, setBootAttempt] = useState(0);
   useEffect(() => {
     (async () => {
+      try {
       let [ath, pln, prg, creds, coachs] = await Promise.all([dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials(), dbGetCoaches()]);
       // Only seed if BOTH athletes and plans are completely empty (true fresh install)
       // Using insert (not upsert) so existing plans are never overwritten
@@ -6253,7 +6261,11 @@ function AppInner() {
       });
       // Daily backup on app load — runs once per day, uses 'daily' type so edit backups can't overwrite it
       const todayKey = localDateStr();
-      if (localStorage.getItem('lastDailyBackup') !== todayKey) {
+      // Guarded: localStorage throws in Safari private browsing / Lockdown
+      // Mode; an uncaught throw here would abort the rest of the boot.
+      let lastDailyBackup = null;
+      try { lastDailyBackup = localStorage.getItem('lastDailyBackup'); } catch(_) {}
+      if (lastDailyBackup !== todayKey) {
         Object.entries(pln).forEach(([aid, plan]) => {
           if (plan?.weeks?.length > 0) dbBackupPlan(aid, plan, 'daily');
         });
@@ -6275,7 +6287,7 @@ function AppInner() {
               });
             });
         }
-        localStorage.setItem('lastDailyBackup', todayKey);
+        try { localStorage.setItem('lastDailyBackup', todayKey); } catch(_) {}
       }
       // ensure template creator has a plan
       if (!pln[TEMPLATE_CREATOR_ID]) {
@@ -6283,9 +6295,15 @@ function AppInner() {
         await dbUpsertPlan(TEMPLATE_CREATOR_ID, blankPlan);
         pln[TEMPLATE_CREATOR_ID] = blankPlan;
       }
-      setLoading(false);
+      setBootError(false);
+      } catch(e) {
+        console.error('[boot] initial data fetch failed:', e);
+        setBootError(true);
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, []);
+  }, [bootAttempt]);
 
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1800); };
 
@@ -6463,10 +6481,35 @@ function AppInner() {
     }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
   }, [session?.athleteId, session?.role]);
 
+  // Clear a stale athlete session (athlete deleted from DB) — replaces the
+  // old setSession(null)-during-render in the guard below. Only fires once
+  // athletes have actually loaded, so it can't wipe a valid session mid-boot.
+  React.useEffect(() => {
+    if (loading || bootError) return;
+    if (session?.role !== 'athlete') return;
+    if (athletes.length === 0) return;
+    if (!athletes.some(a => a.id === session.athleteId)) {
+      try { localStorage.removeItem('rp_session'); } catch(e) {}
+      setSession(null);
+    }
+  }, [loading, bootError, session?.role, session?.athleteId, athletes]);
+
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", ...mono, fontSize: 12, color: C.muted, background: C.black, flexDirection: "column", gap: 12 }}>
       <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
       <div>Loading...</div>
+    </div>
+  );
+
+  // Boot fetch failed — show a retry screen instead of hanging on "Loading..."
+  if (bootError) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", ...mono, fontSize: 12, color: C.muted, background: C.black, flexDirection: "column", gap: 16, padding: 24, textAlign: "center" }}>
+      <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
+      <div style={{ lineHeight: 1.6, maxWidth: 280 }}>Couldn't connect. Check your connection and try again.</div>
+      <button onClick={() => { setLoading(true); setBootAttempt(n => n + 1); }}
+        style={{ ...mono, fontSize: 13, padding: "12px 28px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>
+        Retry
+      </button>
     </div>
   );
 
@@ -6498,15 +6541,14 @@ function AppInner() {
         <div style={{ ...mono, fontSize: 12, color: C.muted }}>Loading...</div>
       </div>
     );
-    // Guard: athlete not found — clear session and show login
-    if (!athlete) {
-      try { localStorage.removeItem('rp_session'); } catch(e) {}
-      setSession(null);
-      return null;
-    }
+    // Guard: athlete not found — clear session and show login.
+    // The actual setSession(null) happens in the effect below (calling
+    // setState during render is discouraged); here we just render nothing
+    // for the single frame before that effect runs.
+    if (!athlete) return null;
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
       onProgressChange={(d, e, ep) => updateProgress(session.athleteId, d, e, ep)}
-      darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
+      darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); try { localStorage.setItem("rp_dark", n?"1":"0"); } catch(_) {} }}
       onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
       onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }} />;
@@ -6609,7 +6651,7 @@ function AppInner() {
       await sb.from("progress").upsert({ athlete_id: id, data: {} });
       setProgress(prev => ({ ...prev, [id]: {} }));
     }}
-    darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
+    darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); try { localStorage.setItem("rp_dark", n?"1":"0"); } catch(_) {} }}
     onOverflowChange={updateOverflow}
     onEditExercise={editExercise}
     onAddAthlete={addAthlete}
