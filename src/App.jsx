@@ -4345,6 +4345,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>
         </div>
 
+        {/* Inline block overview — always visible on the home page.
+            The tap-the-name sheet remains as a secondary path (it also holds
+            the coach update + training-load graph). */}
+        {(plan.blockNotes || plan.blockImageUrl) && (
+          <div style={{ marginBottom: 16, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+            {plan.blockImageUrl && (
+              <img src={plan.blockImageUrl} alt="Block overview"
+                onClick={() => window.open(plan.blockImageUrl, "_blank")}
+                style={{ width: "100%", maxHeight: 180, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block", cursor: "pointer" }} />
+            )}
+            {plan.blockNotes && (
+              <div style={{ padding: "14px 16px" }}>
+                <div style={{ ...mono, fontSize: 10, color: C.orange, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Block Overview</div>
+                <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.white)}</div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Athlete info modal */}
         {showAthleteInfo && ReactDOM.createPortal(
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAthleteInfo(false)}>
