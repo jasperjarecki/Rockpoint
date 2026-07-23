@@ -2862,6 +2862,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [volumeModalTab, setVolumeModalTab] = useState('log');
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
   const [showAthleteInfo, setShowAthleteInfo] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false); // inline home-page overview card, starts collapsed
   const [sleepPromptValue, setSleepPromptValue] = useState("");
   const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
   // Catch-up prompt: appears once per session when 3+ consecutive recent
@@ -4345,21 +4346,32 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           </div>
         </div>
 
-        {/* Inline block overview — always visible on the home page.
-            The tap-the-name sheet remains as a secondary path (it also holds
-            the coach update + training-load graph). */}
+        {/* Inline block overview — collapsible card on the home page, starts
+            collapsed. The tap-the-name sheet remains as a secondary path (it
+            also holds the coach update + training-load graph). */}
         {(plan.blockNotes || plan.blockImageUrl) && (
-          <div style={{ marginBottom: 16, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-            {plan.blockImageUrl && (
-              <img src={plan.blockImageUrl} alt="Block overview"
-                onClick={() => window.open(plan.blockImageUrl, "_blank")}
-                style={{ width: "100%", maxHeight: 180, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block", cursor: "pointer" }} />
-            )}
-            {plan.blockNotes && (
-              <div style={{ padding: "14px 16px" }}>
-                <div style={{ ...mono, fontSize: 10, color: C.orange, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Block Overview</div>
-                <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.white)}</div>
-              </div>
+          <div style={{ marginBottom: 16, background: C.gray, border: `1px solid ${overviewOpen ? C.orange : C.border}`, borderRadius: 10, overflow: "hidden" }}>
+            <button onClick={() => setOverviewOpen(v => !v)}
+              style={{ width: "100%", background: "none", border: "none", padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...mono, fontSize: 10, color: C.orange, textTransform: "uppercase", letterSpacing: 1 }}>📋 Block Overview</span>
+                {!overviewOpen && <span style={{ ...mono, fontSize: 10, color: C.muted }}>Tap to read</span>}
+              </span>
+              <span style={{ ...mono, fontSize: 12, color: overviewOpen ? C.orange : C.muted }}>{overviewOpen ? "▲" : "▼"}</span>
+            </button>
+            {overviewOpen && (
+              <>
+                {plan.blockImageUrl && (
+                  <img src={plan.blockImageUrl} alt="Block overview"
+                    onClick={() => window.open(plan.blockImageUrl, "_blank")}
+                    style={{ width: "100%", maxHeight: 180, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block", cursor: "pointer" }} />
+                )}
+                {plan.blockNotes && (
+                  <div style={{ padding: "12px 16px 16px" }}>
+                    <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.white)}</div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
