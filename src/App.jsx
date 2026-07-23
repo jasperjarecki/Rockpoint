@@ -6212,6 +6212,9 @@ function AppInner() {
     } catch(e) { try { localStorage.removeItem("rp_session"); } catch(_) {} return null; }
   });
   const [saved, setSaved] = useState(false);
+  const sessionRoleRef = React.useRef(null);
+  // Keep ref in sync so useCallback can read role without depending on session
+  sessionRoleRef.current = session?.role || null;
   const [unreadComments, setUnreadComments] = useState([]);
   const [athleteComments, setAthleteComments] = useState({});
   const [showInbox, setShowInbox] = useState(false);
@@ -6336,13 +6339,13 @@ function AppInner() {
       }
       return np;
     });
-    if (ep?.note?.trim() && session?.role === 'athlete') {
+    if (ep?.note?.trim() && sessionRoleRef.current === 'athlete') {
       try {
         const m = dayKey.match(/w(\d+)_d(\d+)/);
         if (m) dbSaveAthleteComment(id, parseInt(m[1]), parseInt(m[2]), exId, ep.note.trim());
       } catch(e) { console.warn('[comments] write failed:', e); }
     }
-  }, [session?.role]);
+  }, []);
 
   const updateOverflow = useCallback(async (id, ov) => {
     setProgress(prev => {
