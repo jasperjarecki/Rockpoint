@@ -162,7 +162,12 @@ const bebas = { fontFamily: "'Fraunces', serif", fontWeight: 700 };
 // ── MIGRATION: old flat plan → weekly plan ────────────────────────────────────
 function migratePlan(plan) {
   if (!plan) return { weeks: [{ label: "Week 1", days: [] }], published: [], blockStart: "", blockEnd: "", blockNotes: "" };
-  if (plan.weeks) return plan; // already migrated
+  if (plan.weeks) {
+    // Rescue images stranded in the dead `blockImage` field (written by an old
+    // mobile-editor bug; athletes render `blockImageUrl`).
+    if (plan.blockImage && !plan.blockImageUrl) return { ...plan, blockImageUrl: plan.blockImage };
+    return plan; // already migrated
+  }
   // old format had plan.days
   const days = plan.days || [];
   return {
@@ -1114,7 +1119,7 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
     setUploadingBlockImage(true);
     try {
       const url = await uploadExerciseImage(file, `block-${athlete.id}`);
-      updateBlock({ blockImage: url });
+      updateBlock({ blockImageUrl: url, blockImageFocus: plan?.blockImageFocus || "center" });
     } catch (err) {
       console.warn("Block image upload failed:", err);
       alert("Image upload failed. Please try again.");
@@ -1202,7 +1207,7 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                   </div>
                 </div>
                 <div>
-                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK NOTES (visible to coach only)</div>
+                  <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK OVERVIEW (athletes see this)</div>
                   <textarea value={plan?.blockNotes || ""} onChange={e => updateBlock({ blockNotes: e.target.value })}
                     placeholder="Coaching notes for this block. Markdown OK." rows={3}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
@@ -1215,18 +1220,18 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                 </div>
                 <div>
                   <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK IMAGE</div>
-                  {plan?.blockImage && (
+                  {plan?.blockImageUrl && (
                     <div style={{ marginBottom: 8 }}>
-                      <img src={plan.blockImage} alt="Block" style={{ width: "100%", borderRadius: 6, maxHeight: 200, objectFit: "cover" }} />
+                      <img src={plan.blockImageUrl} alt="Block" style={{ width: "100%", borderRadius: 6, maxHeight: 200, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}` }} />
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 8 }}>
                     <label style={{ ...mono, fontSize: 11, padding: "10px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, cursor: "pointer", flex: 1, textAlign: "center" }}>
-                      {uploadingBlockImage ? "Uploading…" : plan?.blockImage ? "Replace image" : "Upload image"}
+                      {uploadingBlockImage ? "Uploading…" : plan?.blockImageUrl ? "Replace image" : "Upload image"}
                       <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => onBlockImage(e.target.files?.[0])} />
                     </label>
-                    {plan?.blockImage && (
-                      <button onClick={() => updateBlock({ blockImage: "" })}
+                    {plan?.blockImageUrl && (
+                      <button onClick={async () => { try { await dbDeleteBlockImage(plan.blockImageUrl); } catch(e) {} updateBlock({ blockImageUrl: null, blockImageFocus: null }); }}
                         style={{ ...mono, fontSize: 11, padding: "10px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: "#a05555", cursor: "pointer" }}>Clear</button>
                     )}
                   </div>
