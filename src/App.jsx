@@ -6166,8 +6166,31 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   );
 }
 
+// ── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class AppErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err) { console.error('[AppErrorBoundary]', err); }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ minHeight: '100vh', background: C.black, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 20 }}>
+        <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
+        <div style={{ fontSize: 14, color: C.muted, textAlign: 'center', lineHeight: 1.6, maxWidth: 300 }}>Something went wrong. Tap below to log out and try again.</div>
+        <button onClick={() => {
+          try { localStorage.removeItem('rp_session'); } catch(e) {}
+          this.setState({ hasError: false });
+          window.location.reload();
+        }} style={{ ...mono, fontSize: 13, padding: '12px 28px', borderRadius: 8, border: 'none', background: C.orange, color: '#fff', cursor: 'pointer' }}>
+          Log Out &amp; Reload
+        </button>
+      </div>
+    );
+  }
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
-export default function App() {
+function AppInner() {
   const [darkMode, setDarkMode] = useState(_darkMode);
   C = darkMode ? DARK : LIGHT;
   updateGlobalStyles();
@@ -6209,7 +6232,7 @@ export default function App() {
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
       setAthletes(ath);
-      if (ath.length > 0) dbGetUnreadComments(ath.map(a => a.id)).then(setUnreadComments); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
+      if (ath.length > 0) dbGetUnreadComments(ath.map(a => a.id)).then(setUnreadComments).catch(e => console.warn('[comments] unread fetch failed:', e)); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
       // Validate sub-coach session — if coachId no longer exists, clear and show login
       setSession(prev => {
         if (!prev || prev.role !== 'coach' || prev.isAdmin) return prev;
@@ -6314,8 +6337,10 @@ export default function App() {
       return np;
     });
     if (ep?.note?.trim() && session?.role === 'athlete') {
-      const m = dayKey.match(/w(\d+)_d(\d+)/);
-      if (m) dbSaveAthleteComment(id, parseInt(m[1]), parseInt(m[2]), exId, ep.note.trim());
+      try {
+        const m = dayKey.match(/w(\d+)_d(\d+)/);
+        if (m) dbSaveAthleteComment(id, parseInt(m[1]), parseInt(m[2]), exId, ep.note.trim());
+      } catch(e) { console.warn('[comments] write failed:', e); }
     }
   }, [session?.role]);
 
@@ -6449,7 +6474,7 @@ export default function App() {
         return { ...prev, [session.athleteId]: ap };
       });
       dbMarkCommentsReadByAthlete(session.athleteId);
-    });
+    }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
   }, [session?.athleteId, session?.role]);
 
   if (session.role === "athlete") {
@@ -6571,4 +6596,8 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+export default function App() {
+  return <AppErrorBoundary><AppInner /></AppErrorBoundary>;
 }
