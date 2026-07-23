@@ -6507,50 +6507,6 @@ function AppInner() {
   // filter athletes by coach if sub-coach
   const visibleAthletes = session.isAdmin ? athletes : athletes.filter(a => a.coach_id === session.coachId);
 
-  return <>{inboxOverlay}<CoachDashboard
-    athletes={visibleAthletes} allAthletes={athletes} plans={plans} progress={progress} credentials={credentials}
-    coaches={coaches} isAdmin={session.isAdmin} coachId={session.coachId || null}
-    templates={templates}
-    onSaveTemplate={saveTemplate}
-    onDeleteTemplate={deleteTemplate}
-    onUpdateCredentials={setCredentials}
-    onUpdateCoachPassword={() => {}}
-    onPlanChange={updatePlan}
-    onPublish={publishWeeks}
-    unreadComments={unreadComments}
-    onOpenInbox={async (athleteId) => {
-      setInboxAthleteId(athleteId || null);
-      setShowInbox(true);
-      if (athleteId) {
-        const cs = await dbGetCommentsForAthlete(athleteId);
-        setAthleteComments(prev => ({ ...prev, [athleteId]: cs }));
-        await dbMarkCommentsReadByCoach(athleteId);
-        setUnreadComments(prev => prev.filter(c => c.athlete_id !== athleteId));
-      } else {
-        const grouped = {};
-        for (const c of unreadComments) { if (!grouped[c.athlete_id]) grouped[c.athlete_id] = []; grouped[c.athlete_id].push(c); }
-        setAthleteComments(grouped);
-      }
-    }}
-    onProgressChange={updateProgress}
-    onResetProgress={async (id) => {
-      await sb.from("progress").upsert({ athlete_id: id, data: {} });
-      setProgress(prev => ({ ...prev, [id]: {} }));
-    }}
-    darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
-    onOverflowChange={updateOverflow}
-    onEditExercise={editExercise}
-    onAddAthlete={addAthlete}
-    onUpdateAthlete={updateAthlete}
-    onDeleteAthlete={deleteAthlete}
-    onAddCoach={addCoach}
-    onDeleteCoach={deleteCoach}
-    onUpdateCoach={updateCoach}
-    onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }}
-    saved={saved}
-  /></>;
-
-  // Inbox rendered as overlay when showInbox is true — NOT an early return (Rules of Hooks)
   const inboxOverlay = showInbox ? (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={() => setShowInbox(false)}>
@@ -6614,6 +6570,51 @@ function AppInner() {
       </div>
     </div>
   ) : null;
+
+  return <>{inboxOverlay}<CoachDashboard
+    athletes={visibleAthletes} allAthletes={athletes} plans={plans} progress={progress} credentials={credentials}
+    coaches={coaches} isAdmin={session.isAdmin} coachId={session.coachId || null}
+    templates={templates}
+    onSaveTemplate={saveTemplate}
+    onDeleteTemplate={deleteTemplate}
+    onUpdateCredentials={setCredentials}
+    onUpdateCoachPassword={() => {}}
+    onPlanChange={updatePlan}
+    onPublish={publishWeeks}
+    unreadComments={unreadComments}
+    onOpenInbox={async (athleteId) => {
+      setInboxAthleteId(athleteId || null);
+      setShowInbox(true);
+      if (athleteId) {
+        const cs = await dbGetCommentsForAthlete(athleteId);
+        setAthleteComments(prev => ({ ...prev, [athleteId]: cs }));
+        await dbMarkCommentsReadByCoach(athleteId);
+        setUnreadComments(prev => prev.filter(c => c.athlete_id !== athleteId));
+      } else {
+        const grouped = {};
+        for (const c of unreadComments) { if (!grouped[c.athlete_id]) grouped[c.athlete_id] = []; grouped[c.athlete_id].push(c); }
+        setAthleteComments(grouped);
+      }
+    }}
+    onProgressChange={updateProgress}
+    onResetProgress={async (id) => {
+      await sb.from("progress").upsert({ athlete_id: id, data: {} });
+      setProgress(prev => ({ ...prev, [id]: {} }));
+    }}
+    darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
+    onOverflowChange={updateOverflow}
+    onEditExercise={editExercise}
+    onAddAthlete={addAthlete}
+    onUpdateAthlete={updateAthlete}
+    onDeleteAthlete={deleteAthlete}
+    onAddCoach={addCoach}
+    onDeleteCoach={deleteCoach}
+    onUpdateCoach={updateCoach}
+    onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }}
+    saved={saved}
+  /></>;
+
+  // Inbox rendered as overlay when showInbox is true — NOT an early return (Rules of Hooks)
 
 
 export default function App() {
