@@ -6435,6 +6435,26 @@ function AppInner() {
     dbGetTemplates(coachId).then(setTemplates);
   }, [session?.coachId, session?.isAdmin]);
 
+  // Fetch coach replies for athlete — must be before any conditional returns (Rules of Hooks)
+  React.useEffect(() => {
+    if (session?.role !== 'athlete' || !session?.athleteId) return;
+    dbGetCommentsForAthlete(session.athleteId).then(comments => {
+      const replies = comments.filter(c => c.author === 'coach');
+      if (!replies.length) return;
+      setProgress(prev => {
+        const ap = { ...(prev[session.athleteId] || {}) };
+        replies.forEach(r => {
+          const dk = `w${r.plan_week}_d${r.plan_day}`;
+          const dp = { ...(ap[dk] || {}) };
+          dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body };
+          ap[dk] = dp;
+        });
+        return { ...prev, [session.athleteId]: ap };
+      });
+      dbMarkCommentsReadByAthlete(session.athleteId);
+    }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
+  }, [session?.athleteId, session?.role]);
+
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", ...mono, fontSize: 12, color: C.muted, background: C.black, flexDirection: "column", gap: 12 }}>
       <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
@@ -6461,27 +6481,21 @@ function AppInner() {
       }} />
   );
 
-  React.useEffect(() => {
-    if (session?.role !== 'athlete' || !session?.athleteId) return;
-    dbGetCommentsForAthlete(session.athleteId).then(comments => {
-      const replies = comments.filter(c => c.author === 'coach');
-      if (!replies.length) return;
-      setProgress(prev => {
-        const ap = { ...(prev[session.athleteId] || {}) };
-        replies.forEach(r => {
-          const dk = `w${r.plan_week}_d${r.plan_day}`;
-          const dp = { ...(ap[dk] || {}) };
-          dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body };
-          ap[dk] = dp;
-        });
-        return { ...prev, [session.athleteId]: ap };
-      });
-      dbMarkCommentsReadByAthlete(session.athleteId);
-    }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
-  }, [session?.athleteId, session?.role]);
-
   if (session.role === "athlete") {
     const athlete = athletes.find(a => a.id === session.athleteId);
+    // Guard: if athletes haven't loaded yet, show loading screen
+    if (!athlete && athletes.length === 0) return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: C.black, flexDirection: 'column', gap: 12 }}>
+        <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
+        <div style={{ ...mono, fontSize: 12, color: C.muted }}>Loading...</div>
+      </div>
+    );
+    // Guard: athlete not found — clear session and show login
+    if (!athlete) {
+      try { localStorage.removeItem('rp_session'); } catch(e) {}
+      setSession(null);
+      return null;
+    }
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
       onProgressChange={(d, e, ep) => updateProgress(session.athleteId, d, e, ep)}
       darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); localStorage.setItem("rp_dark", n?"1":"0"); }}
@@ -6493,7 +6507,7 @@ function AppInner() {
   // filter athletes by coach if sub-coach
   const visibleAthletes = session.isAdmin ? athletes : athletes.filter(a => a.coach_id === session.coachId);
 
-  return <CoachDashboard
+  return <>{inboxOverlay}<CoachDashboard
     athletes={visibleAthletes} allAthletes={athletes} plans={plans} progress={progress} credentials={credentials}
     coaches={coaches} isAdmin={session.isAdmin} coachId={session.coachId || null}
     templates={templates}
@@ -6534,9 +6548,10 @@ function AppInner() {
     onUpdateCoach={updateCoach}
     onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }}
     saved={saved}
-  />;
+  /></>;
 
-  if (showInbox) return (
+  // Inbox rendered as overlay when showInbox is true — NOT an early return (Rules of Hooks)
+  const inboxOverlay = showInbox ? (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={() => setShowInbox(false)}>
       <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
@@ -6598,8 +6613,8 @@ function AppInner() {
         </div>
       </div>
     </div>
-  );
-}
+  ) : null;
+
 
 export default function App() {
   return <AppErrorBoundary><AppInner /></AppErrorBoundary>;
