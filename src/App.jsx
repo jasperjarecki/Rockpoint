@@ -2757,23 +2757,18 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const isRecoverBuddy = hasRecoverBuddy;
   const showRecoverBuddyWordmark = hasRecoverBuddy && !hasPlan;
 
-  if ((!plan || publishedIndices.length === 0) && !hasRecoverBuddy) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
-        <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ ...bebas, fontSize: 20, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
-          <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
-        </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: C.muted, padding: 24 }}>
-          <div style={{ fontSize: 48, opacity: 0.3 }}>🧗</div>
-          <p style={{ ...mono, fontSize: 13 }}>No plan assigned yet.</p>
-          <p style={{ ...mono, fontSize: 11, opacity: 0.6 }}>Check back after your next session.</p>
-        </div>
-      </div>
-    );
-  }
+  // BUGFIX: this used to be `if (...) return (<NoPlanScreen/>)` here — an early
+  // return placed BEFORE ~30 more hooks (useState/useEffect/useCallback) declared
+  // further down this component. That's a Rules-of-Hooks violation: React error
+  // #310 ("Rendered more hooks than during the previous render"). It only blew up
+  // when `plan` was still undefined on AthleteView's very first render (before the
+  // Supabase fetch resolves) and then became defined on the next render — a race
+  // that's far more likely on a cold PWA launch than in an already-warm Safari tab.
+  // Fix: never skip hook calls conditionally — compute a flag and branch at the
+  // JSX return instead (see `showNoPlanScreen` used at the bottom of this function).
+  const showNoPlanScreen = (!plan || publishedIndices.length === 0) && !hasRecoverBuddy;
 
-  // Feature flags declared above the early return — see above.
+  // Feature flags declared above — see above.
   const progKey = (wIdx, dIdx) => `w${wIdx}_d${dIdx}`;
   const sharedKey = (exId) => `shared_${exId}`;
   const overflow = progress[OVF] || [];
@@ -3489,7 +3484,19 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   }, [athlete?.id, athlete?.is_dev]);
 
 
-  return (
+  return showNoPlanScreen ? (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.black }}>
+      <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ ...bebas, fontSize: 20, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
+        <button onClick={onLogout} style={{ ...mono, fontSize: 10, padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Log out</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: C.muted, padding: 24 }}>
+        <div style={{ fontSize: 48, opacity: 0.3 }}>🧗</div>
+        <p style={{ ...mono, fontSize: 13 }}>No plan assigned yet.</p>
+        <p style={{ ...mono, fontSize: 11, opacity: 0.6 }}>Check back after your next session.</p>
+      </div>
+    </div>
+  ) : (
     <div style={{ minHeight: "100vh", background: C.black, display: "flex", flexDirection: "column" }}>
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 2 }}>
@@ -4584,6 +4591,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
+
 function LoginScreen({ athletes, credentials, coaches, onLoginAthlete, onLoginCoach, onLoginSubCoach }) {
   const [tab, setTab] = useState("athlete");
   const [selectedAthlete, setSelectedAthlete] = useState("");
