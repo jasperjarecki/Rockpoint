@@ -6623,7 +6623,7 @@ function AppInner() {
   /></>;
 
   // Inbox rendered as overlay when showInbox is true — NOT an early return (Rules of Hooks)
-
+}
 
 export default function App() {
   return <AppErrorBoundary><AppInner /></AppErrorBoundary>;
