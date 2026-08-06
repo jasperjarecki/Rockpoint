@@ -29,6 +29,34 @@ const LIBRARY = {
 };
 const ALL_CATEGORIES = Object.keys(LIBRARY);
 
+// ── SORTABLE EXERCISE LIBRARY (DB-backed Kanban board) ───────────────────────
+// The hardcoded LIBRARY above acts as the seed + offline fallback. Once the
+// library_categories / library_exercises tables have rows, they become the
+// source of truth: applyLibraryToPicker rebuilds LIBRARY / ALL_CATEGORIES in
+// place (same mutate-in-place pattern as the global C color object) so the
+// exercise picker and every other reader sees the coach's own sorted library.
+const BASE_LIBRARY_SNAPSHOT = JSON.parse(JSON.stringify(LIBRARY));
+const LIB_PALETTE = ["#3d9e7a", "#5b7fa6", "#b3703d", "#8e6bb3", "#b34d4d", "#4d9db3", "#a3a34d", "#767676"];
+let LIB_DEFAULTS = {}; // lowercased exercise name -> { sets, notes, category }
+function applyLibraryToPicker(cats, exs) {
+  if (!cats?.length) return; // nothing seeded yet — keep hardcoded defaults
+  Object.keys(LIBRARY).forEach(k => { delete LIBRARY[k]; });
+  LIB_DEFAULTS = {};
+  const sortedCats = [...cats].sort((a, b) => a.sort_order - b.sort_order);
+  for (const c of sortedCats) {
+    const list = (exs || []).filter(e => e.category_id === c.id).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+    LIBRARY[c.name] = list.map(e => e.name);
+    list.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: c.name }; });
+  }
+  const unsorted = (exs || []).filter(e => !e.category_id).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+  if (unsorted.length) {
+    LIBRARY["Unsorted"] = unsorted.map(e => e.name);
+    unsorted.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: "Unsorted" }; });
+  }
+  ALL_CATEGORIES.length = 0;
+  ALL_CATEGORIES.push(...Object.keys(LIBRARY));
+}
+
 const LIGHT = {
   black: "#f5f5f3", white: "#111111", orange: "#3d9e7a", purple: "#5b7fa6",
   gray: "#ffffff", gray2: "#f0efed", gray3: "#d8d8d6", muted: "#888884", border: "#e0e0de",
@@ -356,6 +384,36 @@ async function dbGetTemplates(coachId) {
 async function dbSaveTemplate(t) { await sb.from("templates").upsert({ id: t.id, coach_id: t.coachId || null, name: t.name, type: t.type, data: t.data }); }
 async function dbDeleteTemplate(id) { await sb.from("templates").delete().eq("id", id); }
 async function dbGetAthletesByCoach(coachId) { const { data } = await sb.from("athletes").select("*").eq("coach_id", coachId); return data || []; }
+
+// Sortable library. All helpers degrade gracefully if tables don't exist yet.
+async function dbGetLibraryCategories() { try { const { data } = await sb.from("library_categories").select("*").order("sort_order"); return data || []; } catch(e) { return []; } }
+async function dbGetLibraryExercises() { try { const { data } = await sb.from("library_exercises").select("*").order("sort_order"); return data || []; } catch(e) { return []; } }
+async function dbAddLibraryCategory(name, color, sortOrder) { const { data, error } = await sb.from("library_categories").insert({ name, color, sort_order: sortOrder }).select().single(); return { data, error }; }
+async function dbUpdateLibraryCategory(id, patch) { const { error } = await sb.from("library_categories").update(patch).eq("id", id); return { error }; }
+async function dbDeleteLibraryCategory(id) { const { error } = await sb.from("library_categories").delete().eq("id", id); return { error }; }
+async function dbAddLibraryExercise(row) { const { data, error } = await sb.from("library_exercises").insert(row).select().single(); return { data, error }; }
+async function dbUpdateLibraryExercise(id, patch) { const { error } = await sb.from("library_exercises").update(patch).eq("id", id); return { error }; }
+async function dbDeleteLibraryExercise(id) { const { error } = await sb.from("library_exercises").delete().eq("id", id); return { error }; }
+async function dbSaveExercisePositions(rows) {
+  // rows: [{ id, category_id, sort_order }] — updates only these columns.
+  if (!rows.length) return { error: null };
+  const { error } = await sb.from("library_exercises").upsert(rows, { onConflict: "id" });
+  return { error };
+}
+async function dbSeedLibraryFromDefaults() {
+  // One-time migration: turn the hardcoded library into sortable DB rows.
+  const catNames = Object.keys(BASE_LIBRARY_SNAPSHOT);
+  const { data: catRows, error: catErr } = await sb.from("library_categories")
+    .insert(catNames.map((n, i) => ({ name: n, color: LIB_PALETTE[i % LIB_PALETTE.length], sort_order: i }))).select();
+  if (catErr) return { error: catErr };
+  const exRows = [];
+  for (const c of catRows) {
+    const names = [...(BASE_LIBRARY_SNAPSHOT[c.name] || [])].sort((a, b) => a.localeCompare(b));
+    names.forEach((n, i) => exRows.push({ name: n, category_id: c.id, sets: "", notes: "", sort_order: i }));
+  }
+  const { error: exErr } = await sb.from("library_exercises").insert(exRows);
+  return { error: exErr };
+}
 async function dbUpsertAthleteWithCoach(a) {
   // Survey fields are intentionally NOT included — see dbUpsertAthlete comment.
   await sb.from("athletes").upsert({
@@ -719,7 +777,12 @@ function ExercisePicker({ onAdd, onClose }) {
                     <span>{cat}</span><span>{openCat===cat?"▲":"▼"}</span>
                   </button>
                   {(openCat===cat||search) && LIBRARY[cat].filter(e => !search||e.toLowerCase().includes(search.toLowerCase())||cat.toLowerCase().includes(search.toLowerCase())).map(ex => (
-                    <button key={ex} onClick={() => setSelected(selected===ex?null:ex)} style={{ width: "100%", textAlign: "left", background: selected===ex?"rgba(61,158,122,0.1)":"transparent", border: `1px solid ${selected===ex?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 12px", color: selected===ex?C.orange:C.white, cursor: "pointer", fontSize: 14, marginBottom: 3 }}>{ex}</button>
+                    <button key={ex} onClick={() => {
+                      const next = selected===ex?null:ex;
+                      setSelected(next);
+                      const d = next ? LIB_DEFAULTS[next.toLowerCase()] : null;
+                      setSets(d?.sets || ""); setCoachNotes(d?.notes || "");
+                    }} style={{ width: "100%", textAlign: "left", background: selected===ex?"rgba(61,158,122,0.1)":"transparent", border: `1px solid ${selected===ex?C.orange:"transparent"}`, borderRadius: 6, padding: "10px 12px", color: selected===ex?C.orange:C.white, cursor: "pointer", fontSize: 14, marginBottom: 3 }}>{ex}</button>
                   ))}
                 </div>
               ))}
@@ -731,7 +794,7 @@ function ExercisePicker({ onAdd, onClose }) {
                 <div style={{ marginBottom: 14 }}><label style={lbl}>Coach Notes (optional)</label><input value={coachNotes} onChange={e => setCoachNotes(e.target.value)} placeholder="Cues, intensity..." style={inp} /></div>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                   <button onClick={onClose} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-                  <button onClick={() => { onAdd({ id: uid(), text: selected, category: Object.keys(LIBRARY).find(c => LIBRARY[c].includes(selected)), sets, notes: coachNotes }); onClose(); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
+                  <button onClick={() => { onAdd({ id: uid(), text: selected, category: Object.keys(LIBRARY).find(c => LIBRARY[c].includes(selected)) || LIB_DEFAULTS[selected.toLowerCase()]?.category || "Other", sets, notes: coachNotes }); onClose(); }} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.orange, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Add</button>
                 </div>
               </div>
             ) : (
@@ -5453,6 +5516,323 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
   );
 }
 
+// ── EXERCISE LIBRARY BOARD ───────────────────────────────────────────────────
+// Visual Kanban sorter: categories as columns, exercises as cards, Unsorted
+// tray first. Desktop drags; mobile uses tap-to-select then tap-a-column.
+// Manual (physical) ordering is the source of truth; the A-Z toggle is a
+// view-only sort. All changes persist immediately and rebuild the picker.
+function LibraryBoard({ isMobile, onClose }) {
+  const [cats, setCats] = useState([]);
+  const [exs, setExs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
+  const [sortMode, setSortMode] = useState("manual"); // 'manual' | 'alpha'
+  const [search, setSearch] = useState("");
+  const [quickAdd, setQuickAdd] = useState("");
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [selectedId, setSelectedId] = useState(null);   // mobile move-mode
+  const [editingEx, setEditingEx] = useState(null);      // exercise edit sheet
+  const [renamingCat, setRenamingCat] = useState(null);  // cat id being renamed
+  const [renameDraft, setRenameDraft] = useState("");
+  const [newCatName, setNewCatName] = useState("");
+  const [dragId, setDragId] = useState(null);
+  const [err, setErr] = useState("");
+
+  const refreshPicker = (c, e) => applyLibraryToPicker(c, e);
+
+  useEffect(() => {
+    (async () => {
+      let c = await dbGetLibraryCategories();
+      let e = await dbGetLibraryExercises();
+      if (c.length === 0 && e.length === 0) {
+        setSeeding(true);
+        const { error } = await dbSeedLibraryFromDefaults();
+        setSeeding(false);
+        if (error) { setErr("Couldn't set up the library tables. Run the setup SQL first. (" + error.message + ")"); setLoading(false); return; }
+        c = await dbGetLibraryCategories();
+        e = await dbGetLibraryExercises();
+      }
+      setCats(c); setExs(e); refreshPicker(c, e);
+      setLoading(false);
+    })();
+  }, []);
+
+  const colFor = (catId) => (exs.filter(x => x.category_id === catId)
+    .sort((a, b) => sortMode === "alpha" ? a.name.localeCompare(b.name) : ((a.sort_order - b.sort_order) || a.name.localeCompare(b.name))));
+
+  const persistPositions = async (nextExs, touchedCatIds) => {
+    const rows = [];
+    for (const catId of touchedCatIds) {
+      nextExs.filter(x => x.category_id === catId)
+        .sort((a, b) => (a.sort_order - b.sort_order))
+        .forEach((x, i) => { if (x.sort_order !== i) x.sort_order = i; rows.push({ id: x.id, category_id: x.category_id, sort_order: x.sort_order }); });
+    }
+    setExs([...nextExs]); refreshPicker(cats, nextExs);
+    const { error } = await dbSaveExercisePositions(rows);
+    if (error) setErr("Save failed: " + error.message);
+  };
+
+  // Move ex to a category; beforeId = insert before that card (null = end)
+  const moveExercise = (exId, toCatId, beforeId = null) => {
+    const next = exs.map(x => ({ ...x }));
+    const ex = next.find(x => x.id === exId);
+    if (!ex) return;
+    const fromCat = ex.category_id;
+    const target = next.filter(x => x.category_id === toCatId && x.id !== exId).sort((a, b) => a.sort_order - b.sort_order);
+    let insertAt = target.length;
+    if (beforeId) { const bi = target.findIndex(x => x.id === beforeId); if (bi >= 0) insertAt = bi; }
+    ex.category_id = toCatId;
+    target.splice(insertAt, 0, ex);
+    target.forEach((x, i) => { x.sort_order = i; });
+    persistPositions(next, fromCat === toCatId ? [toCatId] : [fromCat, toCatId]);
+    setSelectedId(null); setDragId(null);
+  };
+
+  const addExercise = async (name, catId = null) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const order = exs.filter(x => x.category_id === catId).length;
+    const { data, error } = await dbAddLibraryExercise({ name: trimmed, category_id: catId, sets: "", notes: "", sort_order: order });
+    if (error) { setErr("Add failed: " + error.message); return; }
+    const next = [...exs, data];
+    setExs(next); refreshPicker(cats, next);
+  };
+
+  const bulkAdd = async () => {
+    const names = bulkText.split("\n").map(s => s.trim()).filter(Boolean);
+    let order = exs.filter(x => !x.category_id).length;
+    const added = [];
+    for (const n of names) {
+      const { data, error } = await dbAddLibraryExercise({ name: n, category_id: null, sets: "", notes: "", sort_order: order++ });
+      if (!error && data) added.push(data);
+    }
+    const next = [...exs, ...added];
+    setExs(next); refreshPicker(cats, next);
+    setBulkText(""); setShowBulk(false);
+  };
+
+  const saveExerciseEdit = async () => {
+    const { id, name, sets, notes } = editingEx;
+    if (!name.trim()) return;
+    const { error } = await dbUpdateLibraryExercise(id, { name: name.trim(), sets, notes });
+    if (error) { setErr("Save failed: " + error.message); return; }
+    const next = exs.map(x => x.id === id ? { ...x, name: name.trim(), sets, notes } : x);
+    setExs(next); refreshPicker(cats, next); setEditingEx(null);
+  };
+
+  const deleteExercise = async (id) => {
+    const { error } = await dbDeleteLibraryExercise(id);
+    if (error) { setErr("Delete failed: " + error.message); return; }
+    const next = exs.filter(x => x.id !== id);
+    setExs(next); refreshPicker(cats, next); setEditingEx(null);
+  };
+
+  const addCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) return;
+    if (cats.some(c => c.name.toLowerCase() === name.toLowerCase())) { setErr("A category with that name already exists."); return; }
+    const { data, error } = await dbAddLibraryCategory(name, LIB_PALETTE[cats.length % LIB_PALETTE.length], cats.length);
+    if (error) { setErr("Add failed: " + error.message); return; }
+    const next = [...cats, data];
+    setCats(next); refreshPicker(next, exs); setNewCatName("");
+  };
+
+  const renameCategory = async (id) => {
+    const name = renameDraft.trim();
+    if (!name) { setRenamingCat(null); return; }
+    const { error } = await dbUpdateLibraryCategory(id, { name });
+    if (error) { setErr("Rename failed: " + error.message); return; }
+    const next = cats.map(c => c.id === id ? { ...c, name } : c);
+    setCats(next); refreshPicker(next, exs); setRenamingCat(null);
+  };
+
+  const cycleColor = async (c) => {
+    const idx = (LIB_PALETTE.indexOf(c.color) + 1) % LIB_PALETTE.length;
+    const color = LIB_PALETTE[idx < 0 ? 0 : idx];
+    await dbUpdateLibraryCategory(c.id, { color });
+    setCats(prev => prev.map(x => x.id === c.id ? { ...x, color } : x));
+  };
+
+  const moveColumn = async (c, dir) => {
+    const ordered = [...cats].sort((a, b) => a.sort_order - b.sort_order);
+    const i = ordered.findIndex(x => x.id === c.id);
+    if (i + dir < 0 || i + dir >= ordered.length) return;
+    [ordered[i].sort_order, ordered[i + dir].sort_order] = [ordered[i + dir].sort_order, ordered[i].sort_order];
+    setCats([...ordered]); refreshPicker(ordered, exs);
+    await dbUpdateLibraryCategory(ordered[i].id, { sort_order: ordered[i].sort_order });
+    await dbUpdateLibraryCategory(ordered[i + dir].id, { sort_order: ordered[i + dir].sort_order });
+  };
+
+  const deleteCategory = async (c) => {
+    if (exs.some(x => x.category_id === c.id)) { setErr("Move or delete that category's exercises first."); return; }
+    const { error } = await dbDeleteLibraryCategory(c.id);
+    if (error) { setErr("Delete failed: " + error.message); return; }
+    const next = cats.filter(x => x.id !== c.id);
+    setCats(next); refreshPicker(next, exs);
+  };
+
+  const matchesSearch = (x) => !search || x.name.toLowerCase().includes(search.toLowerCase());
+  const sortedCats = [...cats].sort((a, b) => a.sort_order - b.sort_order);
+  const columns = [{ id: null, name: "🗂 Unsorted", color: C.gray3, _tray: true }, ...sortedCats];
+
+  const Card = ({ x, catColor }) => (
+    <div draggable={!isMobile && sortMode === "manual"}
+      onDragStart={() => setDragId(x.id)}
+      onDragOver={e => { if (dragId && dragId !== x.id && sortMode === "manual") e.preventDefault(); }}
+      onDrop={e => { e.stopPropagation(); if (dragId && dragId !== x.id && sortMode === "manual") moveExercise(dragId, x.category_id, x.id); }}
+      onClick={() => { if (isMobile) setSelectedId(selectedId === x.id ? null : x.id); }}
+      style={{
+        background: selectedId === x.id ? "rgba(61,158,122,0.15)" : C.gray2,
+        border: `1px solid ${selectedId === x.id ? C.orange : C.border}`,
+        borderLeft: `3px solid ${catColor}`,
+        borderRadius: 6, padding: "8px 10px", marginBottom: 6,
+        cursor: isMobile ? "pointer" : (sortMode === "manual" ? "grab" : "default"),
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+        opacity: dragId === x.id ? 0.4 : 1, userSelect: "none",
+      }}>
+      <span style={{ fontSize: 13, color: C.white, lineHeight: 1.35 }}>{x.name}</span>
+      <button onClick={(e) => { e.stopPropagation(); setEditingEx({ id: x.id, name: x.name, sets: x.sets || "", notes: x.notes || "" }); }}
+        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, flexShrink: 0, padding: 2 }}>✏️</button>
+    </div>
+  );
+
+  const Column = ({ col }) => {
+    const items = colFor(col.id).filter(matchesSearch);
+    return (
+      <div key={col.id || "unsorted"}
+        onDragOver={e => { if (dragId && sortMode === "manual") e.preventDefault(); }}
+        onDrop={() => { if (dragId && sortMode === "manual") moveExercise(dragId, col.id, null); }}
+        style={{ width: isMobile ? "100%" : 248, flexShrink: 0, background: C.gray, border: `1px solid ${C.border}`, borderTop: `3px solid ${col.color || C.gray3}`, borderRadius: 10, padding: "10px 10px 6px", marginBottom: isMobile ? 14 : 0, display: "flex", flexDirection: "column", maxHeight: isMobile ? "none" : "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, minHeight: 26 }}>
+          {!col._tray && renamingCat === col.id ? (
+            <input autoFocus value={renameDraft} onChange={e => setRenameDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") renameCategory(col.id); if (e.key === "Escape") setRenamingCat(null); }}
+              onBlur={() => renameCategory(col.id)}
+              style={{ flex: 1, minWidth: 0, background: C.gray2, border: `1px solid ${C.orange}`, borderRadius: 5, color: C.white, fontSize: 13, padding: "3px 7px", outline: "none" }} />
+          ) : (
+            <div style={{ ...bebas, flex: 1, fontSize: 15, letterSpacing: 1, color: C.white, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {col.name} <span style={{ ...mono, fontSize: 10, color: C.muted }}>({items.length}{search ? "·f" : ""})</span>
+            </div>
+          )}
+          {selectedId && (
+            <button onClick={() => moveExercise(selectedId, col.id, null)}
+              style={{ ...mono, fontSize: 9, padding: "4px 8px", borderRadius: 5, border: "none", background: C.orange, color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>Move here</button>
+          )}
+          {!col._tray && !selectedId && (
+            <>
+              <button onClick={() => cycleColor(col)} title="Change color" style={{ width: 14, height: 14, borderRadius: "50%", background: col.color || C.gray3, border: `1px solid ${C.border}`, cursor: "pointer", padding: 0, flexShrink: 0 }} />
+              <button onClick={() => { setRenamingCat(col.id); setRenameDraft(col.name); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: 2 }}>✏️</button>
+              {!isMobile && <button onClick={() => moveColumn(col, -1)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: 2 }}>◀</button>}
+              {!isMobile && <button onClick={() => moveColumn(col, 1)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: 2 }}>▶</button>}
+              {colFor(col.id).length === 0 && <button onClick={() => deleteCategory(col)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13, padding: 2 }}>✕</button>}
+            </>
+          )}
+        </div>
+        <div style={{ overflowY: isMobile ? "visible" : "auto", flex: 1 }}>
+          {items.map(x => <Card key={x.id} x={x} catColor={col.color || C.gray3} />)}
+          {items.length === 0 && <div style={{ ...mono, fontSize: 10, color: C.muted, textAlign: "center", padding: "14px 0", opacity: 0.6 }}>{col._tray ? "New exercises land here" : "Empty"}</div>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.black, zIndex: 750, display: "flex", flexDirection: "column" }}>
+      <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: isMobile ? "10px 14px" : "12px 20px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flexShrink: 0 }}>
+        <div style={{ ...bebas, fontSize: 20, letterSpacing: 1.5, color: C.white, marginRight: "auto" }}>📚 Exercise Library</div>
+        <div style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
+          {["manual", "alpha"].map(m => (
+            <button key={m} onClick={() => setSortMode(m)}
+              style={{ ...mono, fontSize: 10, padding: "6px 12px", border: "none", cursor: "pointer", background: sortMode === m ? C.orange : "none", color: sortMode === m ? "#fff" : C.muted }}>
+              {m === "manual" ? "My Order" : "A–Z"}
+            </button>
+          ))}
+        </div>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
+          style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 12, padding: "6px 10px", outline: "none", width: isMobile ? 110 : 160 }} />
+        <button onClick={() => setShowBulk(true)} style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Bulk add</button>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+      </div>
+
+      <div style={{ padding: isMobile ? "10px 14px" : "12px 20px", flexShrink: 0, display: "flex", gap: 8, alignItems: "center" }}>
+        <input value={quickAdd} onChange={e => setQuickAdd(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && quickAdd.trim()) { addExercise(quickAdd); setQuickAdd(""); } }}
+          placeholder="Type a new exercise, press Enter → lands in Unsorted"
+          style={{ flex: 1, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, color: C.white, fontSize: 13, padding: "10px 14px", outline: "none" }} />
+        {sortMode === "alpha" && <span style={{ ...mono, fontSize: 9, color: C.muted, whiteSpace: "nowrap" }}>A–Z view · switch to My Order to sort</span>}
+      </div>
+
+      {err && (
+        <div style={{ margin: isMobile ? "0 14px 8px" : "0 20px 8px", padding: "8px 12px", background: "rgba(192,57,43,0.12)", border: "1px solid rgba(192,57,43,0.4)", borderRadius: 7, ...mono, fontSize: 11, color: "#e74c3c", display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>{err}</span><button onClick={() => setErr("")} style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}>✕</button>
+        </div>
+      )}
+      {selectedId && isMobile && (
+        <div style={{ margin: "0 14px 8px", padding: "8px 12px", background: "rgba(61,158,122,0.12)", border: `1px solid ${C.orange}`, borderRadius: 7, ...mono, fontSize: 11, color: C.orange, display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>Moving: {exs.find(x => x.id === selectedId)?.name} — tap "Move here" on a category</span>
+          <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", color: C.orange, cursor: "pointer" }}>Cancel</button>
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflowX: isMobile ? "hidden" : "auto", overflowY: isMobile ? "auto" : "hidden", padding: isMobile ? "0 14px 20px" : "0 20px 20px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 0 : 12, alignItems: isMobile ? "stretch" : "stretch" }}>
+        {(loading || seeding) ? (
+          <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 40, textAlign: "center", width: "100%" }}>{seeding ? "Setting up your library from the built-in exercises..." : "Loading library..."}</div>
+        ) : (
+          <>
+            {columns.map(col => <Column key={col.id || "unsorted"} col={col} />)}
+            <div style={{ width: isMobile ? "100%" : 200, flexShrink: 0 }}>
+              <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addCategory(); }}
+                placeholder="+ New category"
+                style={{ width: "100%", boxSizing: "border-box", background: C.gray, border: `1px dashed ${C.border}`, borderRadius: 8, color: C.white, fontSize: 12, padding: "10px 12px", outline: "none" }} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {showBulk && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 760, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowBulk(false)}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, width: "100%", maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...bebas, fontSize: 18, color: C.white, marginBottom: 10 }}>Bulk Add Exercises</div>
+            <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 8 }}>One per line — all land in Unsorted for you to sort.</div>
+            <textarea value={bulkText} onChange={e => setBulkText(e.target.value)} rows={8}
+              style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, padding: "8px 10px", outline: "none", resize: "vertical", marginBottom: 10 }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowBulk(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
+              <button onClick={bulkAdd} disabled={!bulkText.trim()} style={{ ...mono, fontSize: 11, padding: "8px 16px", borderRadius: 6, border: "none", background: bulkText.trim() ? C.orange : C.gray3, color: "#fff", cursor: bulkText.trim() ? "pointer" : "default" }}>Add All</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingEx && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 760, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", padding: isMobile ? 0 : 20 }} onClick={() => setEditingEx(null)}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: isMobile ? "14px 14px 0 0" : 10, padding: 20, width: "100%", maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...bebas, fontSize: 18, color: C.white, marginBottom: 12 }}>Edit Exercise</div>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Name</div>
+            <input value={editingEx.name} onChange={e => setEditingEx(p => ({ ...p, name: e.target.value }))}
+              style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, padding: "8px 10px", outline: "none", marginBottom: 10 }} />
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Default Sets</div>
+            <input value={editingEx.sets} onChange={e => setEditingEx(p => ({ ...p, sets: e.target.value }))} placeholder="e.g. 4x6 @ RPE 8"
+              style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, padding: "8px 10px", outline: "none", marginBottom: 10 }} />
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Default Notes</div>
+            <textarea value={editingEx.notes} onChange={e => setEditingEx(p => ({ ...p, notes: e.target.value }))} rows={3}
+              style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, padding: "8px 10px", outline: "none", resize: "vertical", marginBottom: 14 }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
+              <button onClick={() => deleteExercise(editingEx.id)} style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: "1px solid rgba(192,57,43,0.5)", background: "none", color: "#e74c3c", cursor: "pointer" }}>Delete</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setEditingEx(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
+                <button onClick={saveExerciseEdit} style={{ ...mono, fontSize: 11, padding: "8px 16px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, coaches, isAdmin, coachId, templates = [], onSaveTemplate, onDeleteTemplate, onUpdateCredentials, onUpdateCoachPassword, onPlanChange, onPublish, onProgressChange, onResetProgress, onOverflowChange, onEditExercise, onAddAthlete, onUpdateAthlete, onDeleteAthlete, onAddCoach, onDeleteCoach, onUpdateCoach, onLogout, saved, darkMode, onToggleDark, unreadComments, onOpenInbox }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState("coach");
@@ -5509,6 +5889,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [newCoach, setNewCoach] = useState({ name: "", password: "" });
   const [editingCoach, setEditingCoach] = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   const openTemplates = () => { setShowTemplates(true); };
   const [draftCoachPw, setDraftCoachPw] = useState("");
@@ -5640,6 +6021,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveList} style={btnS(false)} title="View archives">🗂 Archives</button>}
             {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
             <button onClick={openTemplates} style={btnS(false)}>Templates</button>
+            {isAdmin && <button onClick={() => setShowLibrary(true)} style={btnS(false)}>📚 Library</button>}
             <div style={{ width: 1, height: 20, background: C.border }} />
             <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
             <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
@@ -6110,6 +6492,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </div>
       )}
 
+      {showLibrary && isAdmin && <LibraryBoard isMobile={isMobile} onClose={() => setShowLibrary(false)} />}
       {showTemplates && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
@@ -6319,7 +6702,9 @@ function AppInner() {
   useEffect(() => {
     (async () => {
       try {
-      let [ath, pln, prg, creds, coachs] = await Promise.all([dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials(), dbGetCoaches()]);
+      let [ath, pln, prg, creds, coachs, libCats, libExs] = await Promise.all([dbGetAthletes(), dbGetPlans(), dbGetProgress(), dbGetCredentials(), dbGetCoaches(), dbGetLibraryCategories(), dbGetLibraryExercises()]);
+      // Rebuild picker from the coach's sorted library (no-op until seeded)
+      applyLibraryToPicker(libCats, libExs);
       // Only seed if BOTH athletes and plans are completely empty (true fresh install)
       // Using insert (not upsert) so existing plans are never overwritten
       if (ath.length === 0 && Object.keys(pln).length === 0) {
@@ -6654,8 +7039,8 @@ function AppInner() {
           <button onClick={() => setShowInbox(false)} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
-          {Object.entries(athleteComments).length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: 'center', padding: 32 }}>No athlete notes yet.</div>}
-          {Object.entries(athleteComments).map(([aid, comments]) => {
+          {Object.entries(athleteComments).filter(([aid]) => !inboxAthleteId || aid === inboxAthleteId).length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: 'center', padding: 32 }}>No athlete notes yet.</div>}
+          {Object.entries(athleteComments).filter(([aid]) => !inboxAthleteId || aid === inboxAthleteId).map(([aid, comments]) => {
             const aName = athletes.find(a => a.id === aid)?.name || aid;
             const plan = plans[aid];
             // Dedupe by exercise: duplicate rows can exist from a past
@@ -6678,7 +7063,7 @@ function AppInner() {
                   return (
                     <div key={c.id} style={{ background: C.gray2, border: `1px solid ${!c.read_by_coach ? C.orange : C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 10 }}>
                       <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-                        {wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || c.exercise_id}
+                        {!inboxAthleteId && <span style={{ color: C.orange }}>{aName} · </span>}{wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || c.exercise_id}
                       </div>
                       <div style={{ fontSize: 13, color: C.purple, fontStyle: 'italic', marginBottom: reply ? 10 : 8, lineHeight: 1.5 }}>📝 {c.body}</div>
                       {reply ? (
@@ -6738,8 +7123,11 @@ function AppInner() {
         await dbMarkCommentsReadByCoach(athleteId);
         setUnreadComments(prev => prev.filter(c => c.athlete_id !== athleteId));
       } else {
+        // Fetch the full thread per athlete with unread notes — seeding from
+        // unread rows alone hid existing replies and mixed stale entries in.
+        const ids = [...new Set(unreadComments.map(c => c.athlete_id))];
         const grouped = {};
-        for (const c of unreadComments) { if (!grouped[c.athlete_id]) grouped[c.athlete_id] = []; grouped[c.athlete_id].push(c); }
+        await Promise.all(ids.map(async id => { grouped[id] = await dbGetCommentsForAthlete(id); }));
         setAthleteComments(grouped);
       }
     }}
