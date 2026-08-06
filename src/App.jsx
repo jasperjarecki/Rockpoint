@@ -244,15 +244,22 @@ async function dbGetPlans() {
 }
 async function dbSaveAthleteComment(athleteId, weekIdx, dayIdx, exId, body) {
   try {
-    const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'athlete').limit(1);
-    if (ex?.[0]) await sb.from('exercise_comments').update({ body, read_by_coach: false, created_at: new Date().toISOString() }).eq('id', ex[0].id);
+    const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'athlete').order('created_at', { ascending: false });
+    if (ex?.length) {
+      await sb.from('exercise_comments').update({ body, read_by_coach: false, created_at: new Date().toISOString() }).eq('id', ex[0].id);
+      // Self-heal: remove duplicate rows left by the old check-then-insert race
+      if (ex.length > 1) await sb.from('exercise_comments').delete().in('id', ex.slice(1).map(r => r.id));
+    }
     else await sb.from('exercise_comments').insert({ athlete_id: athleteId, plan_week: weekIdx, plan_day: dayIdx, exercise_id: exId, author: 'athlete', body, read_by_coach: false, read_by_athlete: true });
   } catch(e) { console.warn('[comment] athlete save failed:', e); }
 }
 async function dbSaveCoachReply(athleteId, weekIdx, dayIdx, exId, body) {
   try {
-    const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'coach').limit(1);
-    if (ex?.[0]) await sb.from('exercise_comments').update({ body, read_by_athlete: false, created_at: new Date().toISOString() }).eq('id', ex[0].id);
+    const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'coach').order('created_at', { ascending: false });
+    if (ex?.length) {
+      await sb.from('exercise_comments').update({ body, read_by_athlete: false, created_at: new Date().toISOString() }).eq('id', ex[0].id);
+      if (ex.length > 1) await sb.from('exercise_comments').delete().in('id', ex.slice(1).map(r => r.id));
+    }
     else await sb.from('exercise_comments').insert({ athlete_id: athleteId, plan_week: weekIdx, plan_day: dayIdx, exercise_id: exId, author: 'coach', body, read_by_athlete: false, read_by_coach: true });
   } catch(e) { console.warn('[comment] coach reply failed:', e); }
 }
@@ -634,6 +641,14 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
           <textarea value={note} onChange={e => onNote(e.target.value, selectedOption)} placeholder="Add a note..." rows={1} className="athlete-note"
             style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, resize: "none", outline: "none", padding: "7px 10px", ...mono }}
             onFocus={e => { e.target.style.borderColor = C.orange; e.target.style.background = C.gray2; }} onBlur={e => { e.target.style.borderColor = C.border; }} />
+        </div>
+      )}
+      {ep._coachReply && (
+        <div style={{ marginTop: 8, marginLeft: 40, background: "rgba(61,158,122,0.08)", border: `1px solid ${ep._coachReplyUnread ? C.orange : "rgba(61,158,122,0.25)"}`, borderLeft: `3px solid ${C.orange}`, borderRadius: 6, padding: "9px 12px" }}>
+          <div style={{ ...mono, fontSize: 9, color: C.orange, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+            💬 Coach{ep._coachReplyUnread && <span style={{ background: C.orange, color: "#fff", borderRadius: 4, padding: "1px 5px", fontSize: 8 }}>NEW</span>}
+          </div>
+          <div style={{ fontSize: 13, color: C.white, lineHeight: 1.5 }}>{ep._coachReply}</div>
         </div>
       )}
       {/* Image modal */}
@@ -2700,7 +2715,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   );
 }
 
-function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark }) {
+function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onRepliesSeen }) {
   const OVF = "overflow";
 
   // figure out which week to default to
@@ -4380,6 +4395,25 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               </div>
             )}
           </div>
+        )}
+
+        {/* New-reply banner — replies would otherwise be easy to miss.
+            Tap navigates to the first unread reply's week/day and marks all read. */}
+        {unreadReplies.length > 0 && (
+          <button onClick={() => {
+            const r = unreadReplies[0];
+            if (publishedIndices.includes(r.plan_week)) { setActiveWeekIdx(r.plan_week); setActiveDay(r.plan_day); }
+            if (onRepliesSeen) onRepliesSeen();
+          }} style={{ width: "100%", marginBottom: 16, background: "rgba(61,158,122,0.12)", border: `1.5px solid ${C.orange}`, borderRadius: 10, padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, textAlign: "left" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18 }}>💬</span>
+              <span>
+                <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.white }}>{unreadReplies.length === 1 ? "New reply from your coach" : `${unreadReplies.length} new replies from your coach`}</span>
+                <span style={{ ...mono, display: "block", fontSize: 10, color: C.muted, marginTop: 2 }}>Tap to view</span>
+              </span>
+            </span>
+            <span style={{ ...mono, fontSize: 13, color: C.orange }}>→</span>
+          </button>
         )}
 
         {/* Athlete info modal */}
@@ -6267,10 +6301,13 @@ function AppInner() {
   sessionRoleRef.current = session?.role || null;
   const [unreadComments, setUnreadComments] = useState([]);
   const [athleteComments, setAthleteComments] = useState({});
+  const [athleteUnreadReplies, setAthleteUnreadReplies] = useState([]); // coach replies the athlete hasn't seen
   const [showInbox, setShowInbox] = useState(false);
   const [inboxAthleteId, setInboxAthleteId] = useState(null);
-  const [replyDraft, setReplyDraft] = useState('');
-  const [replySaving, setReplySaving] = useState(false);
+  // Keyed by comment id — one draft per comment, not one shared string
+  // (a single shared draft mirrored typing into every reply box).
+  const [replyDrafts, setReplyDrafts] = useState({});
+  const [replySavingId, setReplySavingId] = useState(null);
 
   // BUGFIX: the boot fetch previously had no error handling. If any of the
   // parallel Supabase requests rejected (flaky network on a cold PWA launch),
@@ -6514,12 +6551,15 @@ function AppInner() {
         replies.forEach(r => {
           const dk = `w${r.plan_week}_d${r.plan_day}`;
           const dp = { ...(ap[dk] || {}) };
-          dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body };
+          dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body, _coachReplyUnread: r.read_by_athlete === false };
           ap[dk] = dp;
         });
         return { ...prev, [session.athleteId]: ap };
       });
-      dbMarkCommentsReadByAthlete(session.athleteId);
+      // Do NOT auto-mark read here — that silently wiped the unread state
+      // before the athlete ever saw the reply. Marking happens via the
+      // "new reply" banner in AthleteView (onRepliesSeen).
+      setAthleteUnreadReplies(replies.filter(r => r.read_by_athlete === false));
     }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
   }, [session?.athleteId, session?.role]);
 
@@ -6593,6 +6633,8 @@ function AppInner() {
       darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); try { localStorage.setItem("rp_dark", n?"1":"0"); } catch(_) {} }}
       onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
+      unreadReplies={athleteUnreadReplies}
+      onRepliesSeen={() => { dbMarkCommentsReadByAthlete(session.athleteId); setAthleteUnreadReplies([]); }}
       onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }} />;
   }
 
@@ -6616,7 +6658,15 @@ function AppInner() {
           {Object.entries(athleteComments).map(([aid, comments]) => {
             const aName = athletes.find(a => a.id === aid)?.name || aid;
             const plan = plans[aid];
-            const notes = comments.filter(c => c.author === 'athlete');
+            // Dedupe by exercise: duplicate rows can exist from a past
+            // double-save race; rows arrive newest-first, keep the first.
+            const seenEx = new Set();
+            const notes = comments.filter(c => {
+              if (c.author !== 'athlete') return false;
+              if (seenEx.has(c.exercise_id)) return false;
+              seenEx.add(c.exercise_id);
+              return true;
+            });
             if (!notes.length) return null;
             return (
               <div key={aid} style={{ marginBottom: 24 }}>
@@ -6633,25 +6683,30 @@ function AppInner() {
                       <div style={{ fontSize: 13, color: C.purple, fontStyle: 'italic', marginBottom: reply ? 10 : 8, lineHeight: 1.5 }}>📝 {c.body}</div>
                       {reply ? (
                         <div style={{ fontSize: 12, color: C.orange, lineHeight: 1.5, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>💬 You: {reply.body}</div>
-                      ) : (
+                      ) : (() => {
+                        const draft = replyDrafts[c.id] || '';
+                        const saving = replySavingId === c.id;
+                        return (
                         <div>
-                          <textarea value={replyDraft} onChange={e => setReplyDraft(e.target.value)} placeholder='Reply to athlete...' rows={2}
+                          <textarea value={draft} onChange={e => setReplyDrafts(prev => ({ ...prev, [c.id]: e.target.value }))} placeholder='Reply to athlete...' rows={2}
                             style={{ width: '100%', background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px', color: C.white, fontSize: 12, outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans',sans-serif", boxSizing: 'border-box', marginBottom: 6 }} />
-                          <button disabled={replySaving || !replyDraft.trim()} onClick={async () => {
-                            if (!replyDraft.trim()) return;
-                            setReplySaving(true);
-                            await dbSaveCoachReply(aid, c.plan_week, c.plan_day, c.exercise_id, replyDraft.trim());
+                          <button disabled={saving || !draft.trim()} onClick={async () => {
+                            if (!draft.trim()) return;
+                            setReplySavingId(c.id);
+                            await dbSaveCoachReply(aid, c.plan_week, c.plan_day, c.exercise_id, draft.trim());
                             const updated = await dbGetCommentsForAthlete(aid);
                             setAthleteComments(prev => ({ ...prev, [aid]: updated }));
                             const dk = `w${c.plan_week}_d${c.plan_day}`;
                             const ep = ((progress[aid] || {})[dk] || {})[c.exercise_id] || {};
-                            updateProgress(aid, dk, c.exercise_id, { ...ep, _coachReply: replyDraft.trim() });
-                            setReplyDraft(''); setReplySaving(false);
-                          }} style={{ ...mono, fontSize: 11, padding: '7px 14px', borderRadius: 6, border: 'none', background: replyDraft.trim() ? C.orange : C.gray3, color: '#fff', cursor: replyDraft.trim() ? 'pointer' : 'default' }}>
-                            {replySaving ? 'Sending...' : 'Send Reply'}
+                            updateProgress(aid, dk, c.exercise_id, { ...ep, _coachReply: draft.trim() });
+                            setReplyDrafts(prev => { const n = { ...prev }; delete n[c.id]; return n; });
+                            setReplySavingId(null);
+                          }} style={{ ...mono, fontSize: 11, padding: '7px 14px', borderRadius: 6, border: 'none', background: draft.trim() ? C.orange : C.gray3, color: '#fff', cursor: draft.trim() ? 'pointer' : 'default' }}>
+                            {saving ? 'Sending...' : 'Send Reply'}
                           </button>
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   );
                 })}
