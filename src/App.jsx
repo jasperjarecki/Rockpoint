@@ -597,7 +597,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
 }
 
 // ── EXERCISE CARD ─────────────────────────────────────────────────────────────
-function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel, alsoOnLabels }) {
+function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel, alsoOnLabels, highlight = false }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
@@ -610,7 +610,7 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
   const inp = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none", ...mono };
 
   return (
-    <div style={{ background: checked ? "rgba(61,158,122,0.06)" : isOverflow ? "rgba(91,127,166,0.07)" : C.gray, border: `1px solid ${editing ? C.orange : checked ? "rgba(61,158,122,0.4)" : isOverflow ? "rgba(91,127,166,0.25)" : C.border}`, borderRadius: 10, padding: "16px", transition: "all 0.15s" }}>
+    <div id={"excard-" + ex.id} style={{ background: checked ? "rgba(61,158,122,0.06)" : isOverflow ? "rgba(91,127,166,0.07)" : C.gray, border: `1px solid ${highlight ? C.orange : editing ? C.orange : checked ? "rgba(61,158,122,0.4)" : isOverflow ? "rgba(91,127,166,0.25)" : C.border}`, borderRadius: 10, padding: "16px", transition: "all 0.15s", boxShadow: highlight ? `0 0 0 3px rgba(61,158,122,0.35)` : "none" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
         <button onClick={onToggle} style={{ width: 26, height: 26, minWidth: 26, borderRadius: 6, border: `2px solid ${checked ? "#2aaa5e" : C.gray3}`, background: checked ? "#2aaa5e" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2, transition: "all 0.15s", flexShrink: 0 }}>
           {checked && <span style={{ color: "#fff", fontSize: 14, fontWeight: 700, lineHeight: 1 }}>✓</span>}
@@ -2911,12 +2911,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     }
   };
   const handleNote = (ex, val, selectedOption, defer) => {
-    const key = (ex.sharedDays?.length || ex._isShared) ? sharedKey(ex.id) : pk;
-    const ep = (ex.sharedDays?.length || ex._isShared) ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : (dayProg[ex.id] || {});
+    const isSharedEx = (ex.sharedDays?.length || ex._isShared);
+    const key = isSharedEx ? sharedKey(ex.id) : pk;
+    const ep = isSharedEx ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : (dayProg[ex.id] || {});
     const update = { ...ep, note: val };
     if (selectedOption !== undefined) update.selectedOption = selectedOption;
     if (defer !== undefined) update.deferToOtherDay = !ep.deferToOtherDay;
-    onProgressChange(key, ex.id, update);
+    // Shared keys carry no week/day — pass the day being viewed so the note
+    // reaches the coach inbox with real context.
+    onProgressChange(key, ex.id, update, isSharedEx ? pk : null);
   };
 
   const [athleteTab, setAthleteTab] = useState("plan");
@@ -2941,6 +2944,15 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
   const [showAthleteInfo, setShowAthleteInfo] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false); // inline home-page overview card, starts collapsed
+  const [highlightExId, setHighlightExId] = useState(null); // banner tap -> scroll to + glow the reply's exercise card
+  useEffect(() => {
+    if (!highlightExId) return;
+    const t1 = setTimeout(() => {
+      document.getElementById("excard-" + highlightExId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150); // let the target week/day render first
+    const t2 = setTimeout(() => setHighlightExId(null), 3500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [highlightExId]);
   const [sleepPromptValue, setSleepPromptValue] = useState("");
   const [sleepPromptSaving, setSleepPromptSaving] = useState(false);
   // Catch-up prompt: appears once per session when 3+ consecutive recent
@@ -4466,6 +4478,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
           <button onClick={() => {
             const r = unreadReplies[0];
             if (publishedIndices.includes(r.plan_week)) { setActiveWeekIdx(r.plan_week); setActiveDay(r.plan_day); }
+            setHighlightExId(r.exercise_id); // scroll to + glow the card even if already on that day
             if (onRepliesSeen) onRepliesSeen();
           }} style={{ width: "100%", marginBottom: 16, background: "rgba(61,158,122,0.12)", border: `1.5px solid ${C.orange}`, borderRadius: 10, padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, textAlign: "left" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -4683,7 +4696,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             // for injected day: show which day it comes from
             const sourceDayLabel = ex._isShared ? days[ex._sourceDay]?.label : null;
             return (
-              <ExerciseCard key={ex.id + (ex._sourceDay ?? "")} ex={ex} ep={ep} isOverflow={isOvf}
+              <ExerciseCard key={ex.id + (ex._sourceDay ?? "")} ex={ex} ep={ep} isOverflow={isOvf} highlight={highlightExId === ex.id}
                 onToggle={() => handleToggle(ex)}
                 onNote={(v, sel, defer) => handleNote(ex, v, sel, defer)}
                 onMoveToOverflow={() => onOverflowChange([...overflow, { ...ex, fromDay: activeDay, fromWeek: activeWeekIdx }])}
@@ -6815,7 +6828,7 @@ function AppInner() {
     flash();
   }, []);
 
-  const updateProgress = useCallback(async (id, dayKey, exId, ep) => {
+  const updateProgress = useCallback(async (id, dayKey, exId, ep, commentDayKey = null) => {
     setProgress(prev => {
       const ap = prev[id] || {};
       const dp = ap[dayKey] || {};
@@ -6831,7 +6844,10 @@ function AppInner() {
     });
     if (ep?.note?.trim() && sessionRoleRef.current === 'athlete') {
       try {
-        const m = dayKey.match(/w(\d+)_d(\d+)/);
+        // Shared (multi-day) exercises save progress under "shared_<exId>",
+        // which carries no week/day — commentDayKey supplies the day the
+        // athlete was viewing so the note still reaches the coach inbox.
+        const m = (commentDayKey || dayKey).match(/w(\d+)_d(\d+)/);
         if (m) dbSaveAthleteComment(id, parseInt(m[1]), parseInt(m[2]), exId, ep.note.trim());
       } catch(e) { console.warn('[comments] write failed:', e); }
     }
@@ -6927,17 +6943,23 @@ function AppInner() {
 
   // Fetch coach replies for athlete — must be before any conditional returns (Rules of Hooks)
   React.useEffect(() => {
+    if (loading) return; // wait for plans so shared exercises are detectable
     if (session?.role !== 'athlete' || !session?.athleteId) return;
     dbGetCommentsForAthlete(session.athleteId).then(comments => {
       const replies = comments.filter(c => c.author === 'coach');
       if (!replies.length) return;
+      const athletePlan = plans[session.athleteId];
       setProgress(prev => {
         const ap = { ...(prev[session.athleteId] || {}) };
         replies.forEach(r => {
           const dk = `w${r.plan_week}_d${r.plan_day}`;
-          const dp = { ...(ap[dk] || {}) };
-          dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body, _coachReplyUnread: r.read_by_athlete === false };
-          ap[dk] = dp;
+          const exDef = athletePlan?.weeks?.[r.plan_week]?.days?.[r.plan_day]?.exercises?.find(e => e.id === r.exercise_id);
+          const keys = exDef?.sharedDays?.length ? [dk, `shared_${r.exercise_id}`] : [dk];
+          keys.forEach(k => {
+            const dp = { ...(ap[k] || {}) };
+            dp[r.exercise_id] = { ...(dp[r.exercise_id] || {}), _coachReply: r.body, _coachReplyUnread: r.read_by_athlete === false };
+            ap[k] = dp;
+          });
         });
         return { ...prev, [session.athleteId]: ap };
       });
@@ -6946,7 +6968,7 @@ function AppInner() {
       // "new reply" banner in AthleteView (onRepliesSeen).
       setAthleteUnreadReplies(replies.filter(r => r.read_by_athlete === false));
     }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
-  }, [session?.athleteId, session?.role]);
+  }, [loading, session?.athleteId, session?.role]);
 
   // Clear a stale athlete session (athlete deleted from DB) — replaces the
   // old setSession(null)-during-render in the guard below. Only fires once
@@ -7014,7 +7036,7 @@ function AppInner() {
     // for the single frame before that effect runs.
     if (!athlete) return null;
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
-      onProgressChange={(d, e, ep) => updateProgress(session.athleteId, d, e, ep)}
+      onProgressChange={(d, e, ep, cdk) => updateProgress(session.athleteId, d, e, ep, cdk)}
       darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); try { localStorage.setItem("rp_dark", n?"1":"0"); } catch(_) {} }}
       onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
@@ -7071,6 +7093,18 @@ function AppInner() {
                       ) : (() => {
                         const draft = replyDrafts[c.id] || '';
                         const saving = replySavingId === c.id;
+                        const setResolved = async (val) => {
+                          const { error } = await sb.from('exercise_comments').update({ resolved: val, read_by_coach: true }).eq('id', c.id);
+                          if (error) { alert("Resolve failed — if you haven't yet, run this in Supabase SQL Editor:\n\nalter table exercise_comments add column if not exists resolved boolean default false;"); return; }
+                          setAthleteComments(prev => ({ ...prev, [aid]: (prev[aid] || []).map(x => x.id === c.id ? { ...x, resolved: val, read_by_coach: true } : x) }));
+                          setUnreadComments(prev => prev.filter(x => x.id !== c.id));
+                        };
+                        if (c.resolved) return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                            <span style={{ ...mono, fontSize: 10, color: '#2aaa5e', background: 'rgba(42,170,94,0.1)', border: '1px solid rgba(42,170,94,0.3)', borderRadius: 5, padding: '4px 9px' }}>✓ Resolved — no reply needed</span>
+                            <button onClick={() => setResolved(false)} style={{ ...mono, fontSize: 10, background: 'none', border: 'none', color: C.muted, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Reply instead</button>
+                          </div>
+                        );
                         return (
                         <div>
                           <textarea value={draft} onChange={e => setReplyDrafts(prev => ({ ...prev, [c.id]: e.target.value }))} placeholder='Reply to athlete...' rows={2}
@@ -7084,10 +7118,19 @@ function AppInner() {
                             const dk = `w${c.plan_week}_d${c.plan_day}`;
                             const ep = ((progress[aid] || {})[dk] || {})[c.exercise_id] || {};
                             updateProgress(aid, dk, c.exercise_id, { ...ep, _coachReply: draft.trim() });
+                            if (ex?.sharedDays?.length) {
+                              const sk = `shared_${c.exercise_id}`;
+                              const sep = ((progress[aid] || {})[sk] || {})[c.exercise_id] || {};
+                              updateProgress(aid, sk, c.exercise_id, { ...sep, _coachReply: draft.trim() });
+                            }
                             setReplyDrafts(prev => { const n = { ...prev }; delete n[c.id]; return n; });
                             setReplySavingId(null);
                           }} style={{ ...mono, fontSize: 11, padding: '7px 14px', borderRadius: 6, border: 'none', background: draft.trim() ? C.orange : C.gray3, color: '#fff', cursor: draft.trim() ? 'pointer' : 'default' }}>
                             {saving ? 'Sending...' : 'Send Reply'}
+                          </button>
+                          <button onClick={() => setResolved(true)} title="Acknowledge without replying — the note stays on the exercise"
+                            style={{ ...mono, fontSize: 11, padding: '7px 14px', borderRadius: 6, border: `1px solid ${C.border}`, background: 'none', color: C.muted, cursor: 'pointer', marginLeft: 8 }}>
+                            ✓ Resolve
                           </button>
                         </div>
                         );
