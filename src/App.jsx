@@ -395,7 +395,9 @@ async function dbAddLibraryExercise(row) { const { data, error } = await sb.from
 async function dbUpdateLibraryExercise(id, patch) { const { error } = await sb.from("library_exercises").update(patch).eq("id", id); return { error }; }
 async function dbDeleteLibraryExercise(id) { const { error } = await sb.from("library_exercises").delete().eq("id", id); return { error }; }
 async function dbSaveExercisePositions(rows) {
-  // rows: [{ id, category_id, sort_order }] — updates only these columns.
+  // rows: [{ id, name, category_id, sort_order }]. name must be included:
+  // upsert's INSERT stage enforces NOT NULL on name even when the row exists
+  // and only the ON CONFLICT UPDATE will actually run.
   if (!rows.length) return { error: null };
   const { error } = await sb.from("library_exercises").upsert(rows, { onConflict: "id" });
   return { error };
@@ -5582,7 +5584,7 @@ function LibraryBoard({ isMobile, onClose }) {
     for (const catId of touchedCatIds) {
       nextExs.filter(x => x.category_id === catId)
         .sort((a, b) => (a.sort_order - b.sort_order))
-        .forEach((x, i) => { if (x.sort_order !== i) x.sort_order = i; rows.push({ id: x.id, category_id: x.category_id, sort_order: x.sort_order }); });
+        .forEach((x, i) => { if (x.sort_order !== i) x.sort_order = i; rows.push({ id: x.id, name: x.name, category_id: x.category_id, sort_order: x.sort_order }); });
     }
     setExs([...nextExs]); refreshPicker(cats, nextExs);
     const { error } = await dbSaveExercisePositions(rows);
