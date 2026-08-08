@@ -5692,12 +5692,13 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
     setCats(next); refreshPicker(next, exs);
   };
 
-  // Fill empty default sets/notes from live plans: for each library exercise,
-  // gather every non-empty value used in plans (matched by name), pick the
-  // most common; ties and one-offs resolve to the most detailed (longest).
-  // Sets and notes are picked independently so one missing field can't blank
-  // the other. Only EMPTY library fields are filled — hand-edited defaults
-  // are never overwritten. The Template Creator workspace is excluded.
+  // Fill default sets/notes from live plans: for each library exercise,
+  // gather every non-empty value used in plans (matched by name) and pick
+  // the LONGEST one; equal lengths break by how often the value is used.
+  // Sets and notes are picked independently. This pass OVERWRITES existing
+  // defaults when the picked value differs — the preview shows current → new
+  // so nothing changes sight-unseen. The Template Creator workspace is
+  // excluded.
   const computeBackfill = () => {
     const counts = {};
     Object.entries(plans || {}).forEach(([aid, plan]) => {
@@ -5713,15 +5714,15 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
     const pick = (m) => {
       const e = Object.entries(m);
       if (!e.length) return null;
-      e.sort((a, b) => (b[1] - a[1]) || (b[0].length - a[0].length));
+      e.sort((a, b) => (b[0].length - a[0].length) || (b[1] - a[1]));
       return e[0]; // [value, count]
     };
     const changes = [];
     exs.forEach(x => {
       const c = counts[(x.name || "").trim().toLowerCase()];
       if (!c) return;
-      const ps = !(x.sets || "").trim() ? pick(c.sets) : null;
-      const pn = !(x.notes || "").trim() ? pick(c.notes) : null;
+      let ps = pick(c.sets); if (ps && ps[0] === (x.sets || "").trim()) ps = null;
+      let pn = pick(c.notes); if (pn && pn[0] === (x.notes || "").trim()) pn = null;
       if (ps || pn) changes.push({
         id: x.id, name: x.name, category_id: x.category_id, sort_order: x.sort_order,
         curSets: x.sets || "", curNotes: x.notes || "",
@@ -5876,15 +5877,15 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
               <div style={{ ...bebas, fontSize: 18, color: C.white }}>Fill Defaults From Plans</div>
               <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 3 }}>
                 {backfill.length === 0 ? "Nothing to fill — no matching plan usage found for exercises with empty defaults." :
-                  `${backfill.length} exercise${backfill.length === 1 ? "" : "s"} · most common value wins, most detailed breaks ties · only empty fields are filled`}
+                  `${backfill.length} exercise${backfill.length === 1 ? "" : "s"} · longest value wins, most-used breaks ties · existing defaults shown as current → new`}
               </div>
             </div>
             <div style={{ overflowY: "auto", flex: 1, padding: "10px 20px" }}>
               {backfill.map(ch => (
                 <div key={ch.id} style={{ borderBottom: `1px solid ${C.border}`, padding: "9px 0" }}>
                   <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 3 }}>{ch.name}</div>
-                  {ch.newSets != null && <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Sets → <span style={{ color: C.white }}>{ch.newSets}</span> <span style={{ opacity: 0.6 }}>({ch.setsCount}× in plans)</span></div>}
-                  {ch.newNotes != null && <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Notes → <span style={{ color: C.white }}>{ch.newNotes}</span> <span style={{ opacity: 0.6 }}>({ch.notesCount}×)</span></div>}
+                  {ch.newSets != null && <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Sets: {ch.curSets ? <span style={{ textDecoration: "line-through", opacity: 0.55 }}>{ch.curSets}</span> : <span style={{ opacity: 0.55, fontStyle: "italic" }}>empty</span>} → <span style={{ color: C.white }}>{ch.newSets}</span> <span style={{ opacity: 0.6 }}>({ch.setsCount}× in plans)</span></div>}
+                  {ch.newNotes != null && <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Notes: {ch.curNotes ? <span style={{ textDecoration: "line-through", opacity: 0.55 }}>{ch.curNotes}</span> : <span style={{ opacity: 0.55, fontStyle: "italic" }}>empty</span>} → <span style={{ color: C.white }}>{ch.newNotes}</span> <span style={{ opacity: 0.6 }}>({ch.notesCount}×)</span></div>}
                 </div>
               ))}
             </div>
