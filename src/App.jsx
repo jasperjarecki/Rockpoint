@@ -4648,7 +4648,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               return acc;
             }, []);
             const allVis = [...vis, ...sharedVis];
-            const done = allVis.filter(e => (e.sharedDays ? (progress[`shared_${e.id}`] || {}) : dp)[e.id]?.checked).length;
+            // .length matters: an exercise with sharedDays []  (multi-day toggled
+            // on then off) stores checks under the DAY key like any normal
+            // exercise — a bare truthiness test misread it from the shared key.
+            const done = allVis.filter(e => (e.sharedDays?.length ? (progress[`shared_${e.id}`] || {}) : dp)[e.id]?.checked).length;
             const total = allVis.length;
             const isActive = activeDay === i;
             const allDone = done === total && total > 0;
