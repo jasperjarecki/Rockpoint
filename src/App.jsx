@@ -5539,7 +5539,7 @@ function VolumeTiersPage({ athletes, onUpdateAthlete }) {
 // tray first. Desktop drags; mobile uses tap-to-select then tap-a-column.
 // Manual (physical) ordering is the source of truth; the A-Z toggle is a
 // view-only sort. All changes persist immediately and rebuild the picker.
-function LibraryBoard({ isMobile, onClose }) {
+function LibraryBoard({ isMobile, plans = {}, onClose }) {
   const [cats, setCats] = useState([]);
   const [exs, setExs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5548,6 +5548,8 @@ function LibraryBoard({ isMobile, onClose }) {
   const [search, setSearch] = useState("");
   const [quickAdd, setQuickAdd] = useState("");
   const [showBulk, setShowBulk] = useState(false);
+  const [backfill, setBackfill] = useState(null); // computed fill-from-plans preview
+  const [backfillBusy, setBackfillBusy] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [selectedId, setSelectedId] = useState(null);   // mobile move-mode
   const [editingEx, setEditingEx] = useState(null);      // exercise edit sheet
@@ -5690,6 +5692,63 @@ function LibraryBoard({ isMobile, onClose }) {
     setCats(next); refreshPicker(next, exs);
   };
 
+  // Fill empty default sets/notes from live plans: for each library exercise,
+  // gather every non-empty value used in plans (matched by name), pick the
+  // most common; ties and one-offs resolve to the most detailed (longest).
+  // Sets and notes are picked independently so one missing field can't blank
+  // the other. Only EMPTY library fields are filled — hand-edited defaults
+  // are never overwritten. The Template Creator workspace is excluded.
+  const computeBackfill = () => {
+    const counts = {};
+    Object.entries(plans || {}).forEach(([aid, plan]) => {
+      if (aid === TEMPLATE_CREATOR_ID) return;
+      (plan?.weeks || []).forEach(w => (w.days || []).forEach(d => (d.exercises || []).forEach(px => {
+        const key = (px.text || "").trim().toLowerCase();
+        if (!key) return;
+        const c = counts[key] || (counts[key] = { sets: {}, notes: {} });
+        const s = (px.sets || "").trim(); if (s) c.sets[s] = (c.sets[s] || 0) + 1;
+        const n = (px.notes || "").trim(); if (n) c.notes[n] = (c.notes[n] || 0) + 1;
+      })));
+    });
+    const pick = (m) => {
+      const e = Object.entries(m);
+      if (!e.length) return null;
+      e.sort((a, b) => (b[1] - a[1]) || (b[0].length - a[0].length));
+      return e[0]; // [value, count]
+    };
+    const changes = [];
+    exs.forEach(x => {
+      const c = counts[(x.name || "").trim().toLowerCase()];
+      if (!c) return;
+      const ps = !(x.sets || "").trim() ? pick(c.sets) : null;
+      const pn = !(x.notes || "").trim() ? pick(c.notes) : null;
+      if (ps || pn) changes.push({
+        id: x.id, name: x.name, category_id: x.category_id, sort_order: x.sort_order,
+        curSets: x.sets || "", curNotes: x.notes || "",
+        newSets: ps ? ps[0] : null, setsCount: ps ? ps[1] : 0,
+        newNotes: pn ? pn[0] : null, notesCount: pn ? pn[1] : 0,
+      });
+    });
+    changes.sort((a, b) => a.name.localeCompare(b.name));
+    setBackfill(changes);
+  };
+
+  const applyBackfill = async () => {
+    if (!backfill?.length) { setBackfill(null); return; }
+    setBackfillBusy(true);
+    const rows = backfill.map(ch => ({
+      id: ch.id, name: ch.name, category_id: ch.category_id, sort_order: ch.sort_order,
+      sets: ch.newSets ?? ch.curSets, notes: ch.newNotes ?? ch.curNotes,
+    }));
+    const { error } = await sb.from("library_exercises").upsert(rows, { onConflict: "id" });
+    setBackfillBusy(false);
+    if (error) { setErr("Fill failed: " + error.message); return; }
+    const byId = Object.fromEntries(rows.map(r => [r.id, r]));
+    const next = exs.map(x => byId[x.id] ? { ...x, sets: byId[x.id].sets, notes: byId[x.id].notes } : x);
+    setExs(next); refreshPicker(cats, next);
+    setBackfill(null);
+  };
+
   const matchesSearch = (x) => !search || x.name.toLowerCase().includes(search.toLowerCase());
   const sortedCats = [...cats].sort((a, b) => a.sort_order - b.sort_order);
   const columns = [{ id: null, name: "🗂 Unsorted", color: C.gray3, _tray: true }, ...sortedCats];
@@ -5770,6 +5829,7 @@ function LibraryBoard({ isMobile, onClose }) {
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
           style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 12, padding: "6px 10px", outline: "none", width: isMobile ? 110 : 160 }} />
         <button onClick={() => setShowBulk(true)} style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Bulk add</button>
+        <button onClick={computeBackfill} title="Fill empty default sets/notes from what's used in live plans" style={{ ...mono, fontSize: 10, padding: "7px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Fill from plans</button>
         <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
       </div>
 
@@ -5809,6 +5869,35 @@ function LibraryBoard({ isMobile, onClose }) {
         )}
       </div>
 
+      {backfill !== null && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 760, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setBackfill(null)}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, width: "100%", maxWidth: 560, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "18px 20px 12px", borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ ...bebas, fontSize: 18, color: C.white }}>Fill Defaults From Plans</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 3 }}>
+                {backfill.length === 0 ? "Nothing to fill — no matching plan usage found for exercises with empty defaults." :
+                  `${backfill.length} exercise${backfill.length === 1 ? "" : "s"} · most common value wins, most detailed breaks ties · only empty fields are filled`}
+              </div>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, padding: "10px 20px" }}>
+              {backfill.map(ch => (
+                <div key={ch.id} style={{ borderBottom: `1px solid ${C.border}`, padding: "9px 0" }}>
+                  <div style={{ fontSize: 13, color: C.white, fontWeight: 500, marginBottom: 3 }}>{ch.name}</div>
+                  {ch.newSets != null && <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Sets → <span style={{ color: C.white }}>{ch.newSets}</span> <span style={{ opacity: 0.6 }}>({ch.setsCount}× in plans)</span></div>}
+                  {ch.newNotes != null && <div style={{ ...mono, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Notes → <span style={{ color: C.white }}>{ch.newNotes}</span> <span style={{ opacity: 0.6 }}>({ch.notesCount}×)</span></div>}
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setBackfill(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
+              <button onClick={applyBackfill} disabled={backfillBusy || backfill.length === 0}
+                style={{ ...mono, fontSize: 11, padding: "8px 16px", borderRadius: 6, border: "none", background: backfill.length ? C.orange : C.gray3, color: "#fff", cursor: backfill.length ? "pointer" : "default" }}>
+                {backfillBusy ? "Filling..." : `Fill ${backfill.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showBulk && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 760, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowBulk(false)}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, width: "100%", maxWidth: 420 }} onClick={e => e.stopPropagation()}>
@@ -6510,7 +6599,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </div>
       )}
 
-      {showLibrary && isAdmin && <LibraryBoard isMobile={isMobile} onClose={() => setShowLibrary(false)} />}
+      {showLibrary && isAdmin && <LibraryBoard isMobile={isMobile} plans={plans} onClose={() => setShowLibrary(false)} />}
       {showTemplates && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 520, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
