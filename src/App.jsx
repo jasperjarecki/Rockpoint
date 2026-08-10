@@ -37,6 +37,26 @@ const ALL_CATEGORIES = Object.keys(LIBRARY);
 // exercise picker and every other reader sees the coach's own sorted library.
 const BASE_LIBRARY_SNAPSHOT = JSON.parse(JSON.stringify(LIBRARY));
 const LIB_PALETTE = ["#3d9e7a", "#5b7fa6", "#b3703d", "#8e6bb3", "#b34d4d", "#4d9db3", "#a3a34d", "#767676"];
+// Fixed training phases (not user-editable): every exercise can have a primary
+// phase (its column in the phase view) plus optional additional phases.
+const PHASES = [
+  { id: "base", label: "Base", short: "B", color: "#4d9db3" },
+  { id: "strength", label: "Strength", short: "S", color: "#5b7fa6" },
+  { id: "power", label: "Power", short: "P", color: "#b34d4d" },
+  { id: "performance", label: "Performance", short: "PF", color: "#b3903d" },
+];
+// Legacy mapping, applied at the read boundary so every consumer sees
+// normalized data: the old strength1/strength2 split folds back into
+// "strength"; the retired "endurance" phase clears (endurance now lives as
+// the ARC / Endurance CATEGORY, independent of phase) — those cards return
+// to the No-phase tray for re-sorting.
+const normalizePhases = (e) => {
+  const fix = (p) => (p === "strength1" || p === "strength2" ? "strength" : (p === "endurance" ? "" : p));
+  const extras = [...new Set((e.extra_phases || []).map(fix).filter(Boolean))];
+  const phase = fix(e.phase || "");
+  return { ...e, phase, extra_phases: extras.filter(p => p !== phase) };
+};
+const phaseById = (id) => PHASES.find(p => p.id === id);
 let LIB_DEFAULTS = {}; // lowercased exercise name -> { sets, notes, category }
 function applyLibraryToPicker(cats, exs) {
   if (!cats?.length) return; // nothing seeded yet — keep hardcoded defaults
@@ -46,12 +66,12 @@ function applyLibraryToPicker(cats, exs) {
   for (const c of sortedCats) {
     const list = (exs || []).filter(e => e.category_id === c.id).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
     LIBRARY[c.name] = list.map(e => e.name);
-    list.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: c.name }; });
+    list.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: c.name, phases: [e.phase, ...(e.extra_phases || [])].filter(Boolean) }; });
   }
   const unsorted = (exs || []).filter(e => !e.category_id).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
   if (unsorted.length) {
     LIBRARY["Unsorted"] = unsorted.map(e => e.name);
-    unsorted.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: "Unsorted" }; });
+    unsorted.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: "Unsorted", phases: [e.phase, ...(e.extra_phases || [])].filter(Boolean) }; });
   }
   ALL_CATEGORIES.length = 0;
   ALL_CATEGORIES.push(...Object.keys(LIBRARY));
@@ -387,7 +407,7 @@ async function dbGetAthletesByCoach(coachId) { const { data } = await sb.from("a
 
 // Sortable library. All helpers degrade gracefully if tables don't exist yet.
 async function dbGetLibraryCategories() { try { const { data } = await sb.from("library_categories").select("*").order("sort_order"); return data || []; } catch(e) { return []; } }
-async function dbGetLibraryExercises() { try { const { data } = await sb.from("library_exercises").select("*").order("sort_order"); return data || []; } catch(e) { return []; } }
+async function dbGetLibraryExercises() { try { const { data } = await sb.from("library_exercises").select("*").order("sort_order"); return (data || []).map(normalizePhases); } catch(e) { return []; } }
 async function dbAddLibraryCategory(name, color, sortOrder) { const { data, error } = await sb.from("library_categories").insert({ name, color, sort_order: sortOrder }).select().single(); return { data, error }; }
 async function dbUpdateLibraryCategory(id, patch) { const { error } = await sb.from("library_categories").update(patch).eq("id", id); return { error }; }
 async function dbDeleteLibraryCategory(id) { const { error } = await sb.from("library_categories").delete().eq("id", id); return { error }; }
@@ -746,12 +766,17 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
 function ExercisePicker({ onAdd, onClose }) {
   const [tab, setTab] = useState("library");
   const [search, setSearch] = useState("");
+  const [phaseFilter, setPhaseFilter] = useState(null); // null = all phases
   const [openCat, setOpenCat] = useState(null);
   const [sets, setSets] = useState(""); const [coachNotes, setCoachNotes] = useState(""); const [selected, setSelected] = useState(null);
   const [customName, setCustomName] = useState(""); const [customCat, setCustomCat] = useState(ALL_CATEGORIES[0]); const [customSets, setCustomSets] = useState(""); const [customNotes, setCustomNotes] = useState("");
   const inp = { width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "8px 10px", color: C.white, fontSize: 13, outline: "none" };
   const lbl = { ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 };
-  const filtered = ALL_CATEGORIES.filter(cat => !search || cat.toLowerCase().includes(search.toLowerCase()) || LIBRARY[cat].some(e => e.toLowerCase().includes(search.toLowerCase())));
+  // An exercise passes the phase filter if any of its phases (primary or
+  // additional) match — so multi-phase exercises appear in every phase they fit.
+  const phaseOk = (e) => !phaseFilter || (LIB_DEFAULTS[e.toLowerCase()]?.phases || []).includes(phaseFilter);
+  const catExs = (cat) => LIBRARY[cat].filter(phaseOk).filter(e => !search || e.toLowerCase().includes(search.toLowerCase()) || cat.toLowerCase().includes(search.toLowerCase()));
+  const filtered = ALL_CATEGORIES.filter(cat => catExs(cat).length > 0 || (!search && !phaseFilter));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 300, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -771,6 +796,14 @@ function ExercisePicker({ onAdd, onClose }) {
           <>
             <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
               <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search exercises..." style={{ ...inp, fontSize: 14 }} />
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                <button onClick={() => setPhaseFilter(null)}
+                  style={{ ...mono, fontSize: 10, padding: "5px 10px", borderRadius: 12, cursor: "pointer", border: `1px solid ${!phaseFilter ? C.orange : C.border}`, background: !phaseFilter ? "rgba(61,158,122,0.12)" : "none", color: !phaseFilter ? C.orange : C.muted }}>All</button>
+                {PHASES.map(p => (
+                  <button key={p.id} onClick={() => setPhaseFilter(phaseFilter === p.id ? null : p.id)}
+                    style={{ ...mono, fontSize: 10, padding: "5px 10px", borderRadius: 12, cursor: "pointer", border: `1px solid ${phaseFilter === p.id ? p.color : C.border}`, background: phaseFilter === p.id ? p.color : "none", color: phaseFilter === p.id ? "#fff" : C.muted }}>{p.label}</button>
+                ))}
+              </div>
             </div>
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px" }}>
               {filtered.map(cat => (
@@ -778,7 +811,7 @@ function ExercisePicker({ onAdd, onClose }) {
                   <button onClick={() => setOpenCat(openCat === cat ? null : cat)} style={{ width: "100%", background: "none", border: "none", color: C.muted, cursor: "pointer", display: "flex", justifyContent: "space-between", padding: "10px 4px", ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>
                     <span>{cat}</span><span>{openCat===cat?"▲":"▼"}</span>
                   </button>
-                  {(openCat===cat||search) && LIBRARY[cat].filter(e => !search||e.toLowerCase().includes(search.toLowerCase())||cat.toLowerCase().includes(search.toLowerCase())).map(ex => (
+                  {(openCat===cat||search||phaseFilter) && catExs(cat).map(ex => (
                     <button key={ex} onClick={() => {
                       const next = selected===ex?null:ex;
                       setSelected(next);
@@ -5545,6 +5578,7 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
   const [sortMode, setSortMode] = useState("manual"); // 'manual' | 'alpha'
+  const [viewMode, setViewMode] = useState("category"); // 'category' | 'phase'
   const [search, setSearch] = useState("");
   const [quickAdd, setQuickAdd] = useState("");
   const [showBulk, setShowBulk] = useState(false);
@@ -5594,6 +5628,15 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
   };
 
   // Move ex to a category; beforeId = insert before that card (null = end)
+  const movePhase = async (exId, phaseId) => {
+    const next = exs.map(x => x.id === exId ? { ...x, phase: phaseId || "", extra_phases: (x.extra_phases || []).filter(p => p !== phaseId) } : x);
+    setExs(next); refreshPicker(cats, next);
+    setSelectedId(null); setDragId(null);
+    const patched = next.find(x => x.id === exId);
+    const { error } = await dbUpdateLibraryExercise(exId, { phase: patched.phase, extra_phases: patched.extra_phases || [] });
+    if (error) setErr("Save failed: " + error.message + (error.message.includes("phase") ? " — run the phase SQL migration first." : ""));
+  };
+
   const moveExercise = (exId, toCatId, beforeId = null) => {
     const next = exs.map(x => ({ ...x }));
     const ex = next.find(x => x.id === exId);
@@ -5633,11 +5676,11 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
   };
 
   const saveExerciseEdit = async () => {
-    const { id, name, sets, notes } = editingEx;
+    const { id, name, sets, notes, phase, extraPhases } = editingEx;
     if (!name.trim()) return;
-    const { error } = await dbUpdateLibraryExercise(id, { name: name.trim(), sets, notes });
-    if (error) { setErr("Save failed: " + error.message); return; }
-    const next = exs.map(x => x.id === id ? { ...x, name: name.trim(), sets, notes } : x);
+    const { error } = await dbUpdateLibraryExercise(id, { name: name.trim(), sets, notes, phase: phase || "", extra_phases: extraPhases || [] });
+    if (error) { setErr("Save failed: " + error.message + (String(error.message).includes("phase") ? " — run the phase SQL migration first." : "")); return; }
+    const next = exs.map(x => x.id === id ? { ...x, name: name.trim(), sets, notes, phase: phase || "", extra_phases: extraPhases || [] } : x);
     setExs(next); refreshPicker(cats, next); setEditingEx(null);
   };
 
@@ -5755,10 +5798,10 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
   const columns = [{ id: null, name: "🗂 Unsorted", color: C.gray3, _tray: true }, ...sortedCats];
 
   const Card = ({ x, catColor }) => (
-    <div draggable={!isMobile && sortMode === "manual"}
+    <div draggable={!isMobile && (viewMode === "phase" || sortMode === "manual")}
       onDragStart={() => setDragId(x.id)}
-      onDragOver={e => { if (dragId && dragId !== x.id && sortMode === "manual") e.preventDefault(); }}
-      onDrop={e => { e.stopPropagation(); if (dragId && dragId !== x.id && sortMode === "manual") moveExercise(dragId, x.category_id, x.id); }}
+      onDragOver={e => { if (viewMode === "category" && dragId && dragId !== x.id && sortMode === "manual") e.preventDefault(); }}
+      onDrop={e => { if (viewMode !== "category") return; e.stopPropagation(); if (dragId && dragId !== x.id && sortMode === "manual") moveExercise(dragId, x.category_id, x.id); }}
       onClick={() => { if (isMobile) setSelectedId(selectedId === x.id ? null : x.id); }}
       style={{
         background: selectedId === x.id ? "rgba(61,158,122,0.15)" : C.gray2,
@@ -5769,11 +5812,56 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
         opacity: dragId === x.id ? 0.4 : 1, userSelect: "none",
       }}>
-      <span style={{ fontSize: 13, color: C.white, lineHeight: 1.35 }}>{x.name}</span>
-      <button onClick={(e) => { e.stopPropagation(); setEditingEx({ id: x.id, name: x.name, sets: x.sets || "", notes: x.notes || "" }); }}
+      <span style={{ fontSize: 13, color: C.white, lineHeight: 1.35, flex: 1 }}>{x.name}</span>
+      {viewMode === "category" && [x.phase, ...(x.extra_phases || [])].filter(Boolean).map(pid => {
+        const p = phaseById(pid); if (!p) return null;
+        return <span key={pid} title={p.label} style={{ ...mono, fontSize: 8, fontWeight: 700, color: "#fff", background: p.color, borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>{p.short}</span>;
+      })}
+      <button onClick={(e) => { e.stopPropagation(); setEditingEx({ id: x.id, name: x.name, sets: x.sets || "", notes: x.notes || "", phase: x.phase || "", extraPhases: x.extra_phases || [] }); }}
         style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, flexShrink: 0, padding: 2 }}>✏️</button>
     </div>
   );
+
+  // Phase view column: fixed phase (or the no-phase tray), cards grouped by
+  // category inside — the phase view is an inventory, not a second ordering.
+  const PhaseColumn = ({ phase }) => {
+    const pid = phase ? phase.id : "";
+    const items = exs.filter(x => (x.phase || "") === pid).filter(matchesSearch);
+    const groups = [];
+    const catOrder = [{ id: null, name: "Unsorted" }, ...sortedCats];
+    for (const c of catOrder) {
+      const g = items.filter(x => x.category_id === c.id)
+        .sort((a, b) => sortMode === "alpha" ? a.name.localeCompare(b.name) : ((a.sort_order - b.sort_order) || a.name.localeCompare(b.name)));
+      if (g.length) groups.push({ cat: c, items: g });
+    }
+    const color = phase ? phase.color : C.gray3;
+    return (
+      <div onDragOver={e => { if (dragId) e.preventDefault(); }}
+        onDrop={() => { if (dragId) movePhase(dragId, pid || null); }}
+        style={{ width: isMobile ? "100%" : 268, flexShrink: 0, background: C.gray, border: `1px solid ${C.border}`, borderTop: `3px solid ${color}`, borderRadius: 10, padding: "10px 10px 6px", marginBottom: isMobile ? 14 : 0, display: "flex", flexDirection: "column", maxHeight: isMobile ? "none" : "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, minHeight: 26 }}>
+          <div style={{ ...bebas, flex: 1, fontSize: 15, letterSpacing: 1, color: C.white, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {phase ? phase.label : "🗂 No phase yet"} <span style={{ ...mono, fontSize: 10, color: C.muted }}>({items.length})</span>
+          </div>
+          {selectedId && (
+            <button onClick={() => movePhase(selectedId, pid || null)}
+              style={{ ...mono, fontSize: 9, padding: "4px 8px", borderRadius: 5, border: "none", background: C.orange, color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>Move here</button>
+          )}
+        </div>
+        <div style={{ overflowY: isMobile ? "visible" : "auto", flex: 1 }}>
+          {groups.map(g => (
+            <div key={g.cat.id || "unsorted"} style={{ marginBottom: 8 }}>
+              <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, margin: "2px 0 5px", display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: g.cat.color || C.gray3, display: "inline-block" }} />{g.cat.name}
+              </div>
+              {g.items.map(x => <Card key={x.id} x={x} catColor={g.cat.color || C.gray3} />)}
+            </div>
+          ))}
+          {items.length === 0 && <div style={{ ...mono, fontSize: 10, color: C.muted, textAlign: "center", padding: "14px 0", opacity: 0.6 }}>{phase ? "Drag exercises here" : "Everything has a phase 🎉"}</div>}
+        </div>
+      </div>
+    );
+  };
 
   const Column = ({ col }) => {
     const items = colFor(col.id).filter(matchesSearch);
@@ -5820,6 +5908,14 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
       <div style={{ background: C.gray, borderBottom: `1px solid ${C.border}`, padding: isMobile ? "10px 14px" : "12px 20px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flexShrink: 0 }}>
         <div style={{ ...bebas, fontSize: 20, letterSpacing: 1.5, color: C.white, marginRight: "auto" }}>📚 Exercise Library</div>
         <div style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
+          {["category", "phase"].map(m => (
+            <button key={m} onClick={() => { setViewMode(m); setSelectedId(null); setDragId(null); }}
+              style={{ ...mono, fontSize: 10, padding: "6px 12px", border: "none", cursor: "pointer", background: viewMode === m ? C.orange : "none", color: viewMode === m ? "#fff" : C.muted }}>
+              {m === "category" ? "By Category" : "By Phase"}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
           {["manual", "alpha"].map(m => (
             <button key={m} onClick={() => setSortMode(m)}
               style={{ ...mono, fontSize: 10, padding: "6px 12px", border: "none", cursor: "pointer", background: sortMode === m ? C.orange : "none", color: sortMode === m ? "#fff" : C.muted }}>
@@ -5859,13 +5955,15 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
           <div style={{ ...mono, fontSize: 12, color: C.muted, padding: 40, textAlign: "center", width: "100%" }}>{seeding ? "Setting up your library from the built-in exercises..." : "Loading library..."}</div>
         ) : (
           <>
-            {columns.map(col => <Column key={col.id || "unsorted"} col={col} />)}
-            <div style={{ width: isMobile ? "100%" : 200, flexShrink: 0 }}>
+            {viewMode === "phase"
+              ? [null, ...PHASES].map(p => <PhaseColumn key={p ? p.id : "nophase"} phase={p} />)
+              : columns.map(col => <Column key={col.id || "unsorted"} col={col} />)}
+            {viewMode === "category" && <div style={{ width: isMobile ? "100%" : 200, flexShrink: 0 }}>
               <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") addCategory(); }}
                 placeholder="+ New category"
                 style={{ width: "100%", boxSizing: "border-box", background: C.gray, border: `1px dashed ${C.border}`, borderRadius: 8, color: C.white, fontSize: 12, padding: "10px 12px", outline: "none" }} />
-            </div>
+            </div>}
           </>
         )}
       </div>
@@ -5924,6 +6022,25 @@ function LibraryBoard({ isMobile, plans = {}, onClose }) {
             <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Default Sets</div>
             <input value={editingEx.sets} onChange={e => setEditingEx(p => ({ ...p, sets: e.target.value }))} placeholder="e.g. 4x6 @ RPE 8"
               style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, padding: "8px 10px", outline: "none", marginBottom: 10 }} />
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Primary Phase</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              <button onClick={() => setEditingEx(p => ({ ...p, phase: "" }))}
+                style={{ ...mono, fontSize: 10, padding: "6px 10px", borderRadius: 5, cursor: "pointer", border: `1px solid ${!editingEx.phase ? C.orange : C.border}`, background: !editingEx.phase ? "rgba(61,158,122,0.12)" : "none", color: !editingEx.phase ? C.orange : C.muted }}>None</button>
+              {PHASES.map(p => (
+                <button key={p.id} onClick={() => setEditingEx(prev => ({ ...prev, phase: p.id, extraPhases: (prev.extraPhases || []).filter(x => x !== p.id) }))}
+                  style={{ ...mono, fontSize: 10, padding: "6px 10px", borderRadius: 5, cursor: "pointer", border: `1px solid ${editingEx.phase === p.id ? p.color : C.border}`, background: editingEx.phase === p.id ? p.color : "none", color: editingEx.phase === p.id ? "#fff" : C.muted }}>{p.label}</button>
+              ))}
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Also Fits (optional)</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {PHASES.filter(p => p.id !== editingEx.phase).map(p => {
+                const on = (editingEx.extraPhases || []).includes(p.id);
+                return (
+                  <button key={p.id} onClick={() => setEditingEx(prev => ({ ...prev, extraPhases: on ? (prev.extraPhases || []).filter(x => x !== p.id) : [...(prev.extraPhases || []), p.id] }))}
+                    style={{ ...mono, fontSize: 10, padding: "6px 10px", borderRadius: 5, cursor: "pointer", border: `1px solid ${on ? p.color : C.border}`, background: on ? p.color : "none", color: on ? "#fff" : C.muted }}>{p.label}</button>
+                );
+              })}
+            </div>
             <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Default Notes</div>
             <textarea value={editingEx.notes} onChange={e => setEditingEx(p => ({ ...p, notes: e.target.value }))} rows={3}
               style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 13, padding: "8px 10px", outline: "none", resize: "vertical", marginBottom: 14 }} />
