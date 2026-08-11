@@ -66,12 +66,12 @@ function applyLibraryToPicker(cats, exs) {
   for (const c of sortedCats) {
     const list = (exs || []).filter(e => e.category_id === c.id).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
     LIBRARY[c.name] = list.map(e => e.name);
-    list.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: c.name, phases: [e.phase, ...(e.extra_phases || [])].filter(Boolean) }; });
+    list.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { name: e.name, sets: e.sets || "", notes: e.notes || "", category: c.name, phases: [e.phase, ...(e.extra_phases || [])].filter(Boolean) }; });
   }
   const unsorted = (exs || []).filter(e => !e.category_id).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
   if (unsorted.length) {
     LIBRARY["Unsorted"] = unsorted.map(e => e.name);
-    unsorted.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { sets: e.sets || "", notes: e.notes || "", category: "Unsorted", phases: [e.phase, ...(e.extra_phases || [])].filter(Boolean) }; });
+    unsorted.forEach(e => { LIB_DEFAULTS[e.name.toLowerCase()] = { name: e.name, sets: e.sets || "", notes: e.notes || "", category: "Unsorted", phases: [e.phase, ...(e.extra_phases || [])].filter(Boolean) }; });
   }
   ALL_CATEGORIES.length = 0;
   ALL_CATEGORIES.push(...Object.keys(LIBRARY));
@@ -1634,6 +1634,9 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
   const setActiveWeek = setSharedWeekIdx || _setActiveWeek;
   const [clipboard, setClipboard] = useState(null);
   const [dayClipboard, setDayClipboard] = useState(null);
+  const [showPasteDraft, setShowPasteDraft] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteError, setPasteError] = useState("");
   const [editingWeekLabel, setEditingWeekLabel] = useState(null);
   const [draftWeekLabel, setDraftWeekLabel] = useState("");
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -1832,6 +1835,9 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                 style={{ ...mono, fontSize: 10, padding: "4px 8px", background: "none", border: `1px dashed ${C.orange}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
                 title="Load a saved block template">★ Load block</button>
             )}
+            <button onClick={() => { setShowPasteDraft(true); setPasteText(""); setPasteError(""); }}
+              style={{ ...mono, fontSize: 10, padding: "4px 8px", background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.purple, cursor: "pointer" }}
+              title="Paste a structured plan draft (JSON) to generate weeks">📋 Paste draft</button>
           </div>
         </div>
         <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
@@ -1849,6 +1855,57 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         <RichTextEditor value={plan?.blockNotes || ""} onChange={v => onPlanChange({ ...plan, blockNotes: v })}
           placeholder="Write notes about the goals, purpose, and context of this training block. Use **bold**, *italic*, - bullets. Athletes will see this when they tap 'Overview'."
           rows={4} />
+        {showPasteDraft && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowPasteDraft(false)}>
+            <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, width: "100%", maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+              <div style={{ ...bebas, fontSize: 18, color: C.white, marginBottom: 6 }}>Paste Plan Draft</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 10, lineHeight: 1.6 }}>
+                Paste a structured draft (JSON with a "weeks" array; optional "blockNotes"). Weeks are imported UNPUBLISHED for review. Exercise names matching your library are linked automatically — library category applies, and empty sets/notes fill from library defaults.
+              </div>
+              <textarea value={pasteText} onChange={e => { setPasteText(e.target.value); setPasteError(""); }} rows={12} placeholder='{"weeks":[{"label":"Week 1","days":[{"label":"Day 1","exercises":[{"text":"Fingerboard Warmup","category":"Fingerboard / Hangboard","sets":"","notes":""}]}]}]}'
+                style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${pasteError ? "#e74c3c" : C.border}`, borderRadius: 6, color: C.white, fontSize: 11, fontFamily: "monospace", padding: "8px 10px", outline: "none", resize: "vertical", marginBottom: 8, flex: 1 }} />
+              {pasteError && <div style={{ ...mono, fontSize: 10, color: "#e74c3c", marginBottom: 8 }}>{pasteError}</div>}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button onClick={() => setShowPasteDraft(false)} style={{ ...mono, fontSize: 11, padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>Cancel</button>
+                {["append", "replace"].map(mode => (
+                  <button key={mode} onClick={() => {
+                    let parsed;
+                    try { parsed = JSON.parse(pasteText); } catch (e) { setPasteError("Not valid JSON: " + e.message); return; }
+                    if (!parsed || !Array.isArray(parsed.weeks) || parsed.weeks.length === 0) { setPasteError('Draft must contain a non-empty "weeks" array.'); return; }
+                    const cleanWeeks = parsed.weeks.map((w, wi) => ({
+                      label: (w && w.label) || `Week ${wi + 1}`,
+                      days: (Array.isArray(w?.days) ? w.days : []).map((d, di) => ({
+                        label: (d && d.label) || `Day ${di + 1}`,
+                        exercises: (Array.isArray(d?.exercises) ? d.exercises : []).filter(x => x && (x.text || "").trim()).map(x => {
+                          // Library match by name: adopt canonical name + the
+                          // library's category, and fill BLANK sets/notes from
+                          // defaults. Pasted values always win over defaults.
+                          const lib = LIB_DEFAULTS[String(x.text).trim().toLowerCase()];
+                          return {
+                            id: x.id || uid(),
+                            text: lib?.name || String(x.text).trim(),
+                            category: lib?.category || x.category || "Other",
+                            sets: x.sets || lib?.sets || "",
+                            notes: x.notes || lib?.notes || "",
+                          };
+                        }),
+                      })),
+                    }));
+                    if (mode === "replace" && !window.confirm(`Replace the ENTIRE current plan with this ${cleanWeeks.length}-week draft? Existing weeks and published state are discarded.`)) return;
+                    const base = mode === "replace"
+                      ? { ...plan, weeks: cleanWeeks, published: [] }
+                      : { ...plan, weeks: [...(plan?.weeks || []), ...cleanWeeks] };
+                    if (parsed.blockNotes && (mode === "replace" || !(plan?.blockNotes || "").trim())) base.blockNotes = parsed.blockNotes;
+                    onPlanChange(base);
+                    setShowPasteDraft(false);
+                  }} style={{ ...mono, fontSize: 11, padding: "8px 16px", borderRadius: 6, border: mode === "append" ? `1px solid ${C.orange}` : "none", background: mode === "append" ? "none" : C.orange, color: mode === "append" ? C.orange : "#fff", cursor: "pointer" }}>
+                    {mode === "append" ? "Append Weeks" : "Replace Plan"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         {/* Block image */}
         <div style={{ marginTop: 14 }}>
           <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Block Image</div>
