@@ -270,7 +270,13 @@ const getVolumeMultiplier = (athlete) => {
   return tier ? tier.multiplier : 1.0;
 };
 
-async function dbGetAthletes() { const { data } = await sb.from("athletes").select("*"); return data || []; }
+// BUGFIX v26: Supabase does NOT throw on query errors — it resolves with
+// { data: null, error }. All boot-critical fetchers previously ignored
+// `error`, so a failed request produced an empty-but-"successful" boot:
+// the athlete saw zero checkboxes/notes while comments (fetched later,
+// separately) still appeared. Now they throw, so the boot try/catch shows
+// the retry screen instead of silently rendering empty state.
+async function dbGetAthletes() { const { data, error } = await sb.from("athletes").select("*"); if (error) throw error; return data || []; }
 async function dbUpsertAthlete(a) {
   // Survey fields (age, grades, frequency) are intentionally NOT included
   // here — they're only ever written via the athlete-side survey submit.
@@ -285,7 +291,8 @@ async function dbUpsertAthlete(a) {
 }
 async function dbDeleteAthlete(id) { await sb.from("athletes").delete().eq("id", id); }
 async function dbGetPlans() {
-  const { data } = await sb.from("plans").select("*");
+  const { data, error } = await sb.from("plans").select("*");
+  if (error) throw error;
   const result = {};
   (data || []).forEach(row => { result[row.athlete_id] = migratePlan(row.data); });
   return result;
@@ -375,14 +382,16 @@ async function dbBackupFatigueLogs(athleteId, logsData, backupType = 'edit') {
   } catch(e) { console.warn("Fatigue log backup failed:", e); }
 }
 async function dbGetProgress() {
-  const { data } = await sb.from("progress").select("*");
+  const { data, error } = await sb.from("progress").select("*");
+  if (error) throw error;
   const result = {};
   (data || []).forEach(row => { result[row.athlete_id] = row.data; });
   return result;
 }
 async function dbUpsertProgress(athleteId, progressData) { await sb.from("progress").upsert({ athlete_id: athleteId, data: progressData }); }
 async function dbGetCredentials() {
-  const { data } = await sb.from("credentials").select("*");
+  const { data, error } = await sb.from("credentials").select("*");
+  if (error) throw error;
   const result = {};
   (data || []).forEach(row => { result[row.athlete_id] = row.password; });
   return result;
@@ -393,7 +402,7 @@ async function dbUpsertCredential(athleteId, password) {
 }
 async function dbGetCoachPassword() { const { data } = await sb.from("coach_settings").select("password").eq("id", 1).single(); return data?.password || ""; }
 async function dbSetCoachPassword(password) { await sb.from("coach_settings").upsert({ id: 1, password }); }
-async function dbGetCoaches() { const { data } = await sb.from("coaches").select("*"); return data || []; }
+async function dbGetCoaches() { const { data, error } = await sb.from("coaches").select("*"); if (error) throw error; return data || []; }
 async function dbUpsertCoach(c) { await sb.from("coaches").upsert({ id: c.id, name: c.name, password: c.password }); }
 async function dbDeleteCoach(id) { await sb.from("coaches").delete().eq("id", id); }
 async function dbGetTemplates(coachId) {
@@ -6981,6 +6990,11 @@ function AppInner() {
   // the dependency array lets the Retry button re-run the whole effect.
   const [bootError, setBootError] = useState(false);
   const [bootAttempt, setBootAttempt] = useState(0);
+  // v26: true only after the boot progress fetch succeeded. Guards every
+  // whole-blob progress upsert — if progress never loaded, a single checkbox
+  // tap would overwrite the athlete's entire history in the DB with just
+  // that one entry. With this ref, such a write is refused instead.
+  const progressLoadedRef = React.useRef(false);
   useEffect(() => {
     (async () => {
       try {
@@ -6997,7 +7011,7 @@ function AppInner() {
         ath = SEED_ATHLETES; pln = SEED_PLANS;
       }
       setAthletes(ath);
-      if (ath.length > 0) dbGetUnreadComments(ath.map(a => a.id)).then(setUnreadComments).catch(e => console.warn('[comments] unread fetch failed:', e)); setPlans(pln); setProgress(prg); setCredentials(creds); setCoaches(coachs);
+      if (ath.length > 0) dbGetUnreadComments(ath.map(a => a.id)).then(setUnreadComments).catch(e => console.warn('[comments] unread fetch failed:', e)); setPlans(pln); setProgress(prg); progressLoadedRef.current = true; setCredentials(creds); setCoaches(coachs);
       // Validate sub-coach session — if coachId no longer exists, clear and show login
       setSession(prev => {
         if (!prev || prev.role !== 'coach' || prev.isAdmin) return prev;
@@ -7051,6 +7065,15 @@ function AppInner() {
     })();
   }, [bootAttempt]);
 
+  // v26: auto-retry a failed boot every 8s — a PWA relaunched on flaky
+  // Wi-Fi heals itself without the athlete tapping anything. Manual
+  // Retry button remains for impatient thumbs.
+  useEffect(() => {
+    if (!bootError) return;
+    const t = setTimeout(() => { setLoading(true); setBootAttempt(n => n + 1); }, 8000);
+    return () => clearTimeout(t);
+  }, [bootError, bootAttempt]);
+
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1800); };
 
   const lastBackup = React.useRef({});
@@ -7098,6 +7121,7 @@ function AppInner() {
   }, []);
 
   const updateProgress = useCallback(async (id, dayKey, exId, ep, commentDayKey = null) => {
+    if (!progressLoadedRef.current) { console.warn('[progress] write blocked — progress was never successfully fetched this session'); return; }
     setProgress(prev => {
       const ap = prev[id] || {};
       const dp = ap[dayKey] || {};
@@ -7123,6 +7147,7 @@ function AppInner() {
   }, []);
 
   const updateOverflow = useCallback(async (id, ov) => {
+    if (!progressLoadedRef.current) { console.warn('[progress] write blocked — progress was never successfully fetched this session'); return; }
     setProgress(prev => {
       const ap = prev[id] || {};
       const np = { ...prev, [id]: { ...ap, overflow: ov } };
@@ -7133,6 +7158,7 @@ function AppInner() {
 
   const editExercise = useCallback(async (id, dayKey, updatedEx) => {
     if (dayKey === "overflow") {
+      if (!progressLoadedRef.current) { console.warn('[progress] write blocked — progress was never successfully fetched this session'); return; }
       setProgress(prev => {
         const ap = prev[id] || {};
         const ov = (ap.overflow || []).map(e => e.id === updatedEx.id ? { ...e, ...updatedEx } : e);
@@ -7263,7 +7289,7 @@ function AppInner() {
   if (bootError) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", ...mono, fontSize: 12, color: C.muted, background: C.black, flexDirection: "column", gap: 16, padding: 24, textAlign: "center" }}>
       <div style={{ ...bebas, fontSize: 28, letterSpacing: 2, color: C.white }}>ROCK POINT <span style={{ color: C.orange }}>COACHING</span></div>
-      <div style={{ lineHeight: 1.6, maxWidth: 280 }}>Couldn't connect. Check your connection and try again.</div>
+      <div style={{ lineHeight: 1.6, maxWidth: 280 }}>Couldn't connect. Retrying automatically — or tap below.</div>
       <button onClick={() => { setLoading(true); setBootAttempt(n => n + 1); }}
         style={{ ...mono, fontSize: 13, padding: "12px 28px", borderRadius: 8, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>
         Retry
