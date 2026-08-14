@@ -1869,7 +1869,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
             <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, width: "100%", maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
               <div style={{ ...bebas, fontSize: 18, color: C.white, marginBottom: 6 }}>Paste Plan Draft</div>
               <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 10, lineHeight: 1.6 }}>
-                Paste a structured draft (JSON with a "weeks" array; optional "blockNotes"). Weeks are imported UNPUBLISHED for review. Exercise names matching your library are linked automatically — library category applies, and empty sets/notes fill from library defaults.
+                Paste a structured draft (JSON with a "weeks" array; optional "blockNotes"). Weeks are imported UNPUBLISHED for review. Exercise names matching your library are linked automatically — library category applies, empty sets fill from library defaults, and library descriptions merge with your notes (library text first, your note after).
               </div>
               <textarea value={pasteText} onChange={e => { setPasteText(e.target.value); setPasteError(""); }} rows={12} placeholder='{"weeks":[{"label":"Week 1","days":[{"label":"Day 1","exercises":[{"text":"Fingerboard Warmup","category":"Fingerboard / Hangboard","sets":"","notes":""}]}]}]}'
                 style={{ width: "100%", boxSizing: "border-box", background: C.gray2, border: `1px solid ${pasteError ? "#e74c3c" : C.border}`, borderRadius: 6, color: C.white, fontSize: 11, fontFamily: "monospace", padding: "8px 10px", outline: "none", resize: "vertical", marginBottom: 8, flex: 1 }} />
@@ -1887,15 +1887,24 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                         label: (d && d.label) || `Day ${di + 1}`,
                         exercises: (Array.isArray(d?.exercises) ? d.exercises : []).filter(x => x && (x.text || "").trim()).map(x => {
                           // Library match by name: adopt canonical name + the
-                          // library's category, and fill BLANK sets/notes from
-                          // defaults. Pasted values always win over defaults.
+                          // library's category, and fill BLANK sets from
+                          // defaults. Pasted sets win over defaults.
+                          // v27: notes MERGE instead of either/or — library
+                          // description first, pasted cue appended on a new
+                          // line. Skips the merge if the pasted note already
+                          // contains the library text (no duplication).
                           const lib = LIB_DEFAULTS[String(x.text).trim().toLowerCase()];
+                          const libNotes = (lib?.notes || "").trim();
+                          const cue = (x.notes || "").trim();
+                          const mergedNotes = (libNotes && cue && !cue.includes(libNotes))
+                            ? libNotes + "\n" + cue
+                            : (cue || libNotes);
                           return {
                             id: x.id || uid(),
                             text: lib?.name || String(x.text).trim(),
                             category: lib?.category || x.category || "Other",
                             sets: x.sets || lib?.sets || "",
-                            notes: x.notes || lib?.notes || "",
+                            notes: mergedNotes,
                           };
                         }),
                       })),
