@@ -324,11 +324,23 @@ async function dbGetUnreadComments(ids) {
 async function dbGetCommentsForAthlete(athleteId) {
   try { const { data } = await sb.from('exercise_comments').select('*').eq('athlete_id', athleteId).order('created_at', { ascending: false }); return data || []; } catch(e) { return []; }
 }
+// v28: full comment table for the athlete-separated inbox — previously the
+// global inbox only fetched threads for athletes with UNREAD notes, so
+// already-read conversations were invisible.
+async function dbGetAllComments() {
+  try { const { data } = await sb.from('exercise_comments').select('*').order('created_at', { ascending: false }); return data || []; } catch(e) { return []; }
+}
 async function dbMarkCommentsReadByCoach(athleteId) {
   try { await sb.from('exercise_comments').update({ read_by_coach: true }).eq('athlete_id', athleteId).eq('author', 'athlete'); } catch(e) {}
 }
 async function dbMarkCommentsReadByAthlete(athleteId) {
   try { await sb.from('exercise_comments').update({ read_by_athlete: true }).eq('athlete_id', athleteId).eq('author', 'coach'); } catch(e) {}
+}
+// v28: mark a SINGLE reply read. The old flow marked ALL replies read when
+// the athlete tapped the banner, even though it navigated to only the first
+// one — remaining replies silently disappeared from the banner unseen.
+async function dbMarkReplyRead(commentId) {
+  try { await sb.from('exercise_comments').update({ read_by_athlete: true }).eq('id', commentId).eq('author', 'coach'); } catch(e) {}
 }
 
 async function dbUpsertPlan(athleteId, planData) { await sb.from("plans").upsert({ athlete_id: athleteId, data: planData }); }
@@ -2888,7 +2900,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   );
 }
 
-function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onRepliesSeen }) {
+function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onReplySeen }) {
   const OVF = "overflow";
 
   // figure out which week to default to
@@ -3055,6 +3067,18 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showAthleteInfo, setShowAthleteInfo] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false); // inline home-page overview card, starts collapsed
   const [highlightExId, setHighlightExId] = useState(null); // banner tap -> scroll to + glow the reply's exercise card
+
+  // v28: replies the athlete can actually navigate to (published weeks).
+  // Replies on unpublished weeks stay unread — the coach's "Not seen yet"
+  // receipt stays honest instead of lying.
+  const visibleUnreadReplies = unreadReplies.filter(r => publishedIndices.includes(r.plan_week));
+  // Mark a reply read when its week/day is actually on screen.
+  useEffect(() => {
+    if (!onReplySeen) return;
+    unreadReplies
+      .filter(r => r.plan_week === activeWeekIdx && r.plan_day === activeDay)
+      .forEach(r => onReplySeen(r));
+  }, [activeWeekIdx, activeDay, unreadReplies]);
   useEffect(() => {
     if (!highlightExId) return;
     const t1 = setTimeout(() => {
@@ -4583,18 +4607,20 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         )}
 
         {/* New-reply banner — replies would otherwise be easy to miss.
-            Tap navigates to the first unread reply's week/day and marks all read. */}
-        {unreadReplies.length > 0 && (
+            v28: shows only replies on published weeks (reachable ones), and
+            navigates without marking read — a reply is marked read when its
+            week/day is actually viewed (see effect above), one at a time.
+            Old behavior marked ALL replies read on first tap. */}
+        {visibleUnreadReplies.length > 0 && (
           <button onClick={() => {
-            const r = unreadReplies[0];
-            if (publishedIndices.includes(r.plan_week)) { setActiveWeekIdx(r.plan_week); setActiveDay(r.plan_day); }
+            const r = visibleUnreadReplies[0];
+            setActiveWeekIdx(r.plan_week); setActiveDay(r.plan_day);
             setHighlightExId(r.exercise_id); // scroll to + glow the card even if already on that day
-            if (onRepliesSeen) onRepliesSeen();
           }} style={{ width: "100%", marginBottom: 16, background: "rgba(61,158,122,0.12)", border: `1.5px solid ${C.orange}`, borderRadius: 10, padding: "13px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, textAlign: "left" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 18 }}>💬</span>
               <span>
-                <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.white }}>{unreadReplies.length === 1 ? "New reply from your coach" : `${unreadReplies.length} new replies from your coach`}</span>
+                <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.white }}>{visibleUnreadReplies.length === 1 ? "New reply from your coach" : `${visibleUnreadReplies.length} new replies from your coach`}</span>
                 <span style={{ ...mono, display: "block", fontSize: 10, color: C.muted, marginTop: 2 }}>Tap to view</span>
               </span>
             </span>
@@ -7269,7 +7295,7 @@ function AppInner() {
       });
       // Do NOT auto-mark read here — that silently wiped the unread state
       // before the athlete ever saw the reply. Marking happens via the
-      // "new reply" banner in AthleteView (onRepliesSeen).
+      // "new reply" banner in AthleteView (marked read per-reply via onReplySeen).
       setAthleteUnreadReplies(replies.filter(r => r.read_by_athlete === false));
     }).catch(e => console.warn('[comments] athlete fetch failed silently:', e));
   }, [loading, session?.athleteId, session?.role]);
@@ -7345,7 +7371,19 @@ function AppInner() {
       onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
       unreadReplies={athleteUnreadReplies}
-      onRepliesSeen={() => { dbMarkCommentsReadByAthlete(session.athleteId); setAthleteUnreadReplies([]); }}
+      onReplySeen={(r) => {
+        dbMarkReplyRead(r.id);
+        setAthleteUnreadReplies(prev => prev.filter(x => x.id !== r.id));
+        // clear the NEW badge on the card display state
+        setProgress(prev => {
+          const ap = { ...(prev[session.athleteId] || {}) };
+          const dk = `w${r.plan_week}_d${r.plan_day}`;
+          if (ap[dk]?.[r.exercise_id]) ap[dk] = { ...ap[dk], [r.exercise_id]: { ...ap[dk][r.exercise_id], _coachReplyUnread: false } };
+          const sk = `shared_${r.exercise_id}`;
+          if (ap[sk]?.[r.exercise_id]) ap[sk] = { ...ap[sk], [r.exercise_id]: { ...ap[sk][r.exercise_id], _coachReplyUnread: false } };
+          return { ...prev, [session.athleteId]: ap };
+        });
+      }}
       onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }} />;
   }
 
@@ -7360,13 +7398,57 @@ function AppInner() {
         <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ ...bebas, fontSize: 22, color: C.white }}>Athlete Notes</div>
+            {inboxAthleteId && (
+              <button onClick={async () => {
+                setInboxAthleteId(null);
+                const all = await dbGetAllComments();
+                const grouped = {};
+                all.forEach(cc => { (grouped[cc.athlete_id] = grouped[cc.athlete_id] || []).push(cc); });
+                setAthleteComments(grouped);
+              }} style={{ ...mono, fontSize: 11, color: C.orange, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 2 }}>
+                ‹ All athletes
+              </button>
+            )}
             {inboxAthleteId && <div style={{ ...mono, fontSize: 11, color: C.muted, marginTop: 2 }}>{athletes.find(a => a.id === inboxAthleteId)?.name}</div>}
           </div>
           <button onClick={() => setShowInbox(false)} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
-          {Object.entries(athleteComments).filter(([aid]) => !inboxAthleteId || aid === inboxAthleteId).length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: 'center', padding: 32 }}>No athlete notes yet.</div>}
-          {Object.entries(athleteComments).filter(([aid]) => !inboxAthleteId || aid === inboxAthleteId).map(([aid, comments]) => {
+          {/* v28: athlete-separated inbox. Unscoped = list of athletes with
+              unread counts + latest note preview; tap opens that athlete's
+              thread (and marks their notes read, same as before). */}
+          {!inboxAthleteId && (() => {
+            const rows = Object.entries(athleteComments)
+              .map(([aid, comments]) => {
+                const notes = comments.filter(c => c.author === 'athlete');
+                if (!notes.length) return null;
+                const unread = notes.filter(c => !c.read_by_coach).length;
+                const latest = notes[0]; // rows arrive newest-first
+                return { aid, name: athletes.find(a => a.id === aid)?.name || aid, count: notes.length, unread, latest };
+              })
+              .filter(Boolean)
+              .sort((a, b) => (b.unread - a.unread) || String(b.latest.created_at).localeCompare(String(a.latest.created_at)));
+            if (!rows.length) return <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: 'center', padding: 32 }}>No athlete notes yet.</div>;
+            return rows.map(r => (
+              <button key={r.aid} onClick={async () => {
+                setInboxAthleteId(r.aid);
+                await dbMarkCommentsReadByCoach(r.aid);
+                setUnreadComments(prev => prev.filter(c => c.athlete_id !== r.aid));
+                setAthleteComments(prev => ({ ...prev, [r.aid]: (prev[r.aid] || []).map(c => c.author === 'athlete' ? { ...c, read_by_coach: true } : c) }));
+              }} style={{ display: 'block', width: '100%', textAlign: 'left', background: C.gray2, border: `1px solid ${r.unread ? C.orange : C.border}`, borderRadius: 8, padding: '13px 14px', marginBottom: 10, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ ...bebas, fontSize: 16, color: C.white }}>{r.name}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {r.unread > 0 && <span style={{ ...mono, fontSize: 10, background: C.orange, color: '#fff', borderRadius: 10, padding: '2px 8px' }}>{r.unread} new</span>}
+                    <span style={{ ...mono, fontSize: 10, color: C.muted }}>{r.count} note{r.count === 1 ? '' : 's'} ›</span>
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, fontStyle: 'italic', marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📝 {r.latest.body}</div>
+              </button>
+            ));
+          })()}
+          {inboxAthleteId && Object.entries(athleteComments).filter(([aid]) => aid === inboxAthleteId).length === 0 && <div style={{ ...mono, fontSize: 12, color: C.muted, textAlign: 'center', padding: 32 }}>No athlete notes yet.</div>}
+          {inboxAthleteId && Object.entries(athleteComments).filter(([aid]) => aid === inboxAthleteId).map(([aid, comments]) => {
             const aName = athletes.find(a => a.id === aid)?.name || aid;
             const plan = plans[aid];
             // Dedupe by exercise: duplicate rows can exist from a past
@@ -7393,7 +7475,13 @@ function AppInner() {
                       </div>
                       <div style={{ fontSize: 13, color: C.purple, fontStyle: 'italic', marginBottom: reply ? 10 : 8, lineHeight: 1.5 }}>📝 {c.body}</div>
                       {reply ? (
-                        <div style={{ fontSize: 12, color: C.orange, lineHeight: 1.5, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>💬 You: {reply.body}</div>
+                        <div style={{ fontSize: 12, color: C.orange, lineHeight: 1.5, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                          💬 You: {reply.body}
+                          {/* v28: read receipt — read_by_athlete was tracked in the DB but never shown */}
+                          <span style={{ ...mono, fontSize: 9, marginLeft: 8, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap', ...(reply.read_by_athlete ? { color: '#2aaa5e', background: 'rgba(42,170,94,0.1)', border: '1px solid rgba(42,170,94,0.3)' } : { color: C.muted, background: 'none', border: `1px solid ${C.border}` }) }}>
+                            {reply.read_by_athlete ? '✓ Seen' : 'Not seen yet'}
+                          </span>
+                        </div>
                       ) : (() => {
                         const draft = replyDrafts[c.id] || '';
                         const saving = replySavingId === c.id;
@@ -7470,11 +7558,11 @@ function AppInner() {
         await dbMarkCommentsReadByCoach(athleteId);
         setUnreadComments(prev => prev.filter(c => c.athlete_id !== athleteId));
       } else {
-        // Fetch the full thread per athlete with unread notes — seeding from
-        // unread rows alone hid existing replies and mixed stale entries in.
-        const ids = [...new Set(unreadComments.map(c => c.athlete_id))];
+        // v28: load ALL threads grouped by athlete for the athlete-list view
+        // (previously only athletes with unread notes appeared).
+        const all = await dbGetAllComments();
         const grouped = {};
-        await Promise.all(ids.map(async id => { grouped[id] = await dbGetCommentsForAthlete(id); }));
+        all.forEach(c => { (grouped[c.athlete_id] = grouped[c.athlete_id] || []).push(c); });
         setAthleteComments(grouped);
       }
     }}
