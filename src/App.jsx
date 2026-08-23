@@ -330,6 +330,31 @@ async function dbGetCommentsForAthlete(athleteId) {
 async function dbGetAllComments() {
   try { const { data } = await sb.from('exercise_comments').select('*').order('created_at', { ascending: false }); return data || []; } catch(e) { return []; }
 }
+
+// ── v29: billing reminders (admin only) ─────────────────────────────
+// Table: billing (athlete_id text pk, bill_day int, last_marked date)
+async function dbGetBilling() {
+  try { const { data } = await sb.from('billing').select('*'); return data || []; } catch(e) { return []; }
+}
+async function dbUpsertBilling(athleteId, fields) {
+  try { await sb.from('billing').upsert({ athlete_id: athleteId, ...fields }); } catch(e) {}
+}
+// Given a monthly bill day (1–31) and the last date marked charged,
+// classify: unset / paid (with next due) / due (with days overdue).
+// Short months clamp the day (bill_day 31 → Feb 28/29).
+function billingInfo(bill_day, last_marked) {
+  if (!bill_day || bill_day < 1) return { state: 'unset' };
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const occ = (y, m) => { const dim = new Date(y, m + 1, 0).getDate(); return new Date(y, m, Math.min(bill_day, dim)); };
+  const y = now.getFullYear(), m = now.getMonth();
+  const thisOcc = occ(y, m);
+  const lastDue = thisOcc <= now ? thisOcc : occ(y, m - 1);
+  const nextDue = thisOcc <= now ? occ(y, m + 1) : thisOcc;
+  const marked = last_marked ? new Date(String(last_marked).slice(0, 10) + 'T00:00:00') : null;
+  if (marked && marked >= lastDue) return { state: 'paid', nextDue };
+  const daysOver = Math.round((now - lastDue) / 86400000);
+  return { state: 'due', lastDue, daysOver, nextDue };
+}
 async function dbMarkCommentsReadByCoach(athleteId) {
   try { await sb.from('exercise_comments').update({ read_by_coach: true }).eq('athlete_id', athleteId).eq('author', 'athlete'); } catch(e) {}
 }
@@ -6212,6 +6237,13 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   const [loadingArchives, setLoadingArchives] = useState(false);
   const [viewingArchive, setViewingArchive] = useState(null); // { label, plan_data, progress_data, archived_at }
   const [showCoaches, setShowCoaches] = useState(false);
+  // v29: billing reminders — admin only. Map of athlete_id → billing row.
+  const [showBilling, setShowBilling] = useState(false);
+  const [billingMap, setBillingMap] = useState({});
+  useEffect(() => {
+    if (!isAdmin) return;
+    dbGetBilling().then(rows => { const m = {}; rows.forEach(r => { m[r.athlete_id] = r; }); setBillingMap(m); });
+  }, [isAdmin]);
   const [newCoach, setNewCoach] = useState({ name: "", password: "" });
   const [editingCoach, setEditingCoach] = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -6346,6 +6378,16 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
             {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveModal} style={btnS(false)} title="Archive block">📦 Archive</button>}
             {selectedId && selectedId !== TEMPLATE_CREATOR_ID && selectedId !== VOLUME_TIERS_PAGE_ID && selectedId !== SIMULATOR_PAGE_ID && selectedId !== ATHLETE_LOGS_PAGE_ID && <button onClick={openArchiveList} style={btnS(false)} title="View archives">🗂 Archives</button>}
             {isAdmin && <button onClick={() => setShowCoaches(true)} style={btnS(false)}>Coaches</button>}
+            {isAdmin && (() => {
+              const realAthletes = athletes.filter(a => ![TEMPLATE_CREATOR_ID, VOLUME_TIERS_PAGE_ID, SIMULATOR_PAGE_ID, ATHLETE_LOGS_PAGE_ID].includes(a.id));
+              const dueCount = realAthletes.filter(a => billingInfo(billingMap[a.id]?.bill_day, billingMap[a.id]?.last_marked).state === 'due').length;
+              return (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <button onClick={() => setShowBilling(true)} style={btnS(false)} title="Billing reminders">💳 Billing</button>
+                  {dueCount > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: "#c0392b", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{dueCount}</span>}
+                </div>
+              );
+            })()}
             <button onClick={openTemplates} style={btnS(false)}>Templates</button>
             {isAdmin && <button onClick={() => setShowLibrary(true)} style={btnS(false)}>📚 Library</button>}
             <div style={{ width: 1, height: 20, background: C.border }} />
@@ -6869,6 +6911,55 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </div>
       )}
 
+      {showBilling && isAdmin && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowBilling(false)}>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ ...bebas, fontSize: 22, color: C.white }}>💳 Billing</div>
+                <div style={{ ...mono, fontSize: 10, color: C.muted, marginTop: 2 }}>Monthly, per-athlete bill day. Admin only.</div>
+              </div>
+              <button onClick={() => setShowBilling(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, padding: "16px 24px" }}>
+              {athletes.filter(a => ![TEMPLATE_CREATOR_ID, VOLUME_TIERS_PAGE_ID, SIMULATOR_PAGE_ID, ATHLETE_LOGS_PAGE_ID].includes(a.id)).map(a => {
+                const b = billingMap[a.id] || {};
+                const info = billingInfo(b.bill_day, b.last_marked);
+                const fmt = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                return (
+                  <div key={a.id} style={{ background: C.gray2, border: `1px solid ${info.state === "due" ? C.orange : C.border}`, borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ ...bebas, fontSize: 16, color: C.white }}>{a.name}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <label style={{ ...mono, fontSize: 10, color: C.muted }}>Bill day</label>
+                        <input type="number" min={1} max={31} value={b.bill_day || ""} placeholder="—"
+                          onChange={e => {
+                            const v = e.target.value ? Math.max(1, Math.min(31, parseInt(e.target.value, 10) || 0)) : null;
+                            setBillingMap(prev => ({ ...prev, [a.id]: { ...(prev[a.id] || { athlete_id: a.id }), bill_day: v } }));
+                            dbUpsertBilling(a.id, { bill_day: v });
+                          }}
+                          style={{ width: 52, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px", color: C.white, fontSize: 12, outline: "none", textAlign: "center" }} />
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                      {info.state === "unset" && <span style={{ ...mono, fontSize: 10, color: C.muted }}>No bill day set</span>}
+                      {info.state === "paid" && <span style={{ ...mono, fontSize: 10, color: "#2aaa5e", background: "rgba(42,170,94,0.1)", border: "1px solid rgba(42,170,94,0.3)", borderRadius: 5, padding: "3px 8px" }}>✓ Charged — next due {fmt(info.nextDue)}</span>}
+                      {info.state === "due" && <span style={{ ...mono, fontSize: 10, color: "#fff", background: info.daysOver > 0 ? "#c0392b" : C.orange, borderRadius: 5, padding: "3px 8px" }}>{info.daysOver > 0 ? `Overdue ${info.daysOver} day${info.daysOver === 1 ? "" : "s"} (was ${fmt(info.lastDue)})` : "Due today"}</span>}
+                      {info.state === "due" && (
+                        <button onClick={() => {
+                          const today = new Date().toLocaleDateString("en-CA");
+                          setBillingMap(prev => ({ ...prev, [a.id]: { ...(prev[a.id] || { athlete_id: a.id }), last_marked: today } }));
+                          dbUpsertBilling(a.id, { last_marked: today, bill_day: b.bill_day || null });
+                        }} style={{ ...mono, fontSize: 11, padding: "6px 12px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>✓ Mark charged</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {showCoaches && isAdmin && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 480, maxWidth: "100%", maxHeight: "85vh", overflow: "auto", padding: 28 }}>
