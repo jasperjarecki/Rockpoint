@@ -339,6 +339,49 @@ async function dbGetBilling() {
 async function dbUpsertBilling(athleteId, fields) {
   try { await sb.from('billing').upsert({ athlete_id: athleteId, ...fields }); } catch(e) {}
 }
+// ── v31: athlete activity + weeks-left roster alerts ────────────────
+// Table: athlete_activity (athlete_id text pk, last_active date)
+let _lastActivityTouch = null; // stamp at most once per day per session
+async function dbTouchActivity(athleteId) {
+  const today = new Date().toLocaleDateString('en-CA');
+  if (_lastActivityTouch === athleteId + today) return;
+  _lastActivityTouch = athleteId + today;
+  try { await sb.from('athlete_activity').upsert({ athlete_id: athleteId, last_active: today }); } catch(e) {}
+}
+async function dbGetActivity() {
+  try { const { data } = await sb.from('athlete_activity').select('*'); return data || []; } catch(e) { return []; }
+}
+// Current week for a plan: pinned override (auto-advancing from its anchor
+// date) wins; else derived from blockStart. Mirrors the plan-editor logic.
+function computeCurrentWeekIdx(plan) {
+  const weeksLen = plan?.weeks?.length || 0;
+  if (!weeksLen) return null;
+  const ov = plan?.currentWeekOverride;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  if (ov != null) {
+    if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
+      const [ay, am, ad] = ov.setOnDate.split("-").map(Number);
+      const anchor = new Date(ay, am - 1, ad);
+      const weeksSince = Math.max(0, Math.floor((now - anchor) / (7 * 24 * 60 * 60 * 1000)));
+      return Math.min(ov.weekIdx + weeksSince, weeksLen - 1);
+    }
+    if (typeof ov === "number") return Math.min(ov, weeksLen - 1);
+  }
+  if (!plan?.blockStart) return null;
+  const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
+  const start = new Date(sy, sm - 1, sd);
+  if (now < start) return null;
+  return Math.min(Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000)), weeksLen - 1);
+}
+// Visible (published) weeks remaining, counting the current week itself.
+// null = can't tell (no plan / nothing published / block not started).
+function visibleWeeksLeft(plan) {
+  const cur = computeCurrentWeekIdx(plan);
+  const pub = plan?.published || [];
+  if (cur == null || !pub.length) return null;
+  return pub.filter(i => i >= cur).length;
+}
+
 // Given a monthly bill day (1–31) and the last date marked charged,
 // classify: unset / paid (with next due) / due (with days overdue).
 // Short months clamp the day (bill_day 31 → Feb 28/29).
@@ -1805,15 +1848,10 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
           <button onClick={() => setShowBlockOverview(v => !v)} style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${showBlockOverview ? C.orange : C.border}`, background: showBlockOverview ? "rgba(61,158,122,0.08)" : "none", color: showBlockOverview ? C.orange : C.muted, cursor: "pointer" }}>
             {showBlockOverview ? "▲ Collapse" : "▼ View All"}
           </button>
-          <button onClick={() => {
-            const next = window.prompt(`Set current week (1–${weeks.length}). It will auto-advance from today.`, currentWeekIdx != null ? currentWeekIdx + 1 : "");
-            if (next === null) return;
-            if (next.trim() === "") { onPlanChange({ ...plan, currentWeekOverride: null }); return; }
-            const idx = parseInt(next) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= weeks.length) return;
-            onPlanChange({ ...plan, currentWeekOverride: { weekIdx: idx, setOnDate: localDateStr() } });
-          }} style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: "pointer" }}>
-            {currentWeekIdx != null ? `Current: Week ${currentWeekIdx + 1}` : "Set current week"}
+          <button onClick={() => { if (currentWeekIdx != null) setActiveWeek(currentWeekIdx); }}
+            title={currentWeekIdx != null ? "Jump to this week" : "Select a week tab, then tap 📍 to set it as this week"}
+            style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: currentWeekIdx != null ? "pointer" : "default" }}>
+            {currentWeekIdx != null ? `This week: ${weeks[currentWeekIdx]?.label || `Week ${currentWeekIdx + 1}`}${plan?.currentWeekOverride != null ? " 📍" : ""}` : "This week: not set — 📍 a week"}
           </button>
           {athlete.id !== TEMPLATE_CREATOR_ID && <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer", letterSpacing: 0.5, fontWeight: 500 }}>
             Publish to Athlete ↗
@@ -2024,6 +2062,17 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
               )}
               {isActive && editingWeekLabel !== i && (
                 <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button onClick={() => {
+                    // v30: tap-to-pin "this week". Pin anchors auto-advance from
+                    // today ({weekIdx, setOnDate}); tapping the pin on the week
+                    // that's already current clears the override (back to
+                    // blockStart-based auto).
+                    const pinnedHere = plan?.currentWeekOverride != null && currentWeekIdx === i;
+                    onPlanChange(pinnedHere
+                      ? { ...plan, currentWeekOverride: null }
+                      : { ...plan, currentWeekOverride: { weekIdx: i, setOnDate: localDateStr() } });
+                  }} title={currentWeekIdx === i ? (plan?.currentWeekOverride != null ? "Pinned as this week — tap to unpin" : "This week (from start date) — tap to pin") : "Set as this week"}
+                    style={{ ...mono, fontSize: 10, padding: "2px 5px", background: currentWeekIdx === i ? "rgba(91,127,166,0.15)" : "none", border: `1px solid ${currentWeekIdx === i ? C.purple : C.border}`, borderRadius: 3, color: currentWeekIdx === i ? C.purple : C.muted, cursor: "pointer" }}>📍</button>
                   <button onClick={() => moveWeek(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
                   <button onClick={() => moveWeek(i, 1)} disabled={i===weeks.length-1} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===weeks.length-1?"#ccc":C.muted, cursor: i===weeks.length-1?"default":"pointer" }}>→</button>
                   <button onClick={() => { setDraftWeekLabel(wk.label); setEditingWeekLabel(i); }} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: C.muted, cursor: "pointer" }}>✎</button>
@@ -6240,6 +6289,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   // v29: billing reminders — admin only. Map of athlete_id → billing row.
   const [showBilling, setShowBilling] = useState(false);
   const [billingMap, setBillingMap] = useState({});
+  // v31: athlete_id → last_active date, for inactivity alerts (all coaches)
+  const [activityMap, setActivityMap] = useState({});
+  useEffect(() => {
+    dbGetActivity().then(rows => { const m = {}; rows.forEach(r => { m[r.athlete_id] = r.last_active; }); setActivityMap(m); });
+  }, []);
   useEffect(() => {
     if (!isAdmin) return;
     dbGetBilling().then(rows => { const m = {}; rows.forEach(r => { m[r.athlete_id] = r; }); setBillingMap(m); });
@@ -6455,7 +6509,32 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                       {unreadComments?.some(c => c.athlete_id === a.id) && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, flexShrink: 0 }} />}
                     </div>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Badge type={a.type} /><span style={{ ...mono, fontSize: 10, color: C.muted }}>{a.level}</span></div>
-                    {plans[a.id]?.published?.length > 0 && <div style={{ ...mono, fontSize: 10, color: C.orange, marginTop: 3 }}>{plans[a.id].published.length} week{plans[a.id].published.length!==1?"s":""} live</div>}
+                    {plans[a.id]?.published?.length > 0 && (() => {
+                      // v31 roster alerts: visible-weeks-left + inactivity
+                      const left = visibleWeeksLeft(plans[a.id]);
+                      const la = activityMap[a.id];
+                      let idle = null;
+                      if (la) {
+                        const [ly, lm, ld] = String(la).slice(0, 10).split("-").map(Number);
+                        const now = new Date(); now.setHours(0, 0, 0, 0);
+                        idle = Math.round((now - new Date(ly, lm - 1, ld)) / 86400000);
+                      }
+                      return (
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", marginTop: 3 }}>
+                          <span style={{ ...mono, fontSize: 10, color: C.orange }}>{plans[a.id].published.length} week{plans[a.id].published.length !== 1 ? "s" : ""} live</span>
+                          {left != null && left <= 2 && (
+                            <span style={{ ...mono, fontSize: 9, padding: "1px 6px", borderRadius: 4, color: "#fff", background: left <= 1 ? "#c0392b" : "#b07d2b" }}>
+                              {left <= 0 ? "out of weeks" : left === 1 ? "⚠ 1 week left" : "2 weeks left"}
+                            </span>
+                          )}
+                          {idle != null && idle >= 3 && (
+                            <span style={{ ...mono, fontSize: 9, padding: "1px 6px", borderRadius: 4, color: "#c9d4de", background: "rgba(91,127,166,0.25)", border: "1px solid rgba(91,127,166,0.5)" }}>
+                              💤 {idle}d quiet
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </button>
                   <div className="athlete-actions" style={{ position: "absolute", top: 8, right: 4, opacity: 0, display: "flex", gap: 2, transition: "opacity 0.15s" }}>
                     <button title="Edit athlete" onClick={() => setEditingAthlete(a)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, padding: "2px 5px" }}>✎</button>
@@ -7457,9 +7536,9 @@ function AppInner() {
     // for the single frame before that effect runs.
     if (!athlete) return null;
     return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
-      onProgressChange={(d, e, ep, cdk) => updateProgress(session.athleteId, d, e, ep, cdk)}
+      onProgressChange={(d, e, ep, cdk) => { dbTouchActivity(session.athleteId); updateProgress(session.athleteId, d, e, ep, cdk); }}
       darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); try { localStorage.setItem("rp_dark", n?"1":"0"); } catch(_) {} }}
-      onOverflowChange={(ov) => updateOverflow(session.athleteId, ov)}
+      onOverflowChange={(ov) => { dbTouchActivity(session.athleteId); updateOverflow(session.athleteId, ov); }}
       onEditExercise={(d, ex) => editExercise(session.athleteId, d, ex)}
       unreadReplies={athleteUnreadReplies}
       onReplySeen={(r) => {
