@@ -351,6 +351,14 @@ async function dbTouchActivity(athleteId) {
 async function dbGetActivity() {
   try { const { data } = await sb.from('athlete_activity').select('*'); return data || []; } catch(e) { return []; }
 }
+// ── v32: per-coach to-do note ───────────────────────────────────────
+// Table: coach_notes (coach_id text pk, body text)
+async function dbGetCoachNote(coachKey) {
+  try { const { data } = await sb.from('coach_notes').select('*').eq('coach_id', coachKey).maybeSingle(); return data?.body || ""; } catch(e) { return ""; }
+}
+async function dbSaveCoachNote(coachKey, body) {
+  try { await sb.from('coach_notes').upsert({ coach_id: coachKey, body }); } catch(e) {}
+}
 // Current week for a plan: pinned override (auto-advancing from its anchor
 // date) wins; else derived from blockStart. Mirrors the plan-editor logic.
 function computeCurrentWeekIdx(plan) {
@@ -6294,6 +6302,26 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
   useEffect(() => {
     dbGetActivity().then(rows => { const m = {}; rows.forEach(r => { m[r.athlete_id] = r.last_active; }); setActivityMap(m); });
   }, []);
+  // v32: per-coach to-do note — floating panel that stays open beside the
+  // plan editor. Keyed by coachId ('admin' for the admin account).
+  const coachNoteKey = isAdmin ? "admin" : (coachId || "admin");
+  const [showTodo, setShowTodo] = useState(false);
+  const [todoText, setTodoText] = useState("");
+  const [todoLoaded, setTodoLoaded] = useState(false);
+  const [todoSavedFlash, setTodoSavedFlash] = useState(false);
+  const todoTimer = React.useRef(null);
+  useEffect(() => {
+    dbGetCoachNote(coachNoteKey).then(body => { setTodoText(body); setTodoLoaded(true); });
+  }, [coachNoteKey]);
+  const onTodoChange = (v) => {
+    setTodoText(v);
+    if (!todoLoaded) return; // never autosave over a note that hasn't loaded
+    if (todoTimer.current) clearTimeout(todoTimer.current);
+    todoTimer.current = setTimeout(async () => {
+      await dbSaveCoachNote(coachNoteKey, v);
+      setTodoSavedFlash(true); setTimeout(() => setTodoSavedFlash(false), 1200);
+    }, 800);
+  };
   useEffect(() => {
     if (!isAdmin) return;
     dbGetBilling().then(rows => { const m = {}; rows.forEach(r => { m[r.athlete_id] = r; }); setBillingMap(m); });
@@ -6990,6 +7018,23 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
         </div>
       )}
 
+      {/* v32: floating per-coach to-do — stays open beside the plan editor */}
+      <button onClick={() => setShowTodo(v => !v)} title="My to-do note"
+        style={{ position: "fixed", bottom: 18, right: 18, zIndex: 740, width: 44, height: 44, borderRadius: "50%", border: `1px solid ${showTodo ? C.orange : C.border}`, background: showTodo ? "rgba(61,158,122,0.15)" : C.gray, color: showTodo ? C.orange : C.muted, fontSize: 18, cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
+        📝
+      </button>
+      {showTodo && (
+        <div style={{ position: "fixed", bottom: 70, right: 18, zIndex: 740, width: 300, maxWidth: "calc(100vw - 36px)", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 4px 18px rgba(0,0,0,0.45)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>📝 My to-do</span>
+            <span style={{ ...mono, fontSize: 9, color: todoSavedFlash ? "#2aaa5e" : "transparent" }}>saved ✓</span>
+          </div>
+          <textarea value={todoText} onChange={e => onTodoChange(e.target.value)}
+            placeholder={todoLoaded ? "add rope training sessions to Tyrone's week…" : "loading…"}
+            disabled={!todoLoaded}
+            style={{ width: "100%", height: 190, background: C.gray2, border: "none", outline: "none", resize: "vertical", padding: "12px 14px", color: C.white, fontSize: 12.5, lineHeight: 1.55, fontFamily: "inherit", boxSizing: "border-box" }} />
+        </div>
+      )}
       {showBilling && isAdmin && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowBilling(false)}>
           <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
