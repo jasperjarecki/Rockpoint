@@ -1809,8 +1809,10 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
     if (j < 0 || j >= weeks.length) return;
     const w = [...weeks];
     [w[i], w[j]] = [w[j], w[i]];
-    // fix published indices
-    const newPublished = published.map(p => p === i ? j : p === j ? i : p);
+    // fix published indices — v33: and keep the array SORTED. Remapping
+    // values without sorting left published in publish order, which the
+    // athlete view rendered verbatim (weeks out of sequence).
+    const newPublished = published.map(p => p === i ? j : p === j ? i : p).sort((a, b) => a - b);
     onPlanChange({...plan, weeks: w, published: newPublished});
     setActiveWeek(j);
   };
@@ -2986,8 +2988,13 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const OVF = "overflow";
 
   // figure out which week to default to
-  const publishedWeeks = (plan?.published || []).map(i => plan.weeks[i]).filter(Boolean);
-  const publishedIndices = plan?.published || [];
+  // v33 BUGFIX: plan.published holds week indices in PUBLISH/REMAP order, not
+  // week order — moving a week left remapped the values but left the array
+  // unsorted, so athlete tabs rendered out of sequence (e.g. Deload before
+  // Week 5). Sort at the source: fixes tab order, the publishedIndices[0]
+  // "earliest week" fallbacks below, and heals already-stored unsorted data.
+  const publishedIndices = [...(plan?.published || [])].sort((a, b) => a - b);
+  const publishedWeeks = publishedIndices.map(i => plan.weeks[i]).filter(Boolean);
 
   const currentWeekIdx = (() => {
     if (publishedIndices.length === 0) return null;
@@ -7363,7 +7370,8 @@ function AppInner() {
         console.warn('[publishWeeks] Blocked: plan missing or empty for', id);
         return prev;
       }
-      const np = { ...prev, [id]: { ...p, published: publishedIndices } };
+      // v33: store published indices sorted — canonical week order on disk
+      const np = { ...prev, [id]: { ...p, published: [...publishedIndices].sort((a, b) => a - b) } };
       dbUpsertPlan(id, np[id]);
       return np;
     });
