@@ -1471,21 +1471,21 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
 
         {showPublish && (
           <div onClick={() => setShowPublish(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 500, display: "flex", alignItems: "flex-end" }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: "100%", background: C.gray2, borderTop: `1px solid ${C.border}`, borderRadius: "12px 12px 0 0", padding: "20px 16px", maxHeight: "80vh", overflowY: "auto" }}>
-              <div style={{ ...bebas, fontSize: 20, marginBottom: 6 }}>Publish Weeks</div>
-              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 14 }}>Select which weeks the athlete can see.</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: "100%", background: C.gray2, borderTop: `1px solid ${C.border}`, borderRadius: "12px 12px 0 0", padding: "20px 16px calc(16px + env(safe-area-inset-bottom, 0px))", maxHeight: "80vh", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+              <div style={{ ...bebas, fontSize: 20, marginBottom: 6, flexShrink: 0 }}>Publish Weeks</div>
+              <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 14, flexShrink: 0 }}>Select which weeks the athlete can see.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12, overflowY: "auto", flex: 1, minHeight: 0 }}>
                 {weeks.map((wk, i) => {
                   const isOn = publishDraft.includes(i);
                   return (
-                    <button key={i} onClick={() => togglePublishWeek(i)} style={{ width: "100%", textAlign: "left", background: isOn ? "rgba(61,158,122,0.08)" : C.gray, border: `1px solid ${isOn ? "#3d9e7a" : C.border}`, borderRadius: 6, padding: "12px 14px", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <button key={i} onClick={() => togglePublishWeek(i)} style={{ flexShrink: 0, width: "100%", textAlign: "left", background: isOn ? "rgba(61,158,122,0.08)" : C.gray, border: `1px solid ${isOn ? "#3d9e7a" : C.border}`, borderRadius: 6, padding: "12px 14px", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <span style={{ fontSize: 14 }}>{wk.label}</span>
                       <span style={{ ...mono, fontSize: 12, color: isOn ? "#3d9e7a" : C.muted }}>{isOn ? "✓" : "○"}</span>
                     </button>
                   );
                 })}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
                 <button onClick={() => setShowPublish(false)} style={{ flex: 1, ...mono, fontSize: 12, padding: "12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, cursor: "pointer" }}>Cancel</button>
                 <button onClick={confirmPublish} style={{ flex: 2, ...mono, fontSize: 12, padding: "12px", background: C.orange, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer" }}>Publish {publishDraft.length}</button>
               </div>
@@ -2260,15 +2260,18 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
       {/* Publish modal */}
       {showPublishModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 420, padding: 28 }}>
-            <div style={{ ...bebas, fontSize: 24, marginBottom: 4 }}>Publish to Athlete</div>
-            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20 }}>Select which weeks {athlete.name} can see. Unpublished weeks stay hidden.</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+          {/* v34: capped height — header + buttons pinned, week list scrolls.
+              Previously the card grew past the viewport with many weeks and
+              Cancel/Publish were unreachable. */}
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: "100%", maxWidth: 420, padding: 28, maxHeight: "calc(100vh - 40px)", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+            <div style={{ ...bebas, fontSize: 24, marginBottom: 4, flexShrink: 0 }}>Publish to Athlete</div>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 20, flexShrink: 0 }}>Select which weeks {athlete.name} can see. Unpublished weeks stay hidden.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, overflowY: "auto", flex: 1, minHeight: 0, paddingRight: 4 }}>
               {weeks.map((wk, i) => {
                 const isOn = publishDraft.includes(i);
                 const isCurrent = currentWeekIdx === i;
                 return (
-                  <button key={i} onClick={() => togglePublishWeek(i)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 8, border: `1px solid ${isOn ? C.orange : C.border}`, background: isOn ? "rgba(61,158,122,0.07)" : C.gray2, cursor: "pointer", textAlign: "left" }}>
+                  <button key={i} onClick={() => togglePublishWeek(i)} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 8, border: `1px solid ${isOn ? C.orange : C.border}`, background: isOn ? "rgba(61,158,122,0.07)" : C.gray2, cursor: "pointer", textAlign: "left" }}>
                     <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${isOn ? C.orange : C.gray3}`, background: isOn ? C.orange : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       {isOn && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
                     </div>
@@ -2281,7 +2284,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                 );
               })}
             </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexShrink: 0, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
               <button onClick={() => setShowPublishModal(false)} style={{ ...mono, fontSize: 11, padding: "9px 16px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, cursor: "pointer" }}>Cancel</button>
               <button onClick={confirmPublish} style={{ ...mono, fontSize: 11, padding: "9px 20px", background: C.orange, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer" }}>Publish ({publishDraft.length} weeks)</button>
             </div>
