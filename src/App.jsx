@@ -602,7 +602,7 @@ function WeekBadge({ plan }) {
 function renderMarkdown(text, textColor) {
   const tc = textColor || C.white;
   if (!text) return null;
-  const lines = text.split('\n');
+  const lines = String(text).split('\n');
   const els = [];
   let i = 0;
   while (i < lines.length) {
@@ -611,9 +611,9 @@ function renderMarkdown(text, textColor) {
       els.push(<div key={i} style={{ fontFamily:"'Fraunces',serif", fontSize: 22, letterSpacing: 1, color:tc, marginBottom: 6, marginTop: i>0?12:0 }}>{line.slice(2)}</div>);
     } else if (line.startsWith('## ')) {
       els.push(<div key={i} style={{ fontFamily:"'Plus Jakarta Sans',sans-serif", fontSize: 15, fontWeight: 700, color:tc, marginBottom: 4, marginTop: i>0?10:0 }}>{line.slice(3)}</div>);
-    } else if (line.startsWith('- ') || line.startsWith('• ')) {
+    } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ')) {
       const items = [];
-      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• '))) {
+      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('• ') || lines[i].startsWith('* '))) {
         items.push(<li key={i} style={{ marginBottom: 3 }}>{inlineFormat(lines[i].slice(2))}</li>);
         i++;
       }
@@ -658,6 +658,9 @@ function inlineFormat(text) {
     } else {
       const next = rest.search(/\*\*\*|\*\*|\*/);
       if (next === -1) { parts.push(rest); rest = ''; }
+      // v37: unpaired "*" (e.g. "RPE 8*", "3 x 5 * 2") — previously next===0
+      // sliced nothing and looped forever, freezing the app. Emit it literally.
+      else if (next === 0) { parts.push(rest[0]); rest = rest.slice(1); }
       else { parts.push(rest.slice(0, next)); rest = rest.slice(next); }
     }
   }
@@ -4841,7 +4844,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                             <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end", opacity: isPublished ? 1 : 0.3 }}>
                               {vol > 0 && <div style={{ ...mono, fontSize: 10, color: isCurrent ? C.purple : C.muted }}>{vol}</div>}
                               <div style={{ width: "100%", height: barH, background: isCurrent ? C.purple : barColor, borderRadius: "3px 3px 0 0", outline: isCurrent ? `2px solid ${C.purple}` : "none", outlineOffset: 2 }} />
-                              <div style={{ ...mono, fontSize: 8, color: isCurrent ? C.purple : C.muted, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{wk.label.replace("Week ","W")}</div>
+                              <div style={{ ...mono, fontSize: 8, color: isCurrent ? C.purple : C.muted, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{String(wk.label || `Week ${i + 1}`).replace("Week ","W")}</div>
                             </div>
                           );
                         })}
@@ -5043,7 +5046,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
         </>}
       </div>
       {showTimer && <TimerModal onClose={() => setShowTimer(false)} />}
-      </>}
+      </>
     </div>
   );
 }
