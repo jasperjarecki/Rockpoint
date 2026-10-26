@@ -171,6 +171,17 @@ const VOLUME_TIERS_PAGE_ID = "__volume_tiers__";
 const SIMULATOR_PAGE_ID = "__simulator__";
 const ATHLETE_LOGS_PAGE_ID = "__athlete_logs__";
 
+// v36: comment timestamp, viewer's local time. "Oct 25 · 10:36 PM"; year added if not this year.
+function fmtCommentTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d)) return "";
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const date = d.toLocaleDateString("en-US", sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${date} · ${time}`;
+}
+
 function parseYouTubeTimestamp(url) {
   if (!url) return 0;
   // ?t=90 or &t=90 (seconds)
@@ -1742,6 +1753,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
   const [showBlockOverview, setShowBlockOverview] = useState(false);
   const [overviewExpanded, setOverviewExpanded] = useState({});
   const [savingTemplate, setSavingTemplate] = useState(null); // {type, data} prompt for name
+  const [templateWeekPick, setTemplateWeekPick] = useState([]); // v35: week indices included when saving a block template
   const [templateName, setTemplateName] = useState("");
   const [showWeekTemplates, setShowWeekTemplates] = useState(false);
   const [showDayTemplates, setShowDayTemplates] = useState(false);
@@ -1828,6 +1840,18 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
   const [localTemplates, setLocalTemplates] = React.useState(templates);
   React.useEffect(() => { setLocalTemplates(templates); }, [templates]);
 
+  // v35: block templates save only the picked weeks (kept in plan order)
+  const canSaveTemplate = !!savingTemplate && !!templateName.trim() && (savingTemplate.type !== "block" || templateWeekPick.length > 0);
+  const commitSaveTemplate = () => {
+    if (!canSaveTemplate) return;
+    let data = savingTemplate.data;
+    if (savingTemplate.type === "block") {
+      const src = savingTemplate.data?.weeks || [];
+      data = { ...savingTemplate.data, weeks: [...templateWeekPick].sort((a, b) => a - b).map(i => src[i]).filter(Boolean) };
+    }
+    handleSaveTemplate(templateName.trim(), savingTemplate.type, data);
+    setSavingTemplate(null);
+  };
   const handleSaveTemplate = async (name, type, data) => {
     if (onSaveTemplate) await onSaveTemplate(name, type, data);
   };
@@ -1921,9 +1945,9 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
           <div style={{ ...mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.muted }}>Block Overview / Read Me</div>
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => { setSavingTemplate({ type: "block", data: { weeks: plan?.weeks || [], blockNotes: plan?.blockNotes || "" } }); setTemplateName(""); }}
+            <button onClick={() => { setSavingTemplate({ type: "block", data: { weeks: plan?.weeks || [], blockNotes: plan?.blockNotes || "" } }); setTemplateWeekPick((plan?.weeks || []).map((_, i) => i)); setTemplateName(""); }}
               style={{ ...mono, fontSize: 10, padding: "4px 8px", background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
-              title="Save this whole block as a template">★ Save block</button>
+              title="Save the whole block, or pick a range of weeks, as a template">★ Save block</button>
             {localTemplates.filter(t => t.type === "block").length > 0 && (
               <button onClick={() => setShowBlockTemplates(true)}
                 style={{ ...mono, fontSize: 10, padding: "4px 8px", background: "none", border: `1px dashed ${C.orange}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}
@@ -2141,18 +2165,47 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
       {/* Save template name prompt */}
       {savingTemplate && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, width: 380, maxWidth: "100%", padding: 24 }}>
-            <div style={{ ...bebas, fontSize: 20, marginBottom: 4 }}>Save as Template</div>
-            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 16 }}>Give this {savingTemplate.type} a name so you can reuse it later.</p>
+          <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, width: savingTemplate.type === "block" ? 420 : 380, maxWidth: "100%", padding: 24, maxHeight: "calc(100vh - 40px)", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+            <div style={{ ...bebas, fontSize: 20, marginBottom: 4, flexShrink: 0 }}>Save as Template</div>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 16, flexShrink: 0 }}>{savingTemplate.type === "block" ? "Pick the weeks to include, then name it. All weeks = the whole block." : `Give this ${savingTemplate.type} a name so you can reuse it later.`}</p>
+            {/* v35: multi-week picker for block templates */}
+            {savingTemplate.type === "block" && (() => {
+              const allWks = savingTemplate.data?.weeks || [];
+              const allOn = templateWeekPick.length === allWks.length;
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexShrink: 0 }}>
+                    <span style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>{templateWeekPick.length} of {allWks.length} weeks</span>
+                    <button onClick={() => setTemplateWeekPick(allOn ? [] : allWks.map((_, i) => i))}
+                      style={{ ...mono, fontSize: 10, padding: "3px 8px", background: "none", border: `1px solid ${C.border}`, borderRadius: 4, color: C.orange, cursor: "pointer" }}>{allOn ? "Select none" : "Select all"}</button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5, overflowY: "auto", flex: 1, minHeight: 0, marginBottom: 14, paddingRight: 4 }}>
+                    {allWks.map((wk, i) => {
+                      const on = templateWeekPick.includes(i);
+                      return (
+                        <button key={i} onClick={() => setTemplateWeekPick(prev => on ? prev.filter(x => x !== i) : [...prev, i].sort((a, b) => a - b))}
+                          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 6, border: `1px solid ${on ? C.orange : C.border}`, background: on ? "rgba(61,158,122,0.07)" : C.gray2, cursor: "pointer", textAlign: "left" }}>
+                          <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${on ? C.orange : C.gray3}`, background: on ? C.orange : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {on && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                          </div>
+                          <span style={{ flex: 1, fontSize: 13, color: C.white }}>{wk.label}</span>
+                          <span style={{ ...mono, fontSize: 10, color: C.muted }}>{(wk.days || []).length} days</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
             <input autoFocus value={templateName} onChange={e => setTemplateName(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && templateName.trim()) { handleSaveTemplate(templateName.trim(), savingTemplate.type, savingTemplate.data); setSavingTemplate(null); }}}
+              onKeyDown={e => { if (e.key === "Enter") commitSaveTemplate(); }}
               placeholder={savingTemplate.type === "block" ? "e.g. 8-Week Power Block, Comp Prep..." : savingTemplate.type === "week" ? "e.g. Power Week, Deload..." : "e.g. Strength Day, Fitness Day..."}
-              style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", marginBottom: 16 }} />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 14, outline: "none", marginBottom: 16, flexShrink: 0, boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexShrink: 0 }}>
               <button onClick={() => setSavingTemplate(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <button onClick={() => { if (!templateName.trim()) return; handleSaveTemplate(templateName.trim(), savingTemplate.type, savingTemplate.data); setSavingTemplate(null); }}
-                disabled={!templateName.trim()}
-                style={{ ...mono, fontSize: 11, padding: "8px 16px", background: templateName.trim() ? C.orange : C.gray3, border: "none", borderRadius: 5, color: templateName.trim() ? "#fff" : C.muted, cursor: templateName.trim() ? "pointer" : "default" }}>Save Template</button>
+              <button onClick={commitSaveTemplate}
+                disabled={!canSaveTemplate}
+                style={{ ...mono, fontSize: 11, padding: "8px 16px", background: canSaveTemplate ? C.orange : C.gray3, border: "none", borderRadius: 5, color: canSaveTemplate ? "#fff" : C.muted, cursor: canSaveTemplate ? "pointer" : "default" }}>{savingTemplate.type === "block" ? `Save ${templateWeekPick.length} week${templateWeekPick.length === 1 ? "" : "s"}` : "Save Template"}</button>
             </div>
           </div>
         </div>
@@ -2163,14 +2216,38 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 10, width: 460, maxWidth: "100%", maxHeight: "80vh", overflow: "auto", padding: 24 }}>
             <div style={{ ...bebas, fontSize: 20, marginBottom: 4 }}>Load Block Template</div>
-            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 16 }}>Replaces the current plan's weeks and block notes. Block dates, image, and published weeks stay as they are.</p>
+            <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 16 }}><b>Replace plan</b> swaps out all weeks and block notes. <b>Add to end</b> keeps current weeks and appends the template's weeks after them (unpublished). Block dates, image, and published weeks are never touched.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {localTemplates.filter(t => t.type === "block").map(t => {
                 const ws = t.data?.weeks || [];
                 const totalDays = ws.reduce((n, w) => n + (w.days?.length || 0), 0);
                 const totalExs = ws.reduce((n, w) => n + (w.days?.reduce((m, d) => m + (d.exercises?.length || 0), 0) || 0), 0);
                 return (
-                  <button key={t.id} onClick={() => {
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{t.name}</div>
+                      <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ws.length} weeks · {totalDays} days · {totalExs} exercises</div>
+                    </div>
+                    <button onClick={() => {
+                    // v35: append — existing weeks, published indices, and pin all stay valid
+                    const appended = ws.map(w => ({
+                      label: w.label,
+                      days: (w.days || []).map(d => ({
+                        label: d.label,
+                        exercises: (d.exercises || []).map(e => ({ ...e, id: uid() })),
+                      })),
+                    }));
+                    const startIdx = (plan?.weeks || []).length;
+                    onPlanChange({
+                      ...plan,
+                      weeks: [...(plan?.weeks || []), ...appended],
+                      // only fill block notes if the plan has none
+                      blockNotes: (plan?.blockNotes || "").trim() ? plan.blockNotes : (t.data?.blockNotes || ""),
+                    });
+                    setActiveWeek(startIdx);
+                    setShowBlockTemplates(false);
+                  }} style={{ ...mono, fontSize: 10, padding: "6px 10px", background: "none", border: `1px solid ${C.orange}`, borderRadius: 5, color: C.orange, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>Add to end</button>
+                  <button onClick={() => {
                     const hasContent = (plan?.weeks || []).some(w => (w.days || []).some(d => (d.exercises || []).length > 0));
                     if (hasContent && !window.confirm(`Replace the current plan's weeks with "${t.name}"? Block dates, image, and published weeks will be preserved.`)) return;
                     // Clone with fresh exercise IDs so no two athletes share IDs
@@ -2191,10 +2268,8 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
                     });
                     setActiveWeek(0);
                     setShowBlockTemplates(false);
-                  }} style={{ textAlign: "left", background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", cursor: "pointer" }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: C.white, marginBottom: 3 }}>{t.name}</div>
-                    <div style={{ ...mono, fontSize: 10, color: C.muted }}>{ws.length} weeks · {totalDays} days · {totalExs} exercises</div>
-                  </button>
+                  }} style={{ ...mono, fontSize: 10, padding: "6px 10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>Replace plan</button>
+                  </div>
                 );
               })}
             </div>
@@ -7669,7 +7744,10 @@ function AppInner() {
                     <span style={{ ...mono, fontSize: 10, color: C.muted }}>{r.count} note{r.count === 1 ? '' : 's'} ›</span>
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: C.muted, fontStyle: 'italic', marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📝 {r.latest.body}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 5 }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.muted, fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📝 {r.latest.body}</div>
+                  {r.latest.created_at && <span style={{ ...mono, fontSize: 9, color: C.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtCommentTime(r.latest.created_at)}</span>}
+                </div>
               </button>
             ));
           })()}
@@ -7696,8 +7774,11 @@ function AppInner() {
                   const reply = comments.find(r => r.author === 'coach' && r.exercise_id === c.exercise_id);
                   return (
                     <div key={c.id} style={{ background: C.gray2, border: `1px solid ${!c.read_by_coach ? C.orange : C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 10 }}>
-                      <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-                        {!inboxAthleteId && <span style={{ color: C.orange }}>{aName} · </span>}{wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || c.exercise_id}
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+                        <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1 }}>
+                          {!inboxAthleteId && <span style={{ color: C.orange }}>{aName} · </span>}{wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || c.exercise_id}
+                        </div>
+                        {c.created_at && <span style={{ ...mono, fontSize: 9, color: C.muted, whiteSpace: 'nowrap', flexShrink: 0 }} title={new Date(c.created_at).toLocaleString()}>{fmtCommentTime(c.created_at)}</span>}
                       </div>
                       <div style={{ fontSize: 13, color: C.purple, fontStyle: 'italic', marginBottom: reply ? 10 : 8, lineHeight: 1.5 }}>📝 {c.body}</div>
                       {reply ? (
