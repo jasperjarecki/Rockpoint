@@ -171,6 +171,9 @@ const VOLUME_TIERS_PAGE_ID = "__volume_tiers__";
 const SIMULATOR_PAGE_ID = "__simulator__";
 const ATHLETE_LOGS_PAGE_ID = "__athlete_logs__";
 
+// v38: tiny stable string hash (update seen-key fallback when no timestamp)
+function hashStr(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+
 // v36: comment timestamp, viewer's local time. "Oct 25 · 10:36 PM"; year added if not this year.
 function fmtCommentTime(ts) {
   if (!ts) return "";
@@ -1438,7 +1441,7 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                 </div>
                 <div>
                   <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK UPDATE (visible to athlete)</div>
-                  <textarea value={plan?.blockUpdate || ""} onChange={e => updateBlock({ blockUpdate: e.target.value })}
+                  <textarea value={plan?.blockUpdate || ""} onChange={e => updateBlock({ blockUpdate: e.target.value, blockUpdateAt: new Date().toISOString() })}
                     placeholder="Message for the athlete. Markdown OK." rows={3}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
                 </div>
@@ -3065,7 +3068,7 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   );
 }
 
-function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onReplySeen }) {
+function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onReplySeen, previewMode = false }) {
   const OVF = "overflow";
 
   // figure out which week to default to
@@ -3236,6 +3239,32 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   const [showVolumeInfo, setShowVolumeInfo] = useState(false);
   const [showAthleteInfo, setShowAthleteInfo] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false); // inline home-page overview card, starts collapsed
+  // v38: coach Update. Previously the update only lived behind a tap on the
+  // athlete's name, the pop-up modal was never opened, and "seen" was never
+  // saved (NEW badge stuck forever). Now: pops up once per new update, then
+  // stays on the home page as a toggleable card. Seen-state is saved in
+  // progress._meta.updateSeen = { key, at }. Coach preview never marks seen.
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const updateKey = plan?.blockUpdate && String(plan.blockUpdate).trim()
+    ? (plan.blockUpdateAt || ("h" + hashStr(String(plan.blockUpdate))))
+    : null;
+  const seenMeta = (progress && progress._meta) || {};
+  const isUpdateNew = !!updateKey
+    && seenMeta.updateSeen?.key !== updateKey
+    && !(plan?.blockUpdateAt && seenMeta._lastViewedUpdate && plan.blockUpdateAt <= seenMeta._lastViewedUpdate);
+  const markUpdateSeen = () => {
+    if (previewMode || !isUpdateNew) return;
+    onProgressChange("_meta", "updateSeen", { key: updateKey, at: new Date().toISOString() });
+  };
+  const autoPoppedRef = React.useRef(null);
+  useEffect(() => {
+    if (previewMode || !isUpdateNew || !updateKey) return;
+    if (!(plan?.published || []).length) return; // athlete home not showing yet
+    if (autoPoppedRef.current === updateKey) return;
+    autoPoppedRef.current = updateKey;
+    setShowUpdate(true);
+  }, [updateKey, isUpdateNew, previewMode]);
+  const closeUpdateModal = () => { setShowUpdate(false); markUpdateSeen(); };
   const [highlightExId, setHighlightExId] = useState(null); // banner tap -> scroll to + glow the reply's exercise card
 
   // v28: replies the athlete can actually navigate to (published weeks).
@@ -4732,13 +4761,42 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               style={{ ...bebas, fontSize: 30, letterSpacing: 1, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 10px", display: "inline-block" }}>
               {athlete.name}
               {plan.blockUpdate && (() => {
-                const isNew = plan.blockUpdateAt && (!(progress._meta || {})._lastViewedUpdate || plan.blockUpdateAt > (progress._meta || {})._lastViewedUpdate);
+                const isNew = isUpdateNew;
                 return isNew ? <span style={{ background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5, marginLeft: 8, verticalAlign: "middle" }}>NEW</span> : null;
               })()}
             </div>
             <WeekBadge plan={plan} />
           </div>
         </div>
+
+        {/* v38: Update from Coach — always on the home page while an update exists */}
+        {updateKey && (
+          <div style={{ marginBottom: 12 }}>
+            <button onClick={() => { setUpdateOpen(v => !v); markUpdateSeen(); }}
+              style={{
+                width: "100%",
+                background: updateOpen ? C.gray2 : (isUpdateNew ? "rgba(91,127,166,0.10)" : C.gray),
+                border: `1px solid ${isUpdateNew ? C.purple : C.border}`,
+                borderRadius: updateOpen ? "10px 10px 0 0" : 10,
+                padding: "14px 18px", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...bebas, fontSize: 17, letterSpacing: 1, color: C.white }}>📣 Update from Coach</span>
+                {isUpdateNew && <span style={{ background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5 }}>NEW</span>}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {plan.blockUpdateAt && <span style={{ ...mono, fontSize: 10, color: C.muted }}>{fmtCommentTime(plan.blockUpdateAt).split(" · ")[0]}</span>}
+                <span style={{ ...mono, fontSize: 13, color: C.muted }}>{updateOpen ? "▲" : "▼"}</span>
+              </span>
+            </button>
+            {updateOpen && (
+              <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "14px 16px 16px" }}>
+                <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockUpdate, C.white)}</div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Plan Overview — an unmistakable button on the home page. Starts
             collapsed; tapping expands the overview (image + notes) below it. */}
@@ -4800,14 +4858,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
 
         {/* Athlete info modal */}
         {showAthleteInfo && ReactDOM.createPortal(
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAthleteInfo(false)}>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => { setShowAthleteInfo(false); if (plan.blockUpdate) markUpdateSeen(); }}>
             <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "85vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 420, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
                 <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 20px 16px" }}>
                 <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>{athlete.name}</div>
-                <button onClick={() => setShowAthleteInfo(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
+                <button onClick={() => { setShowAthleteInfo(false); if (plan.blockUpdate) markUpdateSeen(); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 24px" }}>
                 {plan.blockUpdate && (
@@ -4923,10 +4981,10 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
               <div style={{ background: modalBg, border: `1px solid ${modalBorder}`, borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${modalBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: modalBg }}>
                   <div>
-                    <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, color: modalText }}>Update</div>
+                    <div style={{ ...bebas, fontSize: 22, letterSpacing: 1, color: modalText }}>📣 Update from Coach</div>
                     <div style={{ ...mono, fontSize: 10, color: modalMuted, marginTop: 2 }}>{athlete.name}</div>
                   </div>
-                  <button onClick={() => setShowUpdate(false)} style={{ background: "none", border: "none", color: modalMuted, cursor: "pointer", fontSize: 20 }}>✕</button>
+                  <button onClick={closeUpdateModal} style={{ background: "none", border: "none", color: modalMuted, cursor: "pointer", fontSize: 20 }}>✕</button>
                 </div>
                 <div style={{ flex: 1, overflowY: "auto", background: modalBg }}>
                   <div style={{ padding: "20px 24px", fontSize: 13, color: modalText, background: modalBg }}>
@@ -4934,7 +4992,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
                   </div>
                 </div>
                 <div style={{ padding: "14px 24px", borderTop: `1px solid ${modalBorder}`, flexShrink: 0, background: modalBg }}>
-                  <button onClick={() => setShowUpdate(false)} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
+                  <button onClick={closeUpdateModal} style={{ ...mono, fontSize: 11, padding: "8px 18px", borderRadius: 6, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it</button>
                 </div>
               </div>
             </div>
@@ -6759,7 +6817,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <FatigueLog athlete={selected} isCoach={true} />
             </div>
           ) : (
-            <AthleteView athlete={selected} plan={plans[selected.id]} progress={progress[selected.id]||{}}
+            <AthleteView previewMode athlete={selected} plan={plans[selected.id]} progress={progress[selected.id]||{}}
               onProgressChange={(d,e,ep) => onProgressChange(selected.id,d,e,ep)}
               onOverflowChange={(ov) => onOverflowChange(selected.id,ov)}
               onEditExercise={(d,ex) => onEditExercise(selected.id,d,ex)}
