@@ -373,6 +373,48 @@ async function dbGetCoachNote(coachKey) {
 async function dbSaveCoachNote(coachKey, body) {
   try { await sb.from('coach_notes').upsert({ coach_id: coachKey, body }); } catch(e) {}
 }
+// v39: pinned-week math lives here (was copy-pasted in 3 places).
+// Override shapes:
+//   { weekIdx, setOnDate, changeoverDay }  changeoverDay 0=Sun..6=Sat — advances
+//       one week on each changeover day strictly AFTER setOnDate.
+//   { weekIdx, setOnDate }  (pre-v39) — advances every 7 days from setOnDate.
+//   number (legacy) — static.
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+function parseLocalDate(str) { const [y, m, d] = String(str).split("-").map(Number); return new Date(y, m - 1, d); }
+function daysBetween(a, b) { return Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000); }
+// First changeover date strictly after `anchor`.
+function firstChangeoverAfter(anchor, cd) {
+  const add = ((cd - anchor.getDay() + 7) % 7) || 7;
+  return new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + add);
+}
+// Raw (unclamped) weeks advanced since the pin, as of `today`.
+function pinWeeksSince(ov, today) {
+  const anchor = parseLocalDate(ov.setOnDate);
+  if (typeof ov.changeoverDay === "number") {
+    const first = firstChangeoverAfter(anchor, ov.changeoverDay);
+    const d = daysBetween(first, today);
+    return d < 0 ? 0 : 1 + Math.floor(d / 7);
+  }
+  return Math.max(0, Math.floor(daysBetween(anchor, today) / 7));
+}
+function overrideWeekIdx(ov, weeksLen) {
+  if (ov == null || !weeksLen) return null;
+  if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    return Math.min(ov.weekIdx + pinWeeksSince(ov, now), weeksLen - 1);
+  }
+  if (typeof ov === "number") return Math.min(ov, weeksLen - 1);
+  return null;
+}
+// Next date the pinned week will roll over (null if none / unknown day).
+function nextChangeoverDate(ov) {
+  if (!ov || typeof ov !== "object" || typeof ov.changeoverDay !== "number") return null;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const anchor = parseLocalDate(ov.setOnDate);
+  const base = now < anchor ? anchor : now;
+  return firstChangeoverAfter(base, ov.changeoverDay);
+}
+
 // Current week for a plan: pinned override (auto-advancing from its anchor
 // date) wins; else derived from blockStart. Mirrors the plan-editor logic.
 function computeCurrentWeekIdx(plan) {
@@ -380,15 +422,8 @@ function computeCurrentWeekIdx(plan) {
   if (!weeksLen) return null;
   const ov = plan?.currentWeekOverride;
   const now = new Date(); now.setHours(0, 0, 0, 0);
-  if (ov != null) {
-    if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
-      const [ay, am, ad] = ov.setOnDate.split("-").map(Number);
-      const anchor = new Date(ay, am - 1, ad);
-      const weeksSince = Math.max(0, Math.floor((now - anchor) / (7 * 24 * 60 * 60 * 1000)));
-      return Math.min(ov.weekIdx + weeksSince, weeksLen - 1);
-    }
-    if (typeof ov === "number") return Math.min(ov, weeksLen - 1);
-  }
+  const ovIdx = overrideWeekIdx(ov, weeksLen);
+  if (ovIdx != null) return ovIdx;
   if (!plan?.blockStart) return null;
   const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
   const start = new Date(sy, sm - 1, sd);
@@ -1759,7 +1794,8 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
   const [showBlockOverview, setShowBlockOverview] = useState(false);
   const [overviewExpanded, setOverviewExpanded] = useState({});
   const [savingTemplate, setSavingTemplate] = useState(null); // {type, data} prompt for name
-  const [templateWeekPick, setTemplateWeekPick] = useState([]); // v35: week indices included when saving a block template
+  const [templateWeekPick, setTemplateWeekPick] = useState([]);
+  const [pinPrompt, setPinPrompt] = useState(null); // v39: { weekIdx, day } — pin + changeover-day prompt // v35: week indices included when saving a block template
   const [templateName, setTemplateName] = useState("");
   const [showWeekTemplates, setShowWeekTemplates] = useState(false);
   const [showDayTemplates, setShowDayTemplates] = useState(false);
@@ -1770,19 +1806,8 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
 
   // figure out current week number for coach context
   const currentWeekIdx = (() => {
-    const ov = plan?.currentWeekOverride;
-    if (ov != null) {
-      // New shape: { weekIdx, setOnDate } — self-progresses from anchor.
-      if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
-        const [ay, am, ad] = ov.setOnDate.split("-").map(Number);
-        const anchor = new Date(ay, am - 1, ad);
-        const now = new Date(); now.setHours(0, 0, 0, 0);
-        const weeksSince = Math.max(0, Math.floor((now - anchor) / (7 * 24 * 60 * 60 * 1000)));
-        return Math.min(ov.weekIdx + weeksSince, weeks.length - 1);
-      }
-      // Legacy shape: plain integer. Treat as static.
-      if (typeof ov === "number") return Math.min(ov, weeks.length - 1);
-    }
+    const ovIdx = overrideWeekIdx(plan?.currentWeekOverride, weeks.length);
+    if (ovIdx != null) return ovIdx;
     if (!plan?.blockStart) return null;
     const [sy, sm, sd] = plan.blockStart.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd);
@@ -1891,7 +1916,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
           <button onClick={() => { if (currentWeekIdx != null) setActiveWeek(currentWeekIdx); }}
             title={currentWeekIdx != null ? "Jump to this week" : "Select a week tab, then tap 📍 to set it as this week"}
             style={{ ...mono, fontSize: 11, padding: "9px 14px", borderRadius: 7, border: `1px solid ${C.border}`, background: "none", color: C.muted, cursor: currentWeekIdx != null ? "pointer" : "default" }}>
-            {currentWeekIdx != null ? `This week: ${weeks[currentWeekIdx]?.label || `Week ${currentWeekIdx + 1}`}${plan?.currentWeekOverride != null ? " 📍" : ""}` : "This week: not set — 📍 a week"}
+            {currentWeekIdx != null ? `This week: ${weeks[currentWeekIdx]?.label || `Week ${currentWeekIdx + 1}`}${plan?.currentWeekOverride != null ? " 📍" : ""}${typeof plan?.currentWeekOverride?.changeoverDay === "number" ? ` · rolls over ${DAY_NAMES[plan.currentWeekOverride.changeoverDay].slice(0, 3)}` : ""}` : "This week: not set — 📍 a week"}
           </button>
           {athlete.id !== TEMPLATE_CREATOR_ID && <button onClick={openPublish} style={{ ...mono, fontSize: 11, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer", letterSpacing: 0.5, fontWeight: 500 }}>
             Publish to Athlete ↗
@@ -2103,15 +2128,10 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
               {isActive && editingWeekLabel !== i && (
                 <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "center" }}>
                   <button onClick={() => {
-                    // v30: tap-to-pin "this week". Pin anchors auto-advance from
-                    // today ({weekIdx, setOnDate}); tapping the pin on the week
-                    // that's already current clears the override (back to
-                    // blockStart-based auto).
-                    const pinnedHere = plan?.currentWeekOverride != null && currentWeekIdx === i;
-                    onPlanChange(pinnedHere
-                      ? { ...plan, currentWeekOverride: null }
-                      : { ...plan, currentWeekOverride: { weekIdx: i, setOnDate: localDateStr() } });
-                  }} title={currentWeekIdx === i ? (plan?.currentWeekOverride != null ? "Pinned as this week — tap to unpin" : "This week (from start date) — tap to pin") : "Set as this week"}
+                    // v39: pin opens a prompt to choose the changeover day.
+                    const ov = plan?.currentWeekOverride;
+                    setPinPrompt({ weekIdx: i, day: (ov && typeof ov === "object" && typeof ov.changeoverDay === "number") ? ov.changeoverDay : 1 });
+                  }} title={currentWeekIdx === i ? (plan?.currentWeekOverride != null ? "Pinned as this week — tap to change rollover day or unpin" : "This week (from start date) — tap to pin") : "Set as this week"}
                     style={{ ...mono, fontSize: 10, padding: "2px 5px", background: currentWeekIdx === i ? "rgba(91,127,166,0.15)" : "none", border: `1px solid ${currentWeekIdx === i ? C.purple : C.border}`, borderRadius: 3, color: currentWeekIdx === i ? C.purple : C.muted, cursor: "pointer" }}>📍</button>
                   <button onClick={() => moveWeek(i, -1)} disabled={i===0} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===0?"#ccc":C.muted, cursor: i===0?"default":"pointer" }}>←</button>
                   <button onClick={() => moveWeek(i, 1)} disabled={i===weeks.length-1} style={{ ...mono, fontSize: 10, padding: "2px 5px", background: "none", border: `1px solid ${C.border}`, borderRadius: 3, color: i===weeks.length-1?"#ccc":C.muted, cursor: i===weeks.length-1?"default":"pointer" }}>→</button>
@@ -2167,6 +2187,52 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
           onInsertDayTemplate={() => setShowDayTemplates(true)}
         />
       )}
+
+      {/* v39: pin prompt — choose changeover day */}
+      {pinPrompt && (() => {
+        const ov = plan?.currentWeekOverride;
+        const pinnedHere = ov != null && currentWeekIdx === pinPrompt.weekIdx;
+        const wkLabel = weeks[pinPrompt.weekIdx]?.label || `Week ${pinPrompt.weekIdx + 1}`;
+        const nextLabel = weeks[pinPrompt.weekIdx + 1]?.label;
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const firstRoll = firstChangeoverAfter(today, pinPrompt.day);
+        const fmt = d => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+        const save = () => {
+          onPlanChange({ ...plan, currentWeekOverride: { weekIdx: pinPrompt.weekIdx, setOnDate: localDateStr(), changeoverDay: pinPrompt.day } });
+          setActiveWeek(pinPrompt.weekIdx);
+          setPinPrompt(null);
+        };
+        return (
+          <div onClick={() => setPinPrompt(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 10, width: 400, maxWidth: "100%", padding: 24, boxSizing: "border-box" }}>
+              <div style={{ ...bebas, fontSize: 20, marginBottom: 4 }}>📍 Pin {wkLabel} as this week</div>
+              <p style={{ ...mono, fontSize: 11, color: C.muted, marginBottom: 14 }}>Pick the day {athlete.name}'s week rolls over. The plan advances one week every time that day comes around.</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 14 }}>
+                {[1, 2, 3, 4, 5, 6, 0].map(d => {
+                  const on = pinPrompt.day === d;
+                  return (
+                    <button key={d} onClick={() => setPinPrompt(p => ({ ...p, day: d }))}
+                      style={{ ...mono, fontSize: 11, padding: "9px 0", borderRadius: 6, border: `1px solid ${on ? C.purple : C.border}`, background: on ? "rgba(91,127,166,0.15)" : C.gray2, color: on ? C.purple : C.white, cursor: "pointer" }}>{DAY_NAMES[d].slice(0, 3)}</button>
+                  );
+                })}
+              </div>
+              <div style={{ ...mono, fontSize: 11, color: C.white, background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", marginBottom: 16, lineHeight: 1.6 }}>
+                {wkLabel} starts now.<br />
+                {nextLabel ? <>{nextLabel} starts {fmt(firstRoll)}, then every {DAY_NAMES[pinPrompt.day]}.</> : <>This is the last week. It stays current until you add more.</>}
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+                {pinnedHere
+                  ? <button onClick={() => { onPlanChange({ ...plan, currentWeekOverride: null }); setPinPrompt(null); }} style={{ ...mono, fontSize: 11, padding: "8px 12px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: "#a05555", cursor: "pointer" }}>Unpin</button>
+                  : <span />}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setPinPrompt(null)} style={{ ...mono, fontSize: 11, padding: "8px 14px", background: "none", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, cursor: "pointer" }}>Cancel</button>
+                  <button onClick={save} style={{ ...mono, fontSize: 11, padding: "8px 16px", background: C.purple, border: "none", borderRadius: 5, color: "#fff", cursor: "pointer" }}>Pin</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Save template name prompt */}
       {savingTemplate && (
@@ -3085,20 +3151,8 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
     // Coach override takes precedence over the date-based computation.
     // New shape: { weekIdx, setOnDate } — anchor that self-progresses by week.
     // Legacy shape: plain integer — treated as static.
-    const ov = plan?.currentWeekOverride;
     const weeksLen = plan?.weeks?.length ?? 1;
-    let overrideWeek = null;
-    if (ov != null) {
-      if (typeof ov === "object" && typeof ov.weekIdx === "number" && typeof ov.setOnDate === "string") {
-        const [ay, am, ad] = ov.setOnDate.split("-").map(Number);
-        const anchor = new Date(ay, am - 1, ad);
-        const now = new Date(); now.setHours(0, 0, 0, 0);
-        const weeksSince = Math.max(0, Math.floor((now - anchor) / (7 * 24 * 60 * 60 * 1000)));
-        overrideWeek = Math.min(ov.weekIdx + weeksSince, weeksLen - 1);
-      } else if (typeof ov === "number") {
-        overrideWeek = Math.min(ov, weeksLen - 1);
-      }
-    }
+    const overrideWeek = overrideWeekIdx(plan?.currentWeekOverride, weeksLen);
     if (overrideWeek != null) {
       // If the override week is published, use it directly.
       // If not, use the highest published week that doesn't exceed it.
