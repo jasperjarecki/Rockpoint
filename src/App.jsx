@@ -1016,7 +1016,51 @@ function ExercisePicker({ onAdd, onClose }) {
 }
 
 // ── DAY EDITOR (used inside week editor) ─────────────────────────────────────
-function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopyDay, templates = [], onSaveTemplate, onInsertDayTemplate, sharedDay, setSharedDay }) {
+// v41: "athlete can choose a different day" stores DAY INDICES. Indices go
+// stale when an exercise is pasted into the day it pointed at, or days are
+// moved/removed — the athlete then saw "I'll complete this on <its own day>"
+// with nothing lit on the coach side. Sanitize: drop own-day, out-of-range and
+// duplicate indices. _wasShared marks exercises that lost ALL their indices so
+// the athlete view can still find progress saved under the shared key.
+function sanitizeDaysShared(days) {
+  if (!Array.isArray(days)) return days;
+  const len = days.length;
+  let changed = false;
+  const out = days.map((d, di) => {
+    if (!d || !Array.isArray(d.exercises)) return d;
+    let dChanged = false;
+    const exs = d.exercises.map(ex => {
+      if (!ex || !Array.isArray(ex.sharedDays) || !ex.sharedDays.length) return ex;
+      const clean = [...new Set(ex.sharedDays)].filter(x => Number.isInteger(x) && x >= 0 && x < len && x !== di);
+      if (clean.length === ex.sharedDays.length) return ex;
+      dChanged = true;
+      return clean.length ? { ...ex, sharedDays: clean } : { ...ex, sharedDays: [], _wasShared: true };
+    });
+    if (!dChanged) return d;
+    changed = true;
+    return { ...d, exercises: exs };
+  });
+  return changed ? out : days;
+}
+// Remap shared-day indices after days move/are removed. map(oldIdx) -> newIdx | null.
+function remapDaysShared(days, map) {
+  return days.map(d => ({
+    ...d,
+    exercises: (d.exercises || []).map(ex => {
+      if (!Array.isArray(ex.sharedDays) || !ex.sharedDays.length) return ex;
+      const sd = ex.sharedDays.map(map).filter(x => x != null);
+      let pos = ex.sharedDayPositions;
+      if (pos) { pos = {}; Object.entries(ex.sharedDayPositions).forEach(([k, v]) => { const nk = map(Number(k)); if (nk != null) pos[nk] = v; }); }
+      return { ...ex, sharedDays: sd, ...(pos ? { sharedDayPositions: pos } : {}) };
+    }),
+  }));
+}
+const stripShared = (ex) => { const { sharedDays, sharedDayPositions, _wasShared, ...rest } = ex; return rest; };
+
+function DayEditor({ days: rawDays, onDaysChange: rawOnDaysChange, clipboard, onCopy, dayClipboard, onCopyDay, templates = [], onSaveTemplate, onInsertDayTemplate, sharedDay, setSharedDay }) {
+  // v41: edit from (and save) sanitized shared-day indices — heals stale data on any edit
+  const days = React.useMemo(() => sanitizeDaysShared(rawDays || []), [rawDays]);
+  const onDaysChange = (nd) => rawOnDaysChange(sanitizeDaysShared(nd).map(d => ({ ...d, exercises: (d.exercises || []).map(e => { if (!e._wasShared) return e; const { _wasShared, ...r } = e; return r; }) })));
   const [_activeDay, _setActiveDay] = useState(0);
   const activeDay = sharedDay !== undefined ? sharedDay : _activeDay;
   const setActiveDay = setSharedDay || _setActiveDay;
@@ -1027,16 +1071,17 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
   const updateDay = (i, exs) => onDaysChange(days.map((d, j) => j===i ? {...d, exercises: exs} : d));
   const renameDay = (i, l) => onDaysChange(days.map((d, j) => j===i ? {...d, label: l} : d));
   const addDay = () => { const nd = [...days, {label:`Day ${days.length+1}`, exercises:[]}]; onDaysChange(nd); setActiveDay(nd.length-1); };
-  const removeDay = (i) => { if(days.length<=1) return; const nd=days.filter((_,j)=>j!==i); onDaysChange(nd); setActiveDay(Math.min(activeDay, nd.length-1)); };
+  const removeDay = (i) => { if(days.length<=1) return; const nd=remapDaysShared(days.filter((_,j)=>j!==i), x => x === i ? null : x > i ? x - 1 : x); onDaysChange(nd); setActiveDay(Math.min(activeDay, nd.length-1)); };
   const moveDay = (i, dir) => {
     const j = i + dir;
     if (j < 0 || j >= days.length) return;
-    const nd = [...days];
-    [nd[i], nd[j]] = [nd[j], nd[i]];
+    const swapped = [...days];
+    [swapped[i], swapped[j]] = [swapped[j], swapped[i]];
+    const nd = remapDaysShared(swapped, x => x === i ? j : x === j ? i : x);
     onDaysChange(nd);
     setActiveDay(j);
   };
-  const pasteDay = () => { if(!dayClipboard) return; const nd=[...days,{label:dayClipboard.label+" (copy)",exercises:dayClipboard.exercises.map(e=>({...e,id:uid()}))}]; onDaysChange(nd); setActiveDay(nd.length-1); };
+  const pasteDay = () => { if(!dayClipboard) return; const nd=[...days,{label:dayClipboard.label+" (copy)",exercises:dayClipboard.exercises.map(e=>({...stripShared(e),id:uid()}))}]; onDaysChange(nd); setActiveDay(nd.length-1); };
   const addExercise = (ex) => updateDay(activeDay, [...(days[activeDay]?.exercises||[]), ex]);
   const removeExercise = (id) => updateDay(activeDay, days[activeDay].exercises.filter(e=>e.id!==id));
   const moveEx = (id, dir) => { const exs=[...days[activeDay].exercises]; const i=exs.findIndex(e=>e.id===id); if(i+dir<0||i+dir>=exs.length) return; [exs[i],exs[i+dir]]=[exs[i+dir],exs[i]]; updateDay(activeDay,exs); };
@@ -1242,7 +1287,7 @@ function DayEditor({ days, onDaysChange, clipboard, onCopy, dayClipboard, onCopy
 
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => setShowPicker(true)} style={{ flex: 1, padding: "12px", borderRadius: 8, border: `1px dashed ${C.orange}`, background: "rgba(61,158,122,0.06)", color: C.orange, cursor: "pointer", ...mono, fontSize: 12 }}>+ Add Exercise</button>
-        {clipboard && <button onClick={() => addExercise({...clipboard,id:uid()})} style={{ padding: "12px 14px", borderRadius: 8, border: `1px dashed ${C.purple}`, background: "rgba(91,127,166,0.06)", color: C.purple, cursor: "pointer", ...mono, fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⎘ {clipboard.text.length>18?clipboard.text.slice(0,18)+"…":clipboard.text}</button>}
+        {clipboard && <button onClick={() => addExercise({...stripShared(clipboard),id:uid()})} style={{ padding: "12px 14px", borderRadius: 8, border: `1px dashed ${C.purple}`, background: "rgba(91,127,166,0.06)", color: C.purple, cursor: "pointer", ...mono, fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⎘ {clipboard.text.length>18?clipboard.text.slice(0,18)+"…":clipboard.text}</button>}
       </div>
       {showPicker && <ExercisePicker onAdd={addExercise} onClose={() => setShowPicker(false)} />}
     </div>
@@ -3134,7 +3179,14 @@ function FatigueLog({ athlete, isCoach = false, forcedView = null, autoOpenLog =
   );
 }
 
-function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onReplySeen, previewMode = false }) {
+function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOverflowChange, onEditExercise, onLogout, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, darkMode, onToggleDark, unreadReplies = [], onReplySeen, previewMode = false }) {
+  // v41: ignore stale shared-day indices (own day / out of range) at read
+  const plan = React.useMemo(() => {
+    if (!rawPlan?.weeks) return rawPlan;
+    let changed = false;
+    const weeks = rawPlan.weeks.map(wk => { const days = sanitizeDaysShared(wk?.days); if (days === wk?.days) return wk; changed = true; return { ...wk, days }; });
+    return changed ? { ...rawPlan, weeks } : rawPlan;
+  }, [rawPlan]);
   const OVF = "overflow";
 
   // figure out which week to default to
@@ -3244,7 +3296,9 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
   // get progress for an exercise — shared ones use their own key
   const getEp = (ex) => {
     if (ex.sharedDays?.length || ex._isShared) return (progress[sharedKey(ex.id)] || {})[ex.id] || {};
-    return dayProg[ex.id] || {};
+    // v41: exercise whose only shared day was invalid — fall back to progress
+    // saved under the shared key so past checks/notes aren't lost.
+    return dayProg[ex.id] || (ex._wasShared ? (progress[sharedKey(ex.id)] || {})[ex.id] : null) || {};
   };
 
   const doneCount = visibleExs.filter(e => getEp(e).checked).length;
@@ -3255,14 +3309,14 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
       const ep = (progress[sharedKey(ex.id)] || {})[ex.id] || {};
       onProgressChange(sharedKey(ex.id), ex.id, { ...ep, checked: !ep.checked });
     } else {
-      const ep = dayProg[ex.id] || {};
+      const ep = getEp(ex);
       onProgressChange(pk, ex.id, { ...ep, checked: !ep.checked });
     }
   };
   const handleNote = (ex, val, selectedOption, defer) => {
     const isSharedEx = (ex.sharedDays?.length || ex._isShared);
     const key = isSharedEx ? sharedKey(ex.id) : pk;
-    const ep = isSharedEx ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : (dayProg[ex.id] || {});
+    const ep = isSharedEx ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : getEp(ex);
     const update = { ...ep, note: val };
     if (selectedOption !== undefined) update.selectedOption = selectedOption;
     if (defer !== undefined) update.deferToOtherDay = !ep.deferToOtherDay;
@@ -5069,7 +5123,7 @@ function AthleteView({ athlete, plan, progress, onProgressChange, onOverflowChan
             // .length matters: an exercise with sharedDays []  (multi-day toggled
             // on then off) stores checks under the DAY key like any normal
             // exercise — a bare truthiness test misread it from the shared key.
-            const done = allVis.filter(e => (e.sharedDays?.length ? (progress[`shared_${e.id}`] || {}) : dp)[e.id]?.checked).length;
+            const done = allVis.filter(e => (e.sharedDays?.length ? (progress[`shared_${e.id}`] || {}) : dp)[e.id]?.checked || (e._wasShared && !dp[e.id] && (progress[`shared_${e.id}`] || {})[e.id]?.checked)).length;
             const total = allVis.length;
             const isActive = activeDay === i;
             const allDone = done === total && total > 0;
@@ -6752,7 +6806,7 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                           <span style={{ ...mono, fontSize: 10, color: C.orange }}>{plans[a.id].published.length} week{plans[a.id].published.length !== 1 ? "s" : ""} live</span>
                           {left != null && left <= 2 && (
                             <span style={{ ...mono, fontSize: 9, padding: "1px 6px", borderRadius: 4, color: "#fff", background: left <= 1 ? "#c0392b" : "#b07d2b" }}>
-                              {left <= 0 ? "out of weeks" : left === 1 ? "⚠ 1 week left" : "2 weeks left"}
+                              {left <= 0 ? "⛔ Out of weeks" : left === 1 ? "⚠ Last week!" : "Ends next week"}
                             </span>
                           )}
                           {idle != null && idle >= 3 && (
