@@ -6681,6 +6681,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
               <button onClick={() => setMode("coach")} style={btnS(mode==="coach")}>Coach</button>
               <button onClick={() => setMode("athlete")} style={btnS(mode==="athlete")}>Athlete</button>
               {selectedId === "bzmmql6" && <button onClick={() => setMode("fatigue")} style={btnS(mode==="fatigue")}>Volume</button>}
+              {/* v42: inbox on mobile (was desktop-only) */}
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <button onClick={() => { setMobileMenuOpen(false); onOpenInbox(selectedId || null); }} title="Athlete notes" style={btnS(false)}>💬</button>
+                {unreadComments?.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: "#c0392b", color: "#fff", borderRadius: 8, minWidth: 16, height: 16, padding: "0 3px", boxSizing: "border-box", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", ...mono, pointerEvents: "none" }}>{unreadComments.length > 99 ? "99+" : unreadComments.length}</span>}
+              </div>
               <button onClick={() => setMobileMenuOpen(v => !v)} title="Menu"
                 style={{ ...mono, fontSize: 16, padding: "6px 10px", borderRadius: 4, border: `1px solid ${mobileMenuOpen ? C.orange : C.border}`, background: mobileMenuOpen ? "rgba(224,122,58,0.08)" : "none", color: mobileMenuOpen ? C.orange : C.muted, cursor: "pointer", lineHeight: 1 }}>≡</button>
             </div>
@@ -7481,6 +7486,7 @@ function AppInner() {
   const [athleteComments, setAthleteComments] = useState({});
   const [athleteUnreadReplies, setAthleteUnreadReplies] = useState([]); // coach replies the athlete hasn't seen
   const [showInbox, setShowInbox] = useState(false);
+  const inboxMobile = useIsMobile(); // v42: inbox as a bottom sheet on phones
   const [inboxAthleteId, setInboxAthleteId] = useState(null);
   // Keyed by comment id — one draft per comment, not one shared string
   // (a single shared draft mirrored typing into every reply box).
@@ -7861,11 +7867,11 @@ function AppInner() {
   const visibleAthletes = session.isAdmin ? athletes : athletes.filter(a => a.coach_id === session.coachId);
 
   const inboxOverlay = showInbox ? (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 800, display: 'flex', alignItems: inboxMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: inboxMobile ? 0 : 20 }}
       onClick={() => setShowInbox(false)}>
-      <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      <div style={{ background: C.gray, border: `1px solid ${C.border}`, borderRadius: inboxMobile ? '14px 14px 0 0' : 12, width: '100%', maxWidth: inboxMobile ? 'none' : 520, maxHeight: inboxMobile ? '92dvh' : '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         onClick={e => e.stopPropagation()}>
-        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: inboxMobile ? '16px 16px 12px' : '20px 24px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ ...bebas, fontSize: 22, color: C.white }}>Athlete Notes</div>
             {inboxAthleteId && (
@@ -7883,7 +7889,7 @@ function AppInner() {
           </div>
           <button onClick={() => setShowInbox(false)} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
-        <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px' }}>
+        <div style={{ overflowY: 'auto', flex: 1, padding: inboxMobile ? '12px 14px calc(16px + env(safe-area-inset-bottom, 0px))' : '16px 24px', WebkitOverflowScrolling: 'touch' }}>
           {/* v28: athlete-separated inbox. Unscoped = list of athletes with
               unread counts + latest note preview; tap opens that athlete's
               thread (and marks their notes read, same as before). */}
@@ -7976,7 +7982,7 @@ function AppInner() {
                         return (
                         <div>
                           <textarea value={draft} onChange={e => setReplyDrafts(prev => ({ ...prev, [c.id]: e.target.value }))} placeholder='Reply to athlete...' rows={2}
-                            style={{ width: '100%', background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px', color: C.white, fontSize: 12, outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans',sans-serif", boxSizing: 'border-box', marginBottom: 6 }} />
+                            style={{ width: '100%', background: C.gray, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px', color: C.white, fontSize: inboxMobile ? 16 : 12, outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans',sans-serif", boxSizing: 'border-box', marginBottom: 6 }} />
                           <button disabled={saving || !draft.trim()} onClick={async () => {
                             if (!draft.trim()) return;
                             setReplySavingId(c.id);
