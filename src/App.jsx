@@ -174,6 +174,40 @@ const ATHLETE_LOGS_PAGE_ID = "__athlete_logs__";
 // v38: tiny stable string hash (update seen-key fallback when no timestamp)
 function hashStr(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
 
+// v46: read-tracking keys for the coach Update and the Plan Overview.
+// A key changes whenever the content changes; "seen" = the athlete tapped
+// Got it on that key. Stored in progress._meta.{updateSeen, overviewSeen}.
+function updateKeyOf(plan) {
+  return plan?.blockUpdate && String(plan.blockUpdate).trim()
+    ? (plan.blockUpdateAt || ("h" + hashStr(String(plan.blockUpdate))))
+    : null;
+}
+function overviewKeyOf(plan) {
+  const notes = String(plan?.blockNotes || "").trim();
+  const img = plan?.blockImageUrl || "";
+  return (notes || img) ? "h" + hashStr(notes + "|" + img) : null;
+}
+function readStatus(plan, progress) {
+  const meta = (progress && progress._meta) || {};
+  const uKey = updateKeyOf(plan), oKey = overviewKeyOf(plan);
+  const legacyUpdateSeen = !!(plan?.blockUpdateAt && meta._lastViewedUpdate && plan.blockUpdateAt <= meta._lastViewedUpdate);
+  const uSeen = !!uKey && (meta.updateSeen?.key === uKey || legacyUpdateSeen);
+  const oSeen = !!oKey && meta.overviewSeen?.key === oKey;
+  return {
+    update: uKey ? { key: uKey, seen: uSeen, at: uSeen ? (meta.updateSeen?.at || null) : null } : null,
+    overview: oKey ? { key: oKey, seen: oSeen, at: oSeen ? (meta.overviewSeen?.at || null) : null } : null,
+  };
+}
+// Coach-side receipt line
+function ReadReceipt({ status, name }) {
+  if (!status) return null;
+  return (
+    <div style={{ ...mono, fontSize: 10, marginTop: 6, color: status.seen ? "#2aaa5e" : "#b07d2b" }}>
+      {status.seen ? `✓ Seen by ${name}${status.at ? " · " + fmtCommentTime(status.at) : ""}` : `Not seen yet by ${name}`}
+    </div>
+  );
+}
+
 // v36: comment timestamp, viewer's local time. "Oct 25 · 10:36 PM"; year added if not this year.
 function fmtCommentTime(ts) {
   if (!ts) return "";
@@ -1394,7 +1428,7 @@ function useIsMobile() {
 // Mobile plan editor — drill-down through Weeks -> Days -> Exercises.
 // Pass 2: reorder mode, add-exercise sheet, undo toast, block-info card,
 // "More" expand on each exercise card.
-function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
+function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, athleteProgress }) {
   // view: "weeks" | "days" | "day"
   const [view, setView] = useState("weeks");
   const [weekIdx, setWeekIdx] = useState(0);
@@ -1580,7 +1614,11 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
           <div style={{ marginBottom: 14, background: C.gray, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
             <button onClick={() => setShowBlockInfo(v => !v)}
               style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "12px 14px", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Block Info</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1 }}>Block Info</span>
+                {(() => { const st = readStatus(plan, athleteProgress); const un = [st.update && !st.update.seen && "update", st.overview && !st.overview.seen && "overview"].filter(Boolean);
+                  return un.length ? <span style={{ ...mono, fontSize: 9, padding: "1px 6px", borderRadius: 4, color: "#fff", background: C.purple }}>📣 unseen {un.join(" + ")}</span> : null; })()}
+              </span>
               <span style={{ ...mono, fontSize: 12, color: C.muted }}>{showBlockInfo ? "▲" : "▼"}</span>
             </button>
             {showBlockInfo && (
@@ -1599,12 +1637,14 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                 </div>
                 <div>
                   <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK OVERVIEW (athletes see this)</div>
+                  <ReadReceipt status={readStatus(plan, athleteProgress).overview} name={athlete?.name?.split(" ")[0] || "athlete"} />
                   <textarea value={plan?.blockNotes || ""} onChange={e => updateBlock({ blockNotes: e.target.value })}
                     placeholder="Coaching notes for this block. Markdown OK." rows={3}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
                 </div>
                 <div>
                   <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK UPDATE (visible to athlete)</div>
+                  <ReadReceipt status={readStatus(plan, athleteProgress).update} name={athlete?.name?.split(" ")[0] || "athlete"} />
                   <textarea value={plan?.blockUpdate || ""} onChange={e => updateBlock({ blockUpdate: e.target.value, blockUpdateAt: new Date().toISOString() })}
                     placeholder="Message for the athlete. Markdown OK." rows={3}
                     style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px", color: C.white, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
@@ -1906,7 +1946,7 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
   return null;
 }
 
-function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [], onSaveTemplate, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay }) {
+function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [], onSaveTemplate, sharedWeekIdx, setSharedWeekIdx, sharedDay, setSharedDay, athleteProgress }) {
   const [_activeWeek, _setActiveWeek] = useState(0);
   const activeWeek = sharedWeekIdx !== undefined ? sharedWeekIdx : _activeWeek;
   const setActiveWeek = setSharedWeekIdx || _setActiveWeek;
@@ -2130,6 +2170,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
               style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", colorScheme: "light dark", ...mono }} />
           </div>
         </div>
+        <ReadReceipt status={readStatus(plan, athleteProgress).overview} name={athlete?.name?.split(" ")[0] || "athlete"} />
         <RichTextEditor value={plan?.blockNotes || ""} onChange={v => onPlanChange({ ...plan, blockNotes: v })}
           placeholder="Write notes about the goals, purpose, and context of this training block. Use **bold**, *italic*, - bullets. Athletes will see this when they tap 'Overview'."
           rows={4} />
@@ -2232,6 +2273,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
         <RichTextEditor value={plan?.blockUpdate || ""} onChange={v => onPlanChange({ ...plan, blockUpdate: v, blockUpdateAt: new Date().toISOString() })}
           placeholder="Write a quick update for your athlete — schedule changes, block adjustments, etc."
           rows={3} />
+        <ReadReceipt status={readStatus(plan, athleteProgress).update} name={athlete?.name?.split(" ")[0] || "athlete"} />
       </div>
 
       {/* Week tabs */}
@@ -3455,25 +3497,20 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
   // stays on the home page as a toggleable card. Seen-state is saved in
   // progress._meta.updateSeen = { key, at }. Coach preview never marks seen.
   const [updateOpen, setUpdateOpen] = useState(false);
-  const updateKey = plan?.blockUpdate && String(plan.blockUpdate).trim()
-    ? (plan.blockUpdateAt || ("h" + hashStr(String(plan.blockUpdate))))
-    : null;
-  const seenMeta = (progress && progress._meta) || {};
-  const isUpdateNew = !!updateKey
-    && seenMeta.updateSeen?.key !== updateKey
-    && !(plan?.blockUpdateAt && seenMeta._lastViewedUpdate && plan.blockUpdateAt <= seenMeta._lastViewedUpdate);
+  // v46: no more pop-up. Unread Update / Overview sit OPEN above the first
+  // exercise (every day, every session) until the athlete taps Got it.
+  const rs = readStatus(plan, progress);
+  const updateKey = rs.update?.key || null;
+  const isUpdateNew = !!rs.update && !rs.update.seen;
+  const isOverviewNew = !!rs.overview && !rs.overview.seen;
   const markUpdateSeen = () => {
     if (previewMode || !isUpdateNew) return;
     onProgressChange("_meta", "updateSeen", { key: updateKey, at: new Date().toISOString() });
   };
-  const autoPoppedRef = React.useRef(null);
-  useEffect(() => {
-    if (previewMode || !isUpdateNew || !updateKey) return;
-    if (!(plan?.published || []).length) return; // athlete home not showing yet
-    if (autoPoppedRef.current === updateKey) return;
-    autoPoppedRef.current = updateKey;
-    setShowUpdate(true);
-  }, [updateKey, isUpdateNew, previewMode]);
+  const markOverviewSeen = () => {
+    if (previewMode || !isOverviewNew) return;
+    onProgressChange("_meta", "overviewSeen", { key: rs.overview.key, at: new Date().toISOString() });
+  };
   const closeUpdateModal = () => { setShowUpdate(false); markUpdateSeen(); };
   const [highlightExId, setHighlightExId] = useState(null); // banner tap -> scroll to + glow the reply's exercise card
 
@@ -5012,7 +5049,7 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
             collapsed; tapping expands the overview (image + notes) below it. */}
         {(plan.blockNotes || plan.blockImageUrl) && (
           <div style={{ marginBottom: 16 }}>
-            <button onClick={() => setOverviewOpen(v => !v)}
+            <button onClick={() => { setOverviewOpen(v => !v); markOverviewSeen(); }}
               style={{
                 width: "100%",
                 background: overviewOpen ? C.gray2 : C.gray,
@@ -5022,8 +5059,9 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
                 cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
               }}>
-              <span style={{ ...bebas, fontSize: 17, letterSpacing: 1, color: C.white }}>
-                📋 Plan Overview
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...bebas, fontSize: 17, letterSpacing: 1, color: C.white }}>📋 Plan Overview</span>
+                {isOverviewNew && <span style={{ background: C.purple, color: "#fff", ...mono, fontSize: 8, padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5 }}>NEW</span>}
               </span>
               <span style={{ ...mono, fontSize: 13, color: C.muted }}>{overviewOpen ? "▲" : "▼"}</span>
             </button>
@@ -5068,14 +5106,14 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
 
         {/* Athlete info modal */}
         {showAthleteInfo && ReactDOM.createPortal(
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => { setShowAthleteInfo(false); if (plan.blockUpdate) markUpdateSeen(); }}>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 9997, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => { setShowAthleteInfo(false); if (plan.blockUpdate) markUpdateSeen(); markOverviewSeen(); }}>
             <div style={{ background: C.black, borderRadius: "16px 16px 0 0", maxHeight: "85vh", display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, maxWidth: 420, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
                 <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 20px 16px" }}>
                 <div style={{ ...bebas, fontSize: 20, letterSpacing: 1 }}>{athlete.name}</div>
-                <button onClick={() => { setShowAthleteInfo(false); if (plan.blockUpdate) markUpdateSeen(); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
+                <button onClick={() => { setShowAthleteInfo(false); if (plan.blockUpdate) markUpdateSeen(); markOverviewSeen(); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 24px" }}>
                 {plan.blockUpdate && (
@@ -5252,6 +5290,38 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
           <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
             <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.3 }}>📭</div>
             <p style={{ ...mono, fontSize: 12 }}>Nothing skipped yet.</p>
+          </div>
+        )}
+
+        {/* v46: unread Update / Overview, open, right above the first exercise */}
+        {!isOvf && (isUpdateNew || isOverviewNew) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+            {isUpdateNew && (
+              <div style={{ background: "rgba(91,127,166,0.10)", border: `1.5px solid ${C.purple}`, borderRadius: 10, padding: "14px 16px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                  <span style={{ ...bebas, fontSize: 18, letterSpacing: 1, color: C.white }}>📣 Update from Coach</span>
+                  {plan.blockUpdateAt && <span style={{ ...mono, fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{fmtCommentTime(plan.blockUpdateAt).split(" · ")[0]}</span>}
+                </div>
+                <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockUpdate, C.white)}</div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                  <button onClick={markUpdateSeen} style={{ ...mono, fontSize: 12, padding: "9px 18px", borderRadius: 7, border: "none", background: C.purple, color: "#fff", cursor: "pointer" }}>Got it ✓</button>
+                </div>
+              </div>
+            )}
+            {isOverviewNew && (
+              <div style={{ background: C.gray, border: `1.5px solid ${C.orange}`, borderRadius: 10, overflow: "hidden" }}>
+                {plan.blockImageUrl && (
+                  <img src={plan.blockImageUrl} alt="" style={{ width: "100%", maxHeight: 200, objectFit: "cover", objectPosition: `center ${plan.blockImageFocus || "center"}`, display: "block" }} />
+                )}
+                <div style={{ padding: "14px 16px" }}>
+                  <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, color: C.white, marginBottom: 8 }}>📋 Plan Overview</div>
+                  {plan.blockNotes && <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.white)}</div>}
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                    <button onClick={markOverviewSeen} style={{ ...mono, fontSize: 12, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it ✓</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -6923,6 +6993,12 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                       return (
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", marginTop: 3 }}>
                           <span style={{ ...mono, fontSize: 10, color: C.orange }}>{plans[a.id].published.length} week{plans[a.id].published.length !== 1 ? "s" : ""} live</span>
+                          {(() => {
+                            // v46: athlete hasn't acknowledged the current Update / Overview
+                            const st = readStatus(plans[a.id], progress[a.id]);
+                            const un = [st.update && !st.update.seen && "update", st.overview && !st.overview.seen && "overview"].filter(Boolean);
+                            return un.length ? <span title={`Not seen: ${un.join(" + ")}`} style={{ ...mono, fontSize: 9, padding: "1px 6px", borderRadius: 4, color: "#fff", background: C.purple }}>📣 unseen {un.join(" + ")}</span> : null;
+                          })()}
                           {left != null && left <= 2 && (
                             <span style={{ ...mono, fontSize: 9, padding: "1px 6px", borderRadius: 4, color: "#fff", background: left <= 1 ? "#c0392b" : "#b07d2b" }}>
                               {left <= 0 ? "⛔ Out of weeks" : left === 1 ? "⚠ Last week!" : "Ends next week"}
@@ -6992,9 +7068,11 @@ function CoachDashboard({ athletes, allAthletes, plans, progress, credentials, c
                   onPublish={(publishedIndices) => onPublish(selected.id, publishedIndices)}
                   sharedWeekIdx={sharedWeekIdx} setSharedWeekIdx={setSharedWeekIdx}
                   sharedDay={sharedDay} setSharedDay={setSharedDay}
+                  athleteProgress={progress[selected.id]}
                 />
               ) : (
                 <CoachPlanEditor
+                  athleteProgress={progress[selected.id]}
                   athlete={selected}
                   plan={plans[selected.id]}
                   onPlanChange={(p) => { pushHistory(selected.id, plans[selected.id]); onPlanChange(selected.id, p); }}
@@ -7621,6 +7699,32 @@ function AppInner() {
   const progressLoadedRef = React.useRef(false);
   const [progressSaveFailures, setProgressSaveFailures] = useState(0);
   useEffect(() => onProgressSaveFailures(setProgressSaveFailures), []);
+  // v46: coach read-receipts — refresh only the _meta part of each athlete's
+  // progress (seen-state) on focus and every 60s. Never touches checkmarks.
+  useEffect(() => {
+    if (!session || session.role === "athlete") return;
+    let cancelled = false;
+    const pull = async () => {
+      if (!progressLoadedRef.current) return;
+      try {
+        const { data, error } = await sb.from("progress").select("athlete_id, data");
+        if (error || cancelled || !Array.isArray(data)) return;
+        setProgress(prev => {
+          let changed = false; const next = { ...prev };
+          data.forEach(r => {
+            const m = r?.data?._meta; if (!m) return;
+            if (JSON.stringify((prev[r.athlete_id] || {})._meta) === JSON.stringify(m)) return;
+            next[r.athlete_id] = { ...(prev[r.athlete_id] || {}), _meta: m }; changed = true;
+          });
+          return changed ? next : prev;
+        });
+      } catch (e) {}
+    };
+    const onVis = () => { if (document.visibilityState === "visible") pull(); };
+    document.addEventListener("visibilitychange", onVis);
+    const t = setInterval(pull, 60000);
+    return () => { cancelled = true; document.removeEventListener("visibilitychange", onVis); clearInterval(t); };
+  }, [session?.role]);
   useEffect(() => {
     (async () => {
       try {
