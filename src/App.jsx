@@ -311,6 +311,24 @@ async function dbGetPlans() {
   (data || []).forEach(row => { result[row.athlete_id] = migratePlan(row.data); });
   return result;
 }
+// v45: find the exercise a comment refers to. Comments store the week/day the
+// athlete was VIEWING; a multi-day exercise actually lives on its home day, so
+// a direct lookup missed and the inbox showed the raw ID ("y9yi0o2") — and the
+// coach reply skipped the shared slot the athlete's card reads. Search the
+// stored day, then the rest of that week, then the whole plan.
+function findPlanExercise(plan, weekIdx, dayIdx, exId) {
+  const weeks = plan?.weeks || [];
+  const inDay = (wk, di) => wk?.days?.[di]?.exercises?.find(e => e && e.id === exId);
+  let ex = inDay(weeks[weekIdx], dayIdx);
+  if (ex) return ex;
+  const wk = weeks[weekIdx];
+  for (let di = 0; di < (wk?.days?.length || 0); di++) { ex = inDay(wk, di); if (ex) return ex; }
+  for (let wi = 0; wi < weeks.length; wi++) {
+    for (let di = 0; di < (weeks[wi]?.days?.length || 0); di++) { ex = inDay(weeks[wi], di); if (ex) return ex; }
+  }
+  return null;
+}
+
 async function dbSaveAthleteComment(athleteId, weekIdx, dayIdx, exId, body) {
   try {
     const { data: ex } = await sb.from('exercise_comments').select('id').eq('athlete_id', athleteId).eq('exercise_id', exId).eq('author', 'athlete').order('created_at', { ascending: false });
@@ -525,7 +543,73 @@ async function dbGetProgress() {
   (data || []).forEach(row => { result[row.athlete_id] = row.data; });
   return result;
 }
-async function dbUpsertProgress(athleteId, progressData) { await sb.from("progress").upsert({ athlete_id: athleteId, data: progressData }); }
+async function dbUpsertProgress(athleteId, progressData) { const { error } = await sb.from("progress").upsert({ athlete_id: athleteId, data: progressData }); if (error) throw error; }
+
+// ── v44: progress saves ─────────────────────────────────────────────────────
+// Bug: every progress write sent the athlete's ENTIRE progress record, fire-
+// and-forget, errors ignored. So (a) a device with an older copy — e.g. the
+// coach replying to a note from a session loaded before the athlete logged —
+// overwrote the athlete's checkmarks, (b) taps sent in quick succession could
+// land out of order (older record last), (c) a failed save on gym wifi was
+// silently dropped. Notes still reached the inbox because they're saved to
+// exercise_comments separately.
+// Fix: write ONE exercise entry at a time through the progress_patch RPC
+// (atomic, merges into the stored row, never touches other entries), queued
+// per athlete, retried, and surfaced in a toast if it still fails. Until the
+// SQL function exists it falls back to read-merge-write of the stored row.
+let _patchRpc = null;            // null unknown, true ok, false missing
+const _progressChains = {};      // per-athlete write queue
+const _failedProgress = [];      // writes that exhausted retries
+const _progressListeners = new Set();
+function onProgressSaveFailures(fn) { _progressListeners.add(fn); fn(_failedProgress.length); return () => _progressListeners.delete(fn); }
+function _emitProgressFailures() { _progressListeners.forEach(f => f(_failedProgress.length)); }
+const _isMissingFn = (err) => !!err && (err.code === "PGRST202" || err.code === "42883" || /could not find the function|function .* does not exist/i.test(err.message || ""));
+async function _progressPatchOnce(aid, dayKey, exId, value) {
+  if (_patchRpc !== false) {
+    const { error } = await sb.rpc("progress_patch", { p_athlete_id: aid, p_day_key: dayKey, p_ex_id: exId, p_value: value });
+    if (!error) { _patchRpc = true; return; }
+    if (_isMissingFn(error)) { _patchRpc = false; console.warn("[progress] progress_patch RPC missing — using full-record writes. Run the v44 SQL."); }
+    else throw error;
+  }
+  // Fallback (SQL not run yet): read the stored row, merge just this entry,
+  // write it back. Same merge rules as the SQL function; only a narrow race
+  // between two devices saving at the same instant remains.
+  const { data: row, error: readErr } = await sb.from("progress").select("data").eq("athlete_id", aid).maybeSingle();
+  if (readErr) throw readErr;
+  const stored = (row && row.data && typeof row.data === "object") ? row.data : {};
+  let merged;
+  if (exId == null) merged = { ...stored, [dayKey]: value };
+  else {
+    const day = (stored[dayKey] && typeof stored[dayKey] === "object" && !Array.isArray(stored[dayKey])) ? stored[dayKey] : {};
+    const entry = (day[exId] && typeof day[exId] === "object") ? day[exId] : {};
+    merged = { ...stored, [dayKey]: { ...day, [exId]: { ...entry, ...value } } };
+  }
+  await dbUpsertProgress(aid, merged);
+}
+async function _withRetry(fn) {
+  let last;
+  for (const wait of [0, 1000, 3000, 8000]) {
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    try { await fn(); return true; } catch (e) { last = e; }
+  }
+  console.warn("[progress] save failed after retries:", last);
+  return false;
+}
+function saveProgressEntry(aid, dayKey, exId, value) {
+  const prev = _progressChains[aid] || Promise.resolve();
+  const next = prev.catch(() => {}).then(async () => {
+    const ok = await _withRetry(() => _progressPatchOnce(aid, dayKey, exId, value));
+    if (!ok) { _failedProgress.push({ aid, dayKey, exId, value }); _emitProgressFailures(); }
+  });
+  _progressChains[aid] = next;
+  return next;
+}
+function retryFailedProgress() {
+  const items = _failedProgress.splice(0);
+  _emitProgressFailures();
+  items.forEach(i => saveProgressEntry(i.aid, i.dayKey, i.exId, i.value));
+}
+if (typeof window !== "undefined") window.addEventListener("online", () => { if (_failedProgress.length) retryFailedProgress(); });
 async function dbGetCredentials() {
   const { data, error } = await sb.from("credentials").select("*");
   if (error) throw error;
@@ -768,11 +852,11 @@ function RichTextEditor({ value, onChange, placeholder, rows = 4 }) {
 }
 
 // ── EXERCISE CARD ─────────────────────────────────────────────────────────────
-function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel, alsoOnLabels, highlight = false }) {
+function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onRestoreDay, onEdit, isOverflow, isShared, sourceDayLabel, alsoOnLabels, deferLabel, highlight = false }) {
   const checked = !!ep.checked;
   const note = ep.note || "";
   const selectedOption = ep.selectedOption ?? null;
-  const deferToOtherDay = !!ep.deferToOtherDay;
+  const deferToOtherDay = false; // v43: deferred cards move to the "Deferred" list, so the box is never shown ticked
   const [editing, setEditing] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [draft, setDraft] = useState({ text: ex.text, sets: ex.sets || "", notes: ex.notes || "", category: ex.category || "", videoUrl: ex.videoUrl || "", videoStart: ex.videoStart || "" });
@@ -826,13 +910,13 @@ function ExerciseCard({ ex, ep = {}, onToggle, onNote, onMoveToOverflow, onResto
                     style={{ width: "100%", maxHeight: 180, objectFit: "cover", borderRadius: 7, cursor: "pointer", border: `1px solid ${C.border}` }} />
                 </div>
               )}
-              {alsoOnLabels && !checked && (
+              {deferLabel && !checked && (
                 <button onClick={(e) => { e.stopPropagation(); onNote(note, selectedOption, true); }}
                   style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, ...mono, fontSize: 11, padding: "7px 12px", borderRadius: 6, border: `1px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.3)"}`, background: deferToOtherDay ? "rgba(91,127,166,0.1)" : "transparent", color: deferToOtherDay ? C.purple : C.muted, cursor: "pointer", textAlign: "left", width: "100%" }}>
                   <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${deferToOtherDay ? C.purple : "rgba(91,127,166,0.4)"}`, background: deferToOtherDay ? C.purple : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {deferToOtherDay && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
                   </div>
-                  I'll complete this on {alsoOnLabels}
+                  I'll complete this on {deferLabel}
                 </button>
               )}
               {/* Options */}
@@ -3255,6 +3339,14 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
   // Feature flags declared above — see above.
   const progKey = (wIdx, dIdx) => `w${wIdx}_d${dIdx}`;
   const sharedKey = (exId) => `shared_${exId}`;
+  // v43: "I'll complete this on another day" works from EVERY day a multi-day
+  // exercise appears on (was home-day only). Stored per day on the shared
+  // progress entry: ep.deferredFrom = [dayIdx, ...]. Legacy ep.deferToOtherDay
+  // means "deferred from its home day".
+  const isDeferredOn = (ex, dayIdx, homeDay) => {
+    const ep = (progress[sharedKey(ex.id)] || {})[ex.id] || {};
+    return (Array.isArray(ep.deferredFrom) && ep.deferredFrom.includes(dayIdx)) || (!!ep.deferToOtherDay && dayIdx === homeDay);
+  };
   const overflow = progress[OVF] || [];
   const overflowIds = new Set(overflow.map(e => e.id));
   const isOvf = activeDay === OVF;
@@ -3265,24 +3357,27 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
     if (dIdx === activeDay) return acc;
     d.exercises.forEach(ex => {
       if (ex.sharedDays && ex.sharedDays.includes(activeDay) && !overflowIds.has(ex.id)) {
-        acc.push({ ...ex, _isShared: true, _sourceDay: dIdx });
+        acc.push({ ...ex, _isShared: true, _sourceDay: dIdx, _deferredHere: isDeferredOn(ex, activeDay, dIdx) });
       }
     });
     return acc;
   }, []) : [];
 
   const deferredExs = !isOvf && currentDay
-    ? currentDay.exercises.filter(e => !overflowIds.has(e.id) && (e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay)
+    ? [
+        ...currentDay.exercises.filter(e => !overflowIds.has(e.id) && (e.sharedDays?.length) && isDeferredOn(e, activeDay, activeDay)),
+        ...sharedFromOtherDays.filter(e => e._deferredHere),
+      ]
     : [];
 
   const baseExs = currentDay
-    ? currentDay.exercises.filter(e => !overflowIds.has(e.id) && !((e.sharedDays?.length) && ((progress[`shared_${e.id}`] || {})[e.id] || {}).deferToOtherDay))
+    ? currentDay.exercises.filter(e => !overflowIds.has(e.id) && !((e.sharedDays?.length) && isDeferredOn(e, activeDay, activeDay)))
     : overflow;
 
   // merge shared exercises at their designated positions
   const visibleExs = !isOvf ? (() => {
     const result = [...baseExs];
-    sharedFromOtherDays.forEach(ex => {
+    sharedFromOtherDays.filter(ex => !ex._deferredHere).forEach(ex => {
       const pos = ex.sharedDayPositions?.[activeDay] ?? result.length;
       const clampedPos = Math.min(Math.max(0, pos), result.length);
       result.splice(clampedPos, 0, ex);
@@ -3319,7 +3414,14 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
     const ep = isSharedEx ? ((progress[sharedKey(ex.id)] || {})[ex.id] || {}) : getEp(ex);
     const update = { ...ep, note: val };
     if (selectedOption !== undefined) update.selectedOption = selectedOption;
-    if (defer !== undefined) update.deferToOtherDay = !ep.deferToOtherDay;
+    if (defer !== undefined && isSharedEx) {
+      const home = ex._isShared ? ex._sourceDay : activeDay;
+      let from = Array.isArray(ep.deferredFrom) ? [...ep.deferredFrom] : [];
+      if (ep.deferToOtherDay && !from.includes(home)) from.push(home); // migrate legacy
+      from = from.includes(activeDay) ? from.filter(d => d !== activeDay) : [...from, activeDay];
+      update.deferredFrom = from;
+      update.deferToOtherDay = false;
+    }
     // Shared keys carry no week/day — pass the day being viewed so the note
     // reaches the coach inbox with real context.
     onProgressChange(key, ex.id, update, isSharedEx ? pk : null);
@@ -5112,11 +5214,11 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
           {days.map((d, i) => {
             const pk2 = progKey(activeWeekIdx, i);
             const dp = progress[pk2] || {};
-            const vis = d.exercises.filter(e => !overflowIds.has(e.id));
+            const vis = d.exercises.filter(e => !overflowIds.has(e.id) && !(e.sharedDays?.length && isDeferredOn(e, i, i)));
             // also count shared exercises from other days
             const sharedVis = days.reduce((acc, od, odi) => {
               if (odi === i) return acc;
-              od.exercises.forEach(ex => { if (ex.sharedDays && ex.sharedDays.includes(i) && !overflowIds.has(ex.id)) acc.push(ex); });
+              od.exercises.forEach(ex => { if (ex.sharedDays && ex.sharedDays.includes(i) && !overflowIds.has(ex.id) && !isDeferredOn(ex, i, odi)) acc.push(ex); });
               return acc;
             }, []);
             const allVis = [...vis, ...sharedVis];
@@ -5170,6 +5272,14 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
               : null;
             // for injected day: show which day it comes from
             const sourceDayLabel = ex._isShared ? days[ex._sourceDay]?.label : null;
+            // v43: every other day this exercise appears on, minus days it's
+            // already been pushed off — offered as "I'll complete this on …"
+            const home = ex._isShared ? ex._sourceDay : activeDay;
+            const deferLabel = isShared
+              ? [home, ...(ex.sharedDays || [])]
+                  .filter((di, k, arr) => di !== activeDay && arr.indexOf(di) === k && days[di] && !isDeferredOn(ex, di, home))
+                  .map(di => days[di].label).join(" or ") || null
+              : null;
             return (
               <ExerciseCard key={ex.id + (ex._sourceDay ?? "")} ex={ex} ep={ep} isOverflow={isOvf} highlight={highlightExId === ex.id}
                 onToggle={() => handleToggle(ex)}
@@ -5180,6 +5290,7 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
                 isShared={isShared}
                 sourceDayLabel={sourceDayLabel}
                 alsoOnLabels={alsoOnLabels}
+                deferLabel={deferLabel}
               />
             );
           })}
@@ -5190,9 +5301,12 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
             <div style={{ ...mono, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Deferred to another day</div>
             {deferredExs.map(ex => {
               const ep = getEp(ex);
-              const alsoOnLabels = ex.sharedDays?.map(di => days[di]?.label).filter(Boolean).join(", ");
+              const home = ex._isShared ? ex._sourceDay : activeDay;
+              const alsoOnLabels = [home, ...(ex.sharedDays || [])]
+                .filter((di, k, arr) => di !== activeDay && arr.indexOf(di) === k && days[di] && !isDeferredOn(ex, di, home))
+                .map(di => days[di].label).join(" or ");
               return (
-                <div key={ex.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.2)`, borderRadius: 8, marginBottom: 4 }}>
+                <div key={ex.id + (ex._sourceDay ?? "")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(91,127,166,0.06)", border: `1px solid rgba(91,127,166,0.2)`, borderRadius: 8, marginBottom: 4 }}>
                   <div style={{ flex: 1, fontSize: 13, color: C.muted, textDecoration: "line-through" }}>{ex.text}</div>
                   <span style={{ ...mono, fontSize: 10, color: C.purple }}>→ {alsoOnLabels}</span>
                   <button onClick={() => handleNote(ex, ep.note || "", ep.selectedOption, true)}
@@ -7505,6 +7619,8 @@ function AppInner() {
   // tap would overwrite the athlete's entire history in the DB with just
   // that one entry. With this ref, such a write is refused instead.
   const progressLoadedRef = React.useRef(false);
+  const [progressSaveFailures, setProgressSaveFailures] = useState(0);
+  useEffect(() => onProgressSaveFailures(setProgressSaveFailures), []);
   useEffect(() => {
     (async () => {
       try {
@@ -7636,8 +7752,10 @@ function AppInner() {
     setProgress(prev => {
       const ap = prev[id] || {};
       const dp = ap[dayKey] || {};
-      const np = { ...prev, [id]: { ...ap, [dayKey]: { ...dp, [exId]: ep } } };
-      dbUpsertProgress(id, np[id]);
+      // v44: merge (not replace) so partial updates like a coach reply keep
+      // the athlete's fields; the server merges the same way.
+      const np = { ...prev, [id]: { ...ap, [dayKey]: { ...dp, [exId]: { ...(dp[exId] || {}), ...ep } } } };
+      saveProgressEntry(id, dayKey, exId, ep);
       // Backup progress at most once per 2 min per athlete
       const now = Date.now();
       if (!lastProgressBackup.current[id] || now - lastProgressBackup.current[id] > 120000) {
@@ -7662,7 +7780,7 @@ function AppInner() {
     setProgress(prev => {
       const ap = prev[id] || {};
       const np = { ...prev, [id]: { ...ap, overflow: ov } };
-      dbUpsertProgress(id, np[id]);
+      saveProgressEntry(id, "overflow", null, ov);
       return np;
     });
   }, []);
@@ -7674,7 +7792,7 @@ function AppInner() {
         const ap = prev[id] || {};
         const ov = (ap.overflow || []).map(e => e.id === updatedEx.id ? { ...e, ...updatedEx } : e);
         const np = { ...prev, [id]: { ...ap, overflow: ov } };
-        dbUpsertProgress(id, np[id]);
+          saveProgressEntry(id, "overflow", null, ov);
         return np;
       });
     } else {
@@ -7759,7 +7877,7 @@ function AppInner() {
         const ap = { ...(prev[session.athleteId] || {}) };
         replies.forEach(r => {
           const dk = `w${r.plan_week}_d${r.plan_day}`;
-          const exDef = athletePlan?.weeks?.[r.plan_week]?.days?.[r.plan_day]?.exercises?.find(e => e.id === r.exercise_id);
+          const exDef = findPlanExercise(athletePlan, r.plan_week, r.plan_day, r.exercise_id);
           const keys = exDef?.sharedDays?.length ? [dk, `shared_${r.exercise_id}`] : [dk];
           keys.forEach(k => {
             const dp = { ...(ap[k] || {}) };
@@ -7827,6 +7945,14 @@ function AppInner() {
       }} />
   );
 
+  // v44: visible when progress saves failed after retries (they also retry on reconnect)
+  const saveToast = progressSaveFailures > 0 ? (
+    <div role="alert" style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: "calc(20px + env(safe-area-inset-bottom, 0px))", zIndex: 2000, display: "flex", alignItems: "center", gap: 12, background: "#a33a2e", color: "#fff", borderRadius: 10, padding: "10px 14px", boxShadow: "0 6px 24px rgba(0,0,0,0.25)", maxWidth: "calc(100vw - 32px)", ...mono, fontSize: 12 }}>
+      <span>⚠ {progressSaveFailures === 1 ? "1 change" : `${progressSaveFailures} changes`} not saved — check your connection.</span>
+      <button onClick={retryFailedProgress} style={{ ...mono, fontSize: 11, padding: "6px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.6)", background: "none", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>Retry</button>
+    </div>
+  ) : null;
+
   if (session.role === "athlete") {
     const athlete = athletes.find(a => a.id === session.athleteId);
     // Guard: if athletes haven't loaded yet, show loading screen
@@ -7841,7 +7967,7 @@ function AppInner() {
     // setState during render is discouraged); here we just render nothing
     // for the single frame before that effect runs.
     if (!athlete) return null;
-    return <AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
+    return <>{saveToast}<AthleteView athlete={athlete} plan={plans[session.athleteId]} progress={progress[session.athleteId] || {}}
       onProgressChange={(d, e, ep, cdk) => { dbTouchActivity(session.athleteId); updateProgress(session.athleteId, d, e, ep, cdk); }}
       darkMode={darkMode} onToggleDark={() => { const n = !darkMode; setDarkMode(n); try { localStorage.setItem("rp_dark", n?"1":"0"); } catch(_) {} }}
       onOverflowChange={(ov) => { dbTouchActivity(session.athleteId); updateOverflow(session.athleteId, ov); }}
@@ -7860,7 +7986,7 @@ function AppInner() {
           return { ...prev, [session.athleteId]: ap };
         });
       }}
-      onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }} />;
+      onLogout={() => { try { localStorage.removeItem("rp_session"); } catch(e) {} setSession(null); }} /></>;
   }
 
   // filter athletes by coach if sub-coach
@@ -7945,13 +8071,13 @@ function AppInner() {
                 {!inboxAthleteId && <div style={{ ...bebas, fontSize: 16, color: C.orange, marginBottom: 10 }}>{aName}</div>}
                 {notes.map(c => {
                   const wk = plan?.weeks?.[c.plan_week]; const dy = wk?.days?.[c.plan_day];
-                  const ex = dy?.exercises?.find(e => e.id === c.exercise_id);
+                  const ex = findPlanExercise(plan, c.plan_week, c.plan_day, c.exercise_id);
                   const reply = comments.find(r => r.author === 'coach' && r.exercise_id === c.exercise_id);
                   return (
                     <div key={c.id} style={{ background: C.gray2, border: `1px solid ${!c.read_by_coach ? C.orange : C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
                         <div style={{ ...mono, fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1 }}>
-                          {!inboxAthleteId && <span style={{ color: C.orange }}>{aName} · </span>}{wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || c.exercise_id}
+                          {!inboxAthleteId && <span style={{ color: C.orange }}>{aName} · </span>}{wk?.label || `Week ${c.plan_week + 1}`} · {dy?.label || `Day ${c.plan_day + 1}`} · {ex?.text || ex?.name || "Removed exercise"}
                         </div>
                         {c.created_at && <span style={{ ...mono, fontSize: 9, color: C.muted, whiteSpace: 'nowrap', flexShrink: 0 }} title={new Date(c.created_at).toLocaleString()}>{fmtCommentTime(c.created_at)}</span>}
                       </div>
@@ -7990,12 +8116,11 @@ function AppInner() {
                             const updated = await dbGetCommentsForAthlete(aid);
                             setAthleteComments(prev => ({ ...prev, [aid]: updated }));
                             const dk = `w${c.plan_week}_d${c.plan_day}`;
-                            const ep = ((progress[aid] || {})[dk] || {})[c.exercise_id] || {};
-                            updateProgress(aid, dk, c.exercise_id, { ...ep, _coachReply: draft.trim() });
+                            // v44: only the reply field — the coach's copy of this entry may be stale
+                            updateProgress(aid, dk, c.exercise_id, { _coachReply: draft.trim() });
                             if (ex?.sharedDays?.length) {
                               const sk = `shared_${c.exercise_id}`;
-                              const sep = ((progress[aid] || {})[sk] || {})[c.exercise_id] || {};
-                              updateProgress(aid, sk, c.exercise_id, { ...sep, _coachReply: draft.trim() });
+                              updateProgress(aid, sk, c.exercise_id, { _coachReply: draft.trim() });
                             }
                             setReplyDrafts(prev => { const n = { ...prev }; delete n[c.id]; return n; });
                             setReplySavingId(null);
@@ -8020,7 +8145,7 @@ function AppInner() {
     </div>
   ) : null;
 
-  return <>{inboxOverlay}<CoachDashboard
+  return <>{saveToast}{inboxOverlay}<CoachDashboard
     athletes={visibleAthletes} allAthletes={athletes} plans={plans} progress={progress} credentials={credentials}
     coaches={coaches} isAdmin={session.isAdmin} coachId={session.coachId || null}
     templates={templates}
