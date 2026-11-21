@@ -192,12 +192,40 @@ function readStatus(plan, progress) {
   const uKey = updateKeyOf(plan), oKey = overviewKeyOf(plan);
   const legacyUpdateSeen = !!(plan?.blockUpdateAt && meta._lastViewedUpdate && plan.blockUpdateAt <= meta._lastViewedUpdate);
   const uSeen = !!uKey && (meta.updateSeen?.key === uKey || legacyUpdateSeen);
-  const oSeen = !!oKey && meta.overviewSeen?.key === oKey;
+  // v48: the Overview is "new" only when the coach flips "Show as new" on.
+  // Editing it never flags it. Key = the moment the coach flipped it on.
+  const oFlag = !!oKey && plan?.blockOverviewShowNew === true && plan?.blockOverviewNotifyAt ? plan.blockOverviewNotifyAt : null;
+  const oSeen = !!oFlag && meta.overviewSeen?.key === oFlag;
   return {
     update: uKey ? { key: uKey, seen: uSeen, at: uSeen ? (meta.updateSeen?.at || null) : null } : null,
-    overview: oKey ? { key: oKey, seen: oSeen, at: oSeen ? (meta.overviewSeen?.at || null) : null } : null,
+    overview: oFlag ? { key: oFlag, seen: oSeen, at: oSeen ? (meta.overviewSeen?.at || null) : null } : null,
   };
 }
+// v48: coach switch — show the Overview to the athlete as new (open above
+// their workout until Got it). ON = flagged and not yet acknowledged; it
+// turns itself off once the athlete taps Got it. Flip ON again to re-send.
+function OverviewNewToggle({ plan, athleteProgress, onPatch, name }) {
+  const hasOverview = !!overviewKeyOf(plan);
+  const st = readStatus(plan, athleteProgress).overview;
+  const on = !!st && !st.seen;
+  const flip = () => {
+    if (!hasOverview) return;
+    onPatch(on ? { blockOverviewShowNew: false } : { blockOverviewShowNew: true, blockOverviewNotifyAt: new Date().toISOString() });
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0 10px", opacity: hasOverview ? 1 : 0.5 }}>
+      <button type="button" role="switch" aria-checked={on} onClick={flip} disabled={!hasOverview}
+        style={{ width: 38, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: hasOverview ? "pointer" : "default", background: on ? C.purple : C.gray3, display: "flex", justifyContent: on ? "flex-end" : "flex-start", transition: "background 0.15s", flexShrink: 0 }}>
+        <span style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,0.25)" }} />
+      </button>
+      <div style={{ ...mono, fontSize: 10, lineHeight: 1.4 }}>
+        <div style={{ color: C.white }}>📣 Show overview as new to {name}</div>
+        <div style={{ color: C.muted }}>{on ? "On — open above their workout until they tap Got it" : (st?.seen ? "Off — they've seen it. Flip on to show it again" : "Off — edits stay quiet")}</div>
+      </div>
+    </div>
+  );
+}
+
 // Coach-side receipt line
 function ReadReceipt({ status, name }) {
   if (!status) return null;
@@ -1637,6 +1665,7 @@ function MobileCoachPlanEditor({ athlete, plan, onPlanChange, onPublish, sharedW
                 </div>
                 <div>
                   <div style={{ ...mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>BLOCK OVERVIEW (athletes see this)</div>
+                  <OverviewNewToggle plan={plan} athleteProgress={athleteProgress} onPatch={patch => updateBlock(patch)} name={athlete?.name?.split(" ")[0] || "athlete"} />
                   <ReadReceipt status={readStatus(plan, athleteProgress).overview} name={athlete?.name?.split(" ")[0] || "athlete"} />
                   <textarea value={plan?.blockNotes || ""} onChange={e => updateBlock({ blockNotes: e.target.value })}
                     placeholder="Coaching notes for this block. Markdown OK." rows={3}
@@ -2170,6 +2199,7 @@ function CoachPlanEditor({ athlete, plan, onPlanChange, onPublish, templates = [
               style={{ width: "100%", background: C.gray2, border: `1px solid ${C.border}`, borderRadius: 5, padding: "6px 8px", color: C.white, fontSize: 12, outline: "none", colorScheme: "light dark", ...mono }} />
           </div>
         </div>
+        <OverviewNewToggle plan={plan} athleteProgress={athleteProgress} onPatch={patch => onPlanChange({ ...plan, ...patch })} name={athlete?.name?.split(" ")[0] || "athlete"} />
         <ReadReceipt status={readStatus(plan, athleteProgress).overview} name={athlete?.name?.split(" ")[0] || "athlete"} />
         <RichTextEditor value={plan?.blockNotes || ""} onChange={v => onPlanChange({ ...plan, blockNotes: v })}
           placeholder="Write notes about the goals, purpose, and context of this training block. Use **bold**, *italic*, - bullets. Athletes will see this when they tap 'Overview'."
@@ -3501,13 +3531,23 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
   // exercise (every day, every session) until the athlete taps Got it.
   const rs = readStatus(plan, progress);
   const updateKey = rs.update?.key || null;
-  const isUpdateNew = !!rs.update && !rs.update.seen;
-  const isOverviewNew = !!rs.overview && !rs.overview.seen;
+  let isUpdateNew = !!rs.update && !rs.update.seen;
+  let isOverviewNew = !!rs.overview && !rs.overview.seen;
+  // v47: Got it hides the card immediately on this device, even in your
+  // preview (where it deliberately records nothing) or if the save is slow.
+  const [dismissedUpdateKey, setDismissedUpdateKey] = useState(null);
+  if (dismissedUpdateKey && dismissedUpdateKey === updateKey) isUpdateNew = false;
   const markUpdateSeen = () => {
+    if (!updateKey) return;
+    setDismissedUpdateKey(updateKey);
     if (previewMode || !isUpdateNew) return;
     onProgressChange("_meta", "updateSeen", { key: updateKey, at: new Date().toISOString() });
   };
+  const [dismissedOverviewKey, setDismissedOverviewKey] = useState(null);
+  if (dismissedOverviewKey && dismissedOverviewKey === rs.overview?.key) isOverviewNew = false;
   const markOverviewSeen = () => {
+    if (!rs.overview) return;
+    setDismissedOverviewKey(rs.overview.key);
     if (previewMode || !isOverviewNew) return;
     onProgressChange("_meta", "overviewSeen", { key: rs.overview.key, at: new Date().toISOString() });
   };
@@ -5304,7 +5344,8 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
                 </div>
                 <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockUpdate, C.white)}</div>
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                  <button onClick={markUpdateSeen} style={{ ...mono, fontSize: 12, padding: "9px 18px", borderRadius: 7, border: "none", background: C.purple, color: "#fff", cursor: "pointer" }}>Got it ✓</button>
+                  {previewMode && <span style={{ ...mono, fontSize: 10, color: C.muted, alignSelf: "center", marginRight: "auto" }}>Preview — tapping won't mark it read for the athlete</span>}
+                  <button type="button" onClick={markUpdateSeen} style={{ ...mono, fontSize: 12, padding: "9px 18px", borderRadius: 7, border: "none", background: C.purple, color: "#fff", cursor: "pointer", position: "relative", zIndex: 1, touchAction: "manipulation" }}>Got it ✓</button>
                 </div>
               </div>
             )}
@@ -5317,7 +5358,8 @@ function AthleteView({ athlete, plan: rawPlan, progress, onProgressChange, onOve
                   <div style={{ ...bebas, fontSize: 18, letterSpacing: 1, color: C.white, marginBottom: 8 }}>📋 Plan Overview</div>
                   {plan.blockNotes && <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{renderMarkdown(plan.blockNotes, C.white)}</div>}
                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                    <button onClick={markOverviewSeen} style={{ ...mono, fontSize: 12, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it ✓</button>
+                    {previewMode && <span style={{ ...mono, fontSize: 10, color: C.muted, alignSelf: "center", marginRight: "auto" }}>Preview — tapping won't mark it read for the athlete</span>}
+                    <button type="button" onClick={markOverviewSeen} style={{ touchAction: "manipulation", ...mono, fontSize: 12, padding: "9px 18px", borderRadius: 7, border: "none", background: C.orange, color: "#fff", cursor: "pointer" }}>Got it ✓</button>
                   </div>
                 </div>
               </div>
